@@ -1,0 +1,88 @@
+{
+  "permissions": [
+    {
+      "id": 1,
+      "name": "Create Jobs",
+      "slug": "jobs.create",
+      "description": "Permission to create and post new job listings",
+      "createdAt": "2024-01-10T09:30:00"
+    },
+    {
+      "id": 2,
+      "name": "View Jobs",
+      "slug": "jobs.view",
+      "description": "Permission to view all job listings and details",
+      "createdAt": "2024-01-10T09:31:00"
+    },
+    {
+      "id": 3,
+      "name": "Edit Jobs",
+      "slug": "jobs.edit",
+      "description": "Permission to modify existing job postings",
+      "createdAt": "2024-01-10T09:32:00"
+    },
+    {
+      "id": 4,
+      "name": "Delete Jobs",
+      "slug": "jobs.delete",
+      "description": "Permission to remove job listings from the system",
+      "createdAt": "2024-01-10T09:33:00"
+    },
+    {
+      "id": 5,
+      "name": "Manage Candidates",
+      "slug": "candidates.manage",
+      "description": "Permission to add, edit, and manage candidate profiles",
+      "createdAt": "2024-01-12T14:20:00"
+    },
+    {
+      "id": 6,
+      "name": "View Candidates",
+      "slug": "candidates.view",
+      "description": "Permission to view candidate profiles and information",
+      "createdAt": "2024-01-12T14:21:00"
+    },
+    {
+      "id": 7,
+      "name": "Schedule Interviews",
+      "slug": "interviews.schedule",
+      "description": "Permission to schedule and manage interview appointments",
+      "createdAt": "2024-01-15T11:45:00"
+    },
+    {
+      "id": 8,
+      "name": "Access Reports",
+      "slug": "reports.access",
+      "description": "Permission to view and generate system reports",
+      "createdAt": "2024-01-18T16:15:00"
+    },
+    {
+      "id": 9,
+      "name": "User Management",
+      "slug": "users.manage",
+      "description": "Permission to create, edit, and manage user accounts",
+      "createdAt": "2024-01-20T10:00:00"
+    },
+    {
+      "id": 10,
+      "name": "System Administration",
+      "slug": "system.admin",
+      "description": "Full administrative access to system settings and configuration",
+      "createdAt": "2024-01-20T10:01:00"
+    },
+    {
+      "id": 11,
+      "name": "Client Communication",
+      "slug": "clients.communicate",
+      "description": "Permission to communicate with clients and manage relationships",
+      "createdAt": "2024-01-25T13:30:00"
+    },
+    {
+      "id": 12,
+      "name": "Export Data",
+      "slug": "data.export",
+      "description": "Permission to export data and generate data files",
+      "createdAt": "2024-02-01T08:45:00"
+    }
+  ]
+}

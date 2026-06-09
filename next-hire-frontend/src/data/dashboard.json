@@ -1,0 +1,39 @@
+
+{
+  "metrics": {
+    "myJobs": 23,
+    "newJobs": 8,
+    "interviewsToday": 5,
+    "submissionsPending": 12,
+    "feedbackDue": 7
+  },
+  "recentActivity": [
+    {
+      "id": 1,
+      "type": "submission",
+      "title": "New submission for Senior React Developer",
+      "candidate": "Sarah Johnson",
+      "timestamp": "2 hours ago"
+    },
+    {
+      "id": 2,
+      "type": "interview",
+      "title": "Interview scheduled with Alex Chen",
+      "job": "Product Manager - Fintech",
+      "timestamp": "4 hours ago"
+    },
+    {
+      "id": 3,
+      "type": "placement",
+      "title": "Candidate accepted offer",
+      "candidate": "Michael Rodriguez",
+      "timestamp": "1 day ago"
+    }
+  ],
+  "quickLinks": [
+    { "title": "Post New Job", "href": "/jobs/new" },
+    { "title": "Review Submissions", "href": "/submissions" },
+    { "title": "Schedule Interviews", "href": "/calendar" },
+    { "title": "Client Reports", "href": "/reports" }
+  ]
+}

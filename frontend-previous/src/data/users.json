@@ -1,0 +1,115 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "John Smith",
+      "email": "john.smith@company.com",
+      "role": "Administrator",
+      "status": "Active",
+      "joinedDate": "2024-01-15",
+      "lastSignIn": "2025-01-08",
+      "avatar": "JS",
+      "permissions": ["full_access", "user_management", "system_settings"]
+    },
+    {
+      "id": 2,
+      "name": "Sarah Johnson",
+      "email": "sarah.johnson@company.com",
+      "role": "HR Manager",
+      "status": "Active",
+      "joinedDate": "2024-02-20",
+      "lastSignIn": "2025-01-07",
+      "avatar": "SJ",
+      "permissions": ["hr_access", "candidate_management", "interview_scheduling"]
+    },
+    {
+      "id": 3,
+      "name": "Michael Chen",
+      "email": "michael.chen@company.com",
+      "role": "Recruiter",
+      "status": "Active",
+      "joinedDate": "2024-03-10",
+      "lastSignIn": "2025-01-06",
+      "avatar": "MC",
+      "permissions": ["recruiter_access", "job_posting", "candidate_search"]
+    },
+    {
+      "id": 4,
+      "name": "Emily Davis",
+      "email": "emily.davis@company.com",
+      "role": "Account Manager",
+      "status": "Active",
+      "joinedDate": "2024-04-05",
+      "lastSignIn": "2025-01-05",
+      "avatar": "ED",
+      "permissions": ["account_management", "client_communication", "reporting"]
+    },
+    {
+      "id": 5,
+      "name": "David Wilson",
+      "email": "david.wilson@company.com",
+      "role": "Team Lead",
+      "status": "Active",
+      "joinedDate": "2024-05-12",
+      "lastSignIn": "2025-01-04",
+      "avatar": "DW",
+      "permissions": ["team_management", "performance_review", "goal_setting"]
+    },
+    {
+      "id": 6,
+      "name": "Lisa Thompson",
+      "email": "lisa.thompson@company.com",
+      "role": "Administrator",
+      "status": "Active",
+      "joinedDate": "2024-06-18",
+      "lastSignIn": "2025-01-03",
+      "avatar": "LT",
+      "permissions": ["full_access", "user_management", "system_settings"]
+    },
+    {
+      "id": 7,
+      "name": "Robert Garcia",
+      "email": "robert.garcia@company.com",
+      "role": "Recruiter",
+      "status": "Active",
+      "joinedDate": "2024-07-22",
+      "lastSignIn": "2025-01-02",
+      "avatar": "RG",
+      "permissions": ["recruiter_access", "job_posting", "candidate_search"]
+    },
+    {
+      "id": 8,
+      "name": "Amanda Rodriguez",
+      "email": "amanda.rodriguez@company.com",
+      "role": "HR Specialist",
+      "status": "Active",
+      "joinedDate": "2024-08-30",
+      "lastSignIn": "2025-01-01",
+      "avatar": "AR",
+      "permissions": ["hr_support", "onboarding", "documentation"]
+    },
+    {
+      "id": 9,
+      "name": "James Miller",
+      "email": "james.miller@company.com",
+      "role": "Guest User",
+      "status": "Inactive",
+      "joinedDate": "2024-09-15",
+      "lastSignIn": null,
+      "avatar": "JM",
+      "trashed": true,
+      "permissions": ["read_only"]
+    },
+    {
+      "id": 10,
+      "name": "Jessica Lee",
+      "email": "jessica.lee@company.com",
+      "role": "Client Manager",
+      "status": "Inactive",
+      "joinedDate": "2024-10-08",
+      "lastSignIn": "2024-12-20",
+      "avatar": "JL",
+      "permissions": ["client_access", "contract_management"]
+    }
+  ]
+}

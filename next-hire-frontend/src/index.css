@@ -1,0 +1,337 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. */
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 158 25% 46%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 158 15% 92%;
+    --secondary-foreground: 158 25% 15%;
+
+    --muted: 158 10% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 158 20% 88%;
+    --accent-foreground: 158 25% 20%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 158 12% 88%;
+    --input: 158 12% 88%;
+    --ring: 158 25% 46%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 158 20% 98%;
+    --sidebar-foreground: 158 25% 26%;
+    --sidebar-primary: 158 25% 46%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 158 15% 92%;
+    --sidebar-accent-foreground: 158 25% 20%;
+    --sidebar-border: 158 12% 88%;
+    --sidebar-ring: 158 25% 46%;
+
+    /* Company/Admin Green palette based on #608273 */
+    --green-50: 158 30% 96%;
+    --green-100: 158 25% 90%;
+    --green-200: 158 22% 82%;
+    --green-300: 158 20% 72%;
+    --green-400: 158 22% 62%;
+    --green-500: 158 25% 46%; /* #608273 */
+    --green-600: 158 28% 38%;
+    --green-700: 158 30% 30%;
+    --green-800: 158 32% 22%;
+    --green-900: 158 35% 15%;
+
+    /* Vendor Blue palette based on #A4CCD9 */
+    --vendor-50: 196 45% 96%;
+    --vendor-100: 196 40% 90%;
+    --vendor-200: 196 35% 82%;
+    --vendor-300: 196 30% 72%;
+    --vendor-400: 196 28% 62%;
+    --vendor-500: 196 30% 70%; /* #A4CCD9 */
+    --vendor-600: 196 35% 58%;
+    --vendor-700: 196 40% 48%;
+    --vendor-800: 196 45% 38%;
+    --vendor-900: 196 50% 28%;
+
+    /* Candidate Purple palette based on #725CAD */
+    --candidate-50: 263 35% 96%;
+    --candidate-100: 263 30% 90%;
+    --candidate-200: 263 25% 82%;
+    --candidate-300: 263 22% 72%;
+    --candidate-400: 263 25% 62%;
+    --candidate-500: 263 30% 52%; /* #725CAD */
+    --candidate-600: 263 35% 42%;
+    --candidate-700: 263 40% 35%;
+    --candidate-800: 263 45% 28%;
+    --candidate-900: 263 50% 22%;
+
+    /* Client Colors (Coral tones based on #F6A192) */
+    --client-50: 11 100% 97%;
+    --client-100: 11 85% 93%;
+    --client-200: 11 75% 86%;
+    --client-300: 11 65% 76%;
+    --client-400: 11 60% 68%;
+    --client-500: 11 77% 78%; /* #F6A192 */
+    --client-600: 11 70% 70%;
+    --client-700: 11 65% 62%;
+    --client-800: 11 60% 50%;
+    --client-900: 11 55% 40%;
+  }
+
+  .dark {
+    --background: 158 30% 8%;
+    --foreground: 158 10% 95%;
+
+    --card: 158 25% 10%;
+    --card-foreground: 158 10% 95%;
+
+    --popover: 158 25% 10%;
+    --popover-foreground: 158 10% 95%;
+
+    --primary: 158 25% 60%;
+    --primary-foreground: 158 30% 8%;
+
+    --secondary: 158 20% 15%;
+    --secondary-foreground: 158 10% 95%;
+
+    --muted: 158 20% 15%;
+    --muted-foreground: 158 10% 65%;
+
+    --accent: 158 20% 18%;
+    --accent-foreground: 158 10% 95%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 158 20% 18%;
+    --input: 158 20% 18%;
+    --ring: 158 25% 60%;
+
+    --sidebar-background: 158 25% 10%;
+    --sidebar-foreground: 158 10% 90%;
+    --sidebar-primary: 158 25% 60%;
+    --sidebar-primary-foreground: 158 30% 8%;
+    --sidebar-accent: 158 20% 15%;
+    --sidebar-accent-foreground: 158 10% 90%;
+    --sidebar-border: 158 20% 18%;
+    --sidebar-ring: 158 25% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-gradient-to-br from-green-50 via-white to-green-50/50 text-foreground font-roboto-slab;
+    font-feature-settings: "cv03", "cv04", "cv11";
+    background-attachment: fixed;
+  }
+
+  /* Role-specific body backgrounds */
+  body.vendor-theme {
+    @apply bg-gradient-to-br from-vendor-50 via-white to-vendor-50/50;
+  }
+
+  body.candidate-theme {
+    @apply bg-gradient-to-br from-candidate-50 via-white to-candidate-50/50;
+  }
+
+  body.client-theme {
+    @apply bg-gradient-to-br from-client-50 via-white to-client-50/50;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-roboto-slab font-semibold;
+  }
+
+  p, span, div {
+    @apply font-roboto-slab;
+  }
+
+  /* Table data styling with Poppins */
+  table td, table th, .table-data {
+    @apply font-poppins font-normal;
+  }
+}
+
+@layer components {
+  /* Company/Admin gradients (existing) */
+  .card-gradient {
+    @apply bg-gradient-to-br from-white via-white/95 to-green-50/30;
+    backdrop-filter: blur(10px);
+    box-shadow: 
+      0 4px 20px -4px rgba(96, 130, 115, 0.1),
+      0 2px 8px -2px rgba(96, 130, 115, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:shadow-green-500/10 hover:-translate-y-1;
+  }
+
+  .button-gradient {
+    @apply bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600;
+    box-shadow: 
+      0 4px 12px rgba(96, 130, 115, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
+  .nav-card-gradient {
+    @apply bg-gradient-to-br from-white via-green-50/20 to-green-100/30;
+    backdrop-filter: blur(8px);
+    box-shadow: 
+      0 2px 12px -2px rgba(96, 130, 115, 0.08),
+      0 1px 4px -1px rgba(96, 130, 115, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+
+  .table-gradient {
+    @apply bg-gradient-to-br from-white/90 via-white to-green-50/20;
+    backdrop-filter: blur(12px);
+  }
+
+  .header-gradient {
+    @apply bg-gradient-to-r from-white via-green-50/30 to-white;
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(96, 130, 115, 0.1);
+  }
+
+  /* Vendor-specific gradients */
+  .vendor-card-gradient {
+    @apply bg-gradient-to-br from-white via-white/95 to-vendor-50/30;
+    backdrop-filter: blur(10px);
+    box-shadow: 
+      0 4px 20px -4px rgba(164, 204, 217, 0.1),
+      0 2px 8px -2px rgba(164, 204, 217, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  .vendor-card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:shadow-vendor-500/10 hover:-translate-y-1;
+  }
+
+  .vendor-button-gradient {
+    @apply bg-gradient-to-r from-vendor-600 to-vendor-500 hover:from-vendor-700 hover:to-vendor-600;
+    box-shadow: 
+      0 4px 12px rgba(164, 204, 217, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
+  .vendor-nav-card-gradient {
+    @apply bg-gradient-to-br from-white via-vendor-50/20 to-vendor-100/30;
+    backdrop-filter: blur(8px);
+    box-shadow: 
+      0 2px 12px -2px rgba(164, 204, 217, 0.08),
+      0 1px 4px -1px rgba(164, 204, 217, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+
+  .vendor-header-gradient {
+    @apply bg-gradient-to-r from-white via-vendor-50/30 to-white;
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(164, 204, 217, 0.1);
+  }
+
+  /* Candidate-specific gradients */
+  .candidate-card-gradient {
+    @apply bg-gradient-to-br from-white via-white/95 to-candidate-50/30;
+    backdrop-filter: blur(10px);
+    box-shadow: 
+      0 4px 20px -4px rgba(114, 92, 173, 0.1),
+      0 2px 8px -2px rgba(114, 92, 173, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  .candidate-card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:shadow-candidate-500/10 hover:-translate-y-1;
+  }
+
+  .candidate-button-gradient {
+    @apply bg-gradient-to-r from-candidate-600 to-candidate-500 hover:from-candidate-700 hover:to-candidate-600;
+    box-shadow: 
+      0 4px 12px rgba(114, 92, 173, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
+  .candidate-nav-card-gradient {
+    @apply bg-gradient-to-br from-white via-candidate-50/20 to-candidate-100/30;
+    backdrop-filter: blur(8px);
+    box-shadow: 
+      0 2px 12px -2px rgba(114, 92, 173, 0.08),
+      0 1px 4px -1px rgba(114, 92, 173, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+
+  .candidate-header-gradient {
+    @apply bg-gradient-to-r from-white via-candidate-50/30 to-white;
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(114, 92, 173, 0.1);
+  }
+
+  /* Client-specific gradients using coral/salmon #f6a192 */
+  .client-card-gradient {
+    @apply bg-gradient-to-br from-white via-white/95 to-client-50/30;
+    backdrop-filter: blur(10px);
+    box-shadow: 
+      0 4px 20px -4px hsla(11, 77%, 78%, 0.1),
+      0 2px 8px -2px hsla(11, 77%, 78%, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  .client-card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:shadow-client-500/10 hover:-translate-y-1;
+  }
+
+  .client-button-gradient {
+    @apply bg-gradient-to-r from-client-600 to-client-500 hover:from-client-700 hover:to-client-600;
+    box-shadow: 
+      0 4px 12px hsla(11, 77%, 78%, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
+  .client-nav-card-gradient {
+    @apply bg-gradient-to-br from-white via-client-50/20 to-client-100/30;
+    backdrop-filter: blur(8px);
+    box-shadow: 
+      0 2px 12px -2px hsla(11, 77%, 78%, 0.08),
+      0 1px 4px -1px hsla(11, 77%, 78%, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+
+  .client-header-gradient {
+    @apply bg-gradient-to-r from-white via-client-50/30 to-white;
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid hsla(11, 77%, 78%, 0.1);
+  }
+}
+
+@layer utilities {
+  .font-roboto-slab {
+    font-family: 'Roboto Slab', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', serif;
+  }
+
+  .font-poppins {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  }
+}

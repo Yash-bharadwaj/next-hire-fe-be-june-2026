@@ -1,0 +1,68 @@
+{
+  "roles": [
+    {
+      "id": 1,
+      "name": "Administrator",
+      "slug": "administrator",
+      "permissions": ["system.admin", "users.manage", "reports.access", "data.export"],
+      "isDefault": false,
+      "morePermissions": 4
+    },
+    {
+      "id": 2,
+      "name": "HR Manager",
+      "slug": "hr-manager",
+      "permissions": ["jobs.create", "jobs.edit", "candidates.manage", "interviews.schedule"],
+      "isDefault": false,
+      "morePermissions": 2
+    },
+    {
+      "id": 3,
+      "name": "Recruiter",
+      "slug": "recruiter",
+      "permissions": ["jobs.view", "candidates.view", "candidates.manage"],
+      "isDefault": true,
+      "morePermissions": 1
+    },
+    {
+      "id": 4,
+      "name": "Account Manager",
+      "slug": "account-manager",
+      "permissions": ["clients.communicate", "reports.access"],
+      "isDefault": false,
+      "morePermissions": 0
+    },
+    {
+      "id": 5,
+      "name": "Team Lead",
+      "slug": "team-lead",
+      "permissions": ["jobs.view", "candidates.view", "interviews.schedule", "reports.access"],
+      "isDefault": false,
+      "morePermissions": 0
+    },
+    {
+      "id": 6,
+      "name": "HR Specialist",
+      "slug": "hr-specialist",
+      "permissions": ["candidates.view", "interviews.schedule"],
+      "isDefault": false,
+      "morePermissions": 0
+    },
+    {
+      "id": 7,
+      "name": "Client Manager",
+      "slug": "client-manager",
+      "permissions": ["clients.communicate", "jobs.view"],
+      "isDefault": false,
+      "morePermissions": 0
+    },
+    {
+      "id": 8,
+      "name": "Guest User",
+      "slug": "guest",
+      "permissions": [],
+      "isDefault": false,
+      "morePermissions": 0
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+
+{
+  "user": {
+    "name": "John Doe",
+    "email": "john.doe@thenexthire.com",
+    "role": "Account Manager",
+    "avatar": "",
+    "initials": "JD"
+  },
+  "notifications": [
+    {
+      "id": 1,
+      "message": "New submission received for Senior React Developer",
+      "time": "5 min ago",
+      "type": "submission",
+      "read": false
+    },
+    {
+      "id": 2,
+      "message": "Interview scheduled with Alex Chen",
+      "time": "1 hour ago",
+      "type": "interview",
+      "read": false
+    },
+    {
+      "id": 3,
+      "message": "Client feedback received for UX Designer position",
+      "time": "2 hours ago",
+      "type": "feedback",
+      "read": false
+    }
+  ],
+  "quickActions": [
+    {
+      "id": 1,
+      "title": "Post New Job",
+      "description": "Create a new job posting",
+      "icon": "Plus",
+      "href": "/dashboard/jobs/new"
+    },
+    {
+      "id": 2,
+      "title": "Search Candidates",
+      "description": "Find the perfect candidate",
+      "icon": "Search",
+      "href": "/dashboard/search"
+    },
+    {
+      "id": 3,
+      "title": "Schedule Interview",
+      "description": "Set up interviews",
+      "icon": "Calendar",
+      "href": "/dashboard/calendar"
+    },
+    {
+      "id": 4,
+      "title": "Review Submissions",
+      "description": "Check pending submissions",
+      "icon": "FileText",
+      "href": "/dashboard/submissions"
+    }
+  ],
+  "recentActivity": [
+    {
+      "id": 1,
+      "type": "submission",
+      "title": "New submission for Senior React Developer",
+      "candidate": "Sarah Johnson",
+      "timestamp": "2 hours ago",
+      "details": "Candidate submitted resume and cover letter"
+    },
+    {
+      "id": 2,
+      "type": "interview",
+      "title": "Interview scheduled with Alex Chen",
+      "job": "Product Manager - Fintech",
+      "timestamp": "4 hours ago",
+      "details": "Technical interview scheduled for Friday at 2 PM"
+    },
+    {
+      "id": 3,
+      "type": "placement",
+      "title": "Candidate accepted offer",
+      "candidate": "Michael Rodriguez",
+      "timestamp": "1 day ago",
+      "details": "Senior Developer position at TechCorp"
+    },
+    {
+      "id": 4,
+      "type": "feedback",
+      "title": "Client feedback received",
+      "candidate": "Maria Garcia",
+      "timestamp": "1 day ago",
+      "details": "Positive feedback for UX Designer role"
+    }
+  ],
+  "stats": {
+    "totalJobs": 23,
+    "activeJobs": 18,
+    "totalCandidates": 156,
+    "activeCandidates": 89,
+    "totalSubmissions": 45,
+    "pendingSubmissions": 12,
+    "interviewsToday": 5,
+    "placementsThisMonth": 8
+  },
+  "upcomingEvents": [
+    {
+      "id": 1,
+      "title": "Technical Interview - Alex Chen",
+      "time": "10:00 AM",
+      "date": "2024-01-22",
+      "type": "interview",
+      "location": "Zoom"
+    },
+    {
+      "id": 2,
+      "title": "Client Meeting - TechCorp",
+      "time": "2:00 PM",
+      "date": "2024-01-22",
+      "type": "meeting",
+      "location": "Office"
+    },
+    {
+      "id": 3,
+      "title": "Candidate Screening",
+      "time": "3:30 PM",
+      "date": "2024-01-22",
+      "type": "screening",
+      "location": "Phone"
+    }
+  ]
+}
