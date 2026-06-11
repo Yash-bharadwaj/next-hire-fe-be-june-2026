@@ -38,6 +38,7 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
+  X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useBusinessPartners, useBusinessPartnerStats } from "@/hooks/useBusinessPartners";
@@ -65,8 +66,9 @@ const BusinessPartners = () => {
   } = useBusinessPartnerStats();
 
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({});
+  const [activeCardFilter, setActiveCardFilter] = useState<string | null>(null);
 
-  // Calculate stats from real data
+  // Stats come from a dedicated hook — stable regardless of list filters
   const totalPartners = stats?.totalPartners || 0;
   const leads = stats?.leads || 0;
   const clients = stats?.clients || 0;
@@ -74,19 +76,28 @@ const BusinessPartners = () => {
   const activePartners = stats?.activePartners || 0;
 
   const handleLeadsClick = () => {
+    setActiveCardFilter("lead");
     fetchBusinessPartners({ partner_type: "lead" });
   };
 
   const handleClientsClick = () => {
+    setActiveCardFilter("client");
     fetchBusinessPartners({ partner_type: "client" });
   };
 
   const handleVendorsClick = () => {
+    setActiveCardFilter("vendor");
     fetchBusinessPartners({ partner_type: "vendor" });
   };
 
   const handleActiveClick = () => {
+    setActiveCardFilter("active");
     fetchBusinessPartners({ status: "active" });
+  };
+
+  const handleClearFilter = () => {
+    setActiveCardFilter(null);
+    fetchBusinessPartners({});
   };
 
   const handleViewDetails = (partnerId: string) => {
@@ -95,45 +106,50 @@ const BusinessPartners = () => {
 
   const navigationCards = [
     {
+      id: "all",
       title: "Total Partners",
       value: totalPartners.toString(),
       icon: Building2,
       color: "text-blue-700",
       gradientOverlay: "bg-gradient-to-br from-blue-400/30 via-blue-500/20 to-blue-600/30",
-      onClick: () => fetchBusinessPartners({})
+      onClick: handleClearFilter,
     },
     {
+      id: "lead",
       title: "Leads",
       value: leads.toString(),
       icon: TrendingUp,
       color: "text-green-700",
       gradientOverlay: "bg-gradient-to-br from-green-400/30 via-green-500/20 to-green-600/30",
-      onClick: handleLeadsClick
+      onClick: handleLeadsClick,
     },
     {
+      id: "client",
       title: "Clients",
       value: clients.toString(),
       icon: UserCheck,
       color: "text-purple-700",
       gradientOverlay: "bg-gradient-to-br from-purple-400/30 via-purple-500/20 to-purple-600/30",
-      onClick: handleClientsClick
+      onClick: handleClientsClick,
     },
     {
+      id: "vendor",
       title: "Vendors",
       value: vendors.toString(),
       icon: Truck,
       color: "text-orange-700",
       gradientOverlay: "bg-gradient-to-br from-orange-400/30 via-orange-500/20 to-orange-600/30",
-      onClick: handleVendorsClick
+      onClick: handleVendorsClick,
     },
     {
+      id: "active",
       title: "Active",
       value: activePartners.toString(),
       icon: Users,
       color: "text-emerald-700",
       gradientOverlay: "bg-gradient-to-br from-emerald-400/30 via-emerald-500/20 to-emerald-600/30",
-      onClick: handleActiveClick
-    }
+      onClick: handleActiveClick,
+    },
   ];
 
   // Helper functions now use the service
@@ -321,7 +337,20 @@ const BusinessPartners = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
         <div>
-          <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 font-roboto-slab">Business Partners</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 font-roboto-slab">Business Partners</h1>
+            {activeCardFilter && (
+              <span className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                {activeCardFilter === "lead" ? "Leads"
+                  : activeCardFilter === "client" ? "Clients"
+                  : activeCardFilter === "vendor" ? "Vendors"
+                  : "Active"}
+                <button onClick={handleClearFilter} className="hover:bg-green-100 rounded-full p-0.5 transition-colors">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+          </div>
           <p className="text-sm text-gray-600 font-roboto-slab">Manage client relationships and partnerships</p>
         </div>
         <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto">
@@ -442,10 +471,13 @@ const BusinessPartners = () => {
         ) : (
           navigationCards.map((card) => {
             const IconComponent = card.icon;
+            const isActive = activeCardFilter === null ? card.id === "all" : activeCardFilter === card.id;
             return (
-              <Card 
-                key={card.title} 
-                className="relative overflow-hidden border-0 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 group cursor-pointer backdrop-blur-xl bg-white/20"
+              <Card
+                key={card.title}
+                className={`relative overflow-hidden border-0 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 group cursor-pointer backdrop-blur-xl bg-white/20 ${
+                  isActive ? "ring-2 ring-green-500 ring-offset-2 -translate-y-0.5 shadow-md" : ""
+                }`}
                 onClick={card.onClick}
               >
                 <div className={`absolute inset-0 ${card.gradientOverlay}`}></div>

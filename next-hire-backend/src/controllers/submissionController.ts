@@ -419,16 +419,24 @@ export const getSubmissionById = asyncHandler(async (req: AuthRequest, res: Resp
         as: "job",
         attributes: [
           "id", "job_id", "title", "description", "company_name", "location",
-          "job_type", "salary_min", "salary_max", "required_skills", "preferred_skills"
+          "job_type", "salary_min", "salary_max", "required_skills", "preferred_skills",
+          "created_by", "assigned_to"
         ],
       },
       {
         model: Candidate,
         as: "candidate",
         attributes: [
-          "id", "first_name", "last_name", "email", "phone", "location",
+          "id", "first_name", "last_name", "phone", "location",
           "current_salary", "expected_salary", "experience_years", "skills",
           "resume_url", "linkedin_url", "portfolio_url", "bio"
+        ],
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "email"],
+          },
         ],
       },
       {
@@ -439,7 +447,7 @@ export const getSubmissionById = asyncHandler(async (req: AuthRequest, res: Resp
           {
             model: Vendor,
             as: "vendorProfile",
-            attributes: ["company_name", "contact_name"],
+            attributes: ["company_name", "contact_person_name"],
             required: false,
           },
         ],
@@ -555,7 +563,7 @@ export const updateSubmissionStatus = asyncHandler(async (req: AuthRequest, res:
       {
         model: Candidate,
         as: "candidate",
-        attributes: ["id", "first_name", "last_name", "email"],
+        attributes: ["id", "first_name", "last_name"],
       },
     ],
   });

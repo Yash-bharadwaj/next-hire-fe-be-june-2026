@@ -52,6 +52,15 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { DocumentsManager, Document } from "@/components/DocumentsManager";
 import CandidateDetailPersonalizationSettings from "@/components/CandidateDetailPersonalizationSettings";
 import { candidateSearchService } from "@/services/candidateSearchService";
@@ -71,6 +80,11 @@ const CandidateDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
+
+  // Edit candidate dialog state
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
 
   // Search functionality state
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
@@ -275,6 +289,49 @@ const CandidateDetail = () => {
 
     fetchCandidateData();
   }, [id, toast]);
+
+  const openEditDialog = () => {
+    if (!candidate) return;
+    const validStatuses = ["available", "not_available", "interviewing"];
+    setEditForm({
+      first_name: candidate.first_name || "",
+      last_name: candidate.last_name || "",
+      phone: candidate.phone || "",
+      location: candidate.location || "",
+      bio: candidate.bio || "",
+      experience_years: candidate.experience_years ?? "",
+      availability_status: validStatuses.includes(candidate.availability_status) ? candidate.availability_status : "available",
+      current_salary: candidate.current_salary ?? "",
+      expected_salary: candidate.expected_salary ?? "",
+      linkedin_url: candidate.linkedin_url || "",
+      portfolio_url: candidate.portfolio_url || "",
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleEditSave = async () => {
+    if (!id) return;
+    setEditSaving(true);
+    try {
+      const payload: any = { ...editForm };
+      // Strip empty strings — Sequelize isUrl validator rejects "" on URL fields
+      ["linkedin_url", "portfolio_url", "phone", "location", "bio"].forEach(
+        (f) => { if (payload[f] === "") delete payload[f]; }
+      );
+      if (payload.experience_years === "") delete payload.experience_years;
+      if (payload.current_salary === "") delete payload.current_salary;
+      if (payload.expected_salary === "") delete payload.expected_salary;
+      const result = await candidateSearchService.updateCandidate(id, payload);
+      setCandidate(result.data.candidate);
+      setIsEditOpen(false);
+      toast({ title: "Candidate updated", description: "Profile saved successfully." });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.response?.data?.errors?.[0]?.message || err?.message || "Could not save changes.";
+      toast({ title: "Update failed", description: msg, variant: "destructive" });
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   // Load personalization settings from localStorage on component mount
   useEffect(() => {
@@ -579,7 +636,7 @@ const CandidateDetail = () => {
                   align="end"
                   className="w-48 bg-white border border-gray-200 shadow-lg z-50"
                 >
-                  <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                  <DropdownMenuItem onClick={openEditDialog} className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
                     <Edit className="w-4 h-4 mr-2" />
                     Edit Candidate
                   </DropdownMenuItem>
@@ -1376,6 +1433,84 @@ const CandidateDetail = () => {
           </div>
         </Tabs>
       </Card>
+
+      {/* Edit Candidate Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Candidate Profile</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-700">First Name</Label>
+                <Input value={editForm.first_name || ""} onChange={e => setEditForm(p => ({ ...p, first_name: e.target.value }))} className="h-9 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-700">Last Name</Label>
+                <Input value={editForm.last_name || ""} onChange={e => setEditForm(p => ({ ...p, last_name: e.target.value }))} className="h-9 text-sm" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-700">Phone</Label>
+                <Input value={editForm.phone || ""} onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))} className="h-9 text-sm" placeholder="+1 555 000 0000" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-700">Location</Label>
+                <Input value={editForm.location || ""} onChange={e => setEditForm(p => ({ ...p, location: e.target.value }))} className="h-9 text-sm" placeholder="City, State" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-gray-700">Bio</Label>
+              <Textarea value={editForm.bio || ""} onChange={e => setEditForm(p => ({ ...p, bio: e.target.value }))} className="text-sm resize-none" rows={3} placeholder="Brief summary..." />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-700">Availability</Label>
+                <Select value={editForm.availability_status || "available"} onValueChange={v => setEditForm(p => ({ ...p, availability_status: v }))}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="available">Available</SelectItem>
+                    <SelectItem value="not_available">Not Available</SelectItem>
+                    <SelectItem value="interviewing">Interviewing</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-700">Years of Experience</Label>
+                <Input type="number" min={0} max={50} value={editForm.experience_years ?? ""} onChange={e => setEditForm(p => ({ ...p, experience_years: e.target.value === "" ? "" : Number(e.target.value) }))} className="h-9 text-sm" placeholder="0" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-700">Current Salary (USD)</Label>
+                <Input type="number" min={0} value={editForm.current_salary ?? ""} onChange={e => setEditForm(p => ({ ...p, current_salary: e.target.value === "" ? "" : Number(e.target.value) }))} className="h-9 text-sm" placeholder="0" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-700">Expected Salary (USD)</Label>
+                <Input type="number" min={0} value={editForm.expected_salary ?? ""} onChange={e => setEditForm(p => ({ ...p, expected_salary: e.target.value === "" ? "" : Number(e.target.value) }))} className="h-9 text-sm" placeholder="0" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-gray-700">LinkedIn URL</Label>
+              <Input value={editForm.linkedin_url || ""} onChange={e => setEditForm(p => ({ ...p, linkedin_url: e.target.value }))} className="h-9 text-sm" placeholder="https://linkedin.com/in/..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-gray-700">Portfolio URL</Label>
+              <Input value={editForm.portfolio_url || ""} onChange={e => setEditForm(p => ({ ...p, portfolio_url: e.target.value }))} className="h-9 text-sm" placeholder="https://..." />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={editSaving}>Cancel</Button>
+            <Button onClick={handleEditSave} disabled={editSaving} className="bg-green-600 hover:bg-green-700 text-white">
+              {editSaving ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Saving...</> : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Personalization Settings Dialog */}
       <CandidateDetailPersonalizationSettings

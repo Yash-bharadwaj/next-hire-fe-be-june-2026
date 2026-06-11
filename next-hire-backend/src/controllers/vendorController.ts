@@ -14,12 +14,12 @@ export const getProfile = asyncHandler(
       include: [
         {
           model: Vendor,
-          as: "vendor",
+          as: "vendorProfile",
         },
       ],
     });
 
-    if (!user || !user.vendor) {
+    if (!user || !(user as any).vendorProfile) {
       throw createError("Vendor profile not found", 404);
     }
 
@@ -31,7 +31,7 @@ export const getProfile = asyncHandler(
           email: user.email,
           status: user.status,
         },
-        profile: user.vendor,
+        profile: (user as any).vendorProfile,
       },
     });
   }

@@ -24,12 +24,12 @@ export const getProfile = asyncHandler(
       include: [
         {
           model: Recruiter,
-          as: "recruiter",
+          as: "recruiterProfile",
         },
       ],
     });
 
-    if (!user || !user.recruiter) {
+    if (!user || !(user as any).recruiterProfile) {
       throw createError("Recruiter profile not found", 404);
     }
 
@@ -41,7 +41,7 @@ export const getProfile = asyncHandler(
           email: user.email,
           status: user.status,
         },
-        profile: user.recruiter,
+        profile: (user as any).recruiterProfile,
       },
     });
   }

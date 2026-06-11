@@ -42,6 +42,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
 
@@ -234,7 +240,7 @@ export function AppSidebar() {
       collapsible="icon"
     >
       <SidebarHeader className="border-b border-green-100/50 p-4 bg-gradient-to-r from-green-50 to-green-100/30">
-        <div className="flex items-center">
+        <div className={`flex items-center ${isCollapsed ? "justify-center" : ""}`}>
           <div className="flex items-center gap-2">
             <NavLink
               to="/dashboard"
@@ -274,7 +280,6 @@ export function AppSidebar() {
                     let isActive = false;
 
                     if (item.url === "/dashboard/settings") {
-                      // Users tab - only active when on settings page with users tab or no tab specified
                       isActive =
                         location.pathname === "/dashboard/settings" &&
                         (!searchParams.get("tab") || currentTab === "users") &&
@@ -309,33 +314,57 @@ export function AppSidebar() {
                     return (
                       <SidebarMenuItem key={item.title}>
                         <SidebarMenuButton asChild>
-                          <NavLink
-                            to={item.url}
-                            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden ${
-                              isActive
-                                ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/30 scale-105"
-                                : "text-gray-700 hover:bg-gradient-to-r hover:from-green-50 hover:to-green-100/60 hover:text-green-700 hover:shadow-md hover:shadow-green-100/50"
-                            }`}
-                          >
-                            {isActive && (
-                              <div className="absolute inset-0 bg-gradient-to-r from-green-400/20 to-green-600/20 rounded-xl blur-sm" />
-                            )}
-                            <item.icon
-                              className={`w-5 h-5 relative z-10 ${
-                                isActive ? "text-white" : "text-green-600"
-                              }`}
-                            />
-                            {!isCollapsed && (
-                              <>
-                                <span className="font-medium relative z-10">
+                          <TooltipProvider delayDuration={0}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <NavLink
+                                  to={item.url}
+                                  className={`flex items-center gap-3 py-3 rounded-xl transition-all duration-300 group/navitem relative overflow-hidden ${
+                                    isCollapsed ? "justify-center px-2" : "px-4"
+                                  } ${
+                                    isActive
+                                      ? isCollapsed
+                                        ? "bg-green-50 text-green-700"
+                                        : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/30 scale-105"
+                                      : isCollapsed
+                                        ? "text-gray-500 hover:bg-green-50/80 hover:text-green-600"
+                                        : "text-gray-700 hover:bg-gradient-to-r hover:from-green-50 hover:to-green-100/60 hover:text-green-700 hover:shadow-md hover:shadow-green-100/50"
+                                  }`}
+                                >
+                                  {isActive && !isCollapsed && (
+                                    <div className="absolute inset-0 bg-gradient-to-r from-green-400/20 to-green-600/20 rounded-xl blur-sm" />
+                                  )}
+                                  {isCollapsed && (
+                                    <span className={`absolute bottom-1 left-1/2 -translate-x-1/2 h-[3px] rounded-full transition-all duration-200 ${
+                                      isActive ? "w-5 bg-green-500" : "w-0 group-hover/navitem:w-4 bg-green-400"
+                                    }`} />
+                                  )}
+                                  <item.icon
+                                    className={`w-5 h-5 relative z-10 shrink-0 ${
+                                      isActive
+                                        ? isCollapsed ? "text-green-900" : "text-white"
+                                        : "text-green-600"
+                                    }`}
+                                  />
+                                  {!isCollapsed && (
+                                    <>
+                                      <span className="font-medium relative z-10">
+                                        {item.title}
+                                      </span>
+                                      {isActive && (
+                                        <ChevronRight className="w-4 h-4 ml-auto relative z-10 text-white/80" />
+                                      )}
+                                    </>
+                                  )}
+                                </NavLink>
+                              </TooltipTrigger>
+                              {isCollapsed && (
+                                <TooltipContent side="right" className="font-medium">
                                   {item.title}
-                                </span>
-                                {isActive && (
-                                  <ChevronRight className="w-4 h-4 ml-auto relative z-10 text-white/80" />
-                                )}
-                              </>
-                            )}
-                          </NavLink>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     );
@@ -355,7 +384,7 @@ export function AppSidebar() {
                     >
                       <CollapsibleTrigger asChild>
                         <SidebarMenuButton
-                          className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden text-gray-700 hover:bg-gradient-to-r hover:from-green-50 hover:to-green-100/60 hover:text-green-700 hover:shadow-md hover:shadow-green-100/50`}
+                          className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group/navitem relative overflow-hidden text-gray-700 hover:bg-gradient-to-r hover:from-green-50 hover:to-green-100/60 hover:text-green-700 hover:shadow-md hover:shadow-green-100/50`}
                         >
                           <Network className="w-5 h-5 text-green-600" />
                           {!isCollapsed && (
@@ -401,7 +430,7 @@ export function AppSidebar() {
                                 <SidebarMenuButton asChild>
                                   <NavLink
                                     to={item.url}
-                                    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-300 group relative overflow-hidden ${
+                                    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-300 group/navitem relative overflow-hidden ${
                                       isActive
                                         ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/30 scale-105"
                                         : "text-gray-600 hover:bg-gradient-to-r hover:from-green-50 hover:to-green-100/60 hover:text-green-700 hover:shadow-md hover:shadow-green-100/50"
@@ -455,33 +484,57 @@ export function AppSidebar() {
                       return (
                         <SidebarMenuItem key={item.title}>
                           <SidebarMenuButton asChild>
-                            <NavLink
-                              to={item.url}
-                              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden ${
-                                isActive
-                                  ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/30 scale-105"
-                                  : "text-gray-700 hover:bg-gradient-to-r hover:from-green-50 hover:to-green-100/60 hover:text-green-700 hover:shadow-md hover:shadow-green-100/50"
-                              }`}
-                            >
-                              {isActive && (
-                                <div className="absolute inset-0 bg-gradient-to-r from-green-400/20 to-green-600/20 rounded-xl blur-sm" />
-                              )}
-                              <item.icon
-                                className={`w-5 h-5 relative z-10 ${
-                                  isActive ? "text-white" : "text-green-600"
-                                }`}
-                              />
-                              {!isCollapsed && (
-                                <>
-                                  <span className="font-medium relative z-10">
+                            <TooltipProvider delayDuration={0}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <NavLink
+                                    to={item.url}
+                                    className={`flex items-center gap-3 py-3 rounded-xl transition-all duration-300 group/navitem relative overflow-hidden ${
+                                      isCollapsed ? "justify-center px-2" : "px-4"
+                                    } ${
+                                      isActive
+                                        ? isCollapsed
+                                          ? "bg-green-50 text-green-700"
+                                          : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/30 scale-105"
+                                        : isCollapsed
+                                          ? "text-gray-500 hover:bg-green-50/80 hover:text-green-600"
+                                          : "text-gray-700 hover:bg-gradient-to-r hover:from-green-50 hover:to-green-100/60 hover:text-green-700 hover:shadow-md hover:shadow-green-100/50"
+                                    }`}
+                                  >
+                                    {isActive && !isCollapsed && (
+                                      <div className="absolute inset-0 bg-gradient-to-r from-green-400/20 to-green-600/20 rounded-xl blur-sm" />
+                                    )}
+                                    {isCollapsed && (
+                                      <span className={`absolute bottom-1 left-1/2 -translate-x-1/2 h-[3px] rounded-full transition-all duration-200 ${
+                                        isActive ? "w-5 bg-green-500" : "w-0 group-hover/navitem:w-4 bg-green-400"
+                                      }`} />
+                                    )}
+                                    <item.icon
+                                      className={`w-5 h-5 relative z-10 shrink-0 ${
+                                        isActive
+                                          ? isCollapsed ? "text-green-900" : "text-white"
+                                          : "text-green-600"
+                                      }`}
+                                    />
+                                    {!isCollapsed && (
+                                      <>
+                                        <span className="font-medium relative z-10">
+                                          {item.title}
+                                        </span>
+                                        {isActive && (
+                                          <ChevronRight className="w-4 h-4 ml-auto relative z-10 text-white/80" />
+                                        )}
+                                      </>
+                                    )}
+                                  </NavLink>
+                                </TooltipTrigger>
+                                {isCollapsed && (
+                                  <TooltipContent side="right" className="font-medium">
                                     {item.title}
-                                  </span>
-                                  {isActive && (
-                                    <ChevronRight className="w-4 h-4 ml-auto relative z-10 text-white/80" />
-                                  )}
-                                </>
-                              )}
-                            </NavLink>
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       );
@@ -504,25 +557,40 @@ export function AppSidebar() {
                       return (
                         <SidebarMenuItem key={item.title}>
                           <SidebarMenuButton asChild>
-                            <NavLink
-                              to={item.url}
-                              className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-300 group relative ${
-                                isActive
-                                  ? "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md shadow-emerald-500/25"
-                                  : "text-gray-600 hover:bg-gradient-to-r hover:from-emerald-50 hover:to-green-50 hover:text-emerald-700 hover:shadow-sm"
-                              }`}
-                            >
-                              <item.icon
-                                className={`w-4 h-4 ${
-                                  isActive ? "text-white" : "text-emerald-600"
-                                }`}
-                              />
-                              {!isCollapsed && (
-                                <span className="text-sm font-medium">
-                                  {item.title}
-                                </span>
-                              )}
-                            </NavLink>
+                            <TooltipProvider delayDuration={0}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <NavLink
+                                    to={item.url}
+                                    className={`flex items-center gap-3 py-2.5 rounded-lg transition-all duration-300 group relative ${
+                                      isCollapsed ? "justify-center px-2" : "px-4"
+                                    } ${
+                                      isActive
+                                        ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/25"
+                                        : isCollapsed
+                                          ? "text-gray-600 hover:bg-emerald-100/70 hover:text-emerald-700"
+                                          : "text-gray-600 hover:bg-gradient-to-r hover:from-emerald-50 hover:to-green-50 hover:text-emerald-700 hover:shadow-sm"
+                                    }`}
+                                  >
+                                    <item.icon
+                                      className={`w-4 h-4 shrink-0 ${
+                                        isActive ? "text-white" : "text-emerald-600"
+                                      }`}
+                                    />
+                                    {!isCollapsed && (
+                                      <span className="text-sm font-medium">
+                                        {item.title}
+                                      </span>
+                                    )}
+                                  </NavLink>
+                                </TooltipTrigger>
+                                {isCollapsed && (
+                                  <TooltipContent side="right" className="font-medium">
+                                    {item.title}
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       );

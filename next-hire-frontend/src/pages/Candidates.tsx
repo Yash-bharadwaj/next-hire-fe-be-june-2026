@@ -5,10 +5,11 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataGrid } from "@/components/ui/data-grid";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,7 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Plus,
-  Calendar,
+
   User,
   Mail,
   Phone,
@@ -187,18 +188,30 @@ const Candidates = () => {
     {
       field: "id",
       headerName: "ID",
-      width: 80,
-      renderCell: (value: string, row: any) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleViewCandidate(row.id);
-          }}
-          className="text-blue-600 hover:text-blue-800 hover:underline font-medium font-poppins text-xs"
-        >
-          #{value}
-        </button>
-      ),
+      width: 110,
+      renderCell: (value: string, row: any) => {
+        const truncated = value && value.length > 10 ? value.slice(0, 10) + "…" : value;
+        return (
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleViewCandidate(row.id);
+                  }}
+                  className="text-blue-600 hover:text-blue-800 hover:underline font-medium font-poppins text-xs truncate max-w-[100px] block"
+                >
+                  {truncated}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="font-mono text-xs">
+                {value}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
     },
     {
       field: "name",
@@ -330,31 +343,20 @@ const Candidates = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 font-roboto-slab">
-            Candidates
+            Candidates{pagination.totalItems ? ` (${pagination.totalItems})` : ""}
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-green-200 hover:bg-green-50 hover:border-green-300 text-xs"
-              >
-                <Calendar className="w-3 h-3 mr-1" />
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="bg-white border-gray-200 z-50"
-            >
-              <DropdownMenuItem onClick={handleExport}>
-                <FileSpreadsheet className="w-4 h-4 mr-2" />
-                Export CSV
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            onClick={refresh}
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            className="text-xs"
+          >
+            <RefreshCw className={`h-3 w-3 mr-1 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -491,24 +493,6 @@ const Candidates = () => {
 
       {/* Candidates Table */}
       <Card className="border-gray-200 shadow-sm overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>
-              Candidates{" "}
-              {pagination.totalItems ? `(${pagination.totalItems})` : ""}
-            </span>
-            <Button
-              onClick={refresh}
-              variant="outline"
-              size="sm"
-              disabled={loading}
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-              />
-            </Button>
-          </CardTitle>
-        </CardHeader>
         <CardContent className="p-0">
           {loading ? (
             <div className="p-6 text-center">
@@ -536,6 +520,8 @@ const Candidates = () => {
               checkboxSelection
               onRowClick={(row) => handleViewCandidate(row.id)}
               initialFilters={activeFilters}
+              onExport={handleExport}
+              exportLoading={exporting}
             />
           )}
         </CardContent>

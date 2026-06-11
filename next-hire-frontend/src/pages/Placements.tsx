@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataGrid } from "@/components/ui/data-grid";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -37,6 +38,7 @@ import {
   RefreshCw,
   Loader2,
   AlertCircle,
+  X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { usePlacements, usePlacementStats } from "@/hooks/usePlacements";
@@ -44,6 +46,11 @@ import { placementService, PlacementStatus, PlacementType } from "@/services/pla
 import { useAuth } from "@/contexts/AuthContext";
 import { downloadCsv } from "@/utils/csv";
 import { toast } from "sonner";
+
+const _placementsStatsCache = {
+  activePlacements: 0, completedPlacements: 0, totalPlacements: 0,
+  totalCommission: 0, avgSalary: 0, avgMargin: 0,
+};
 
 const Placements = () => {
   const navigate = useNavigate();
@@ -121,130 +128,144 @@ const Placements = () => {
     }
   };
 
-  // Calculate stats from real data
-  const activePlacements = stats?.activePlacements || placements.filter(p => p.status === "active").length || 0;
-  const completedPlacements = stats?.completedPlacements || placements.filter(p => p.status === "completed").length || 0;
-  const totalPlacements = stats?.totalPlacements || placements.length || 0;
-  const terminatedPlacements = stats?.terminatedPlacements || placements.filter(p => p.status === "terminated").length || 0;
+  // Snapshot stats only when no filter is active so card counts never
+  // recompute against a filtered subset. Also fixes the stale-state bug where
+  // handleApplyFilters() read the old statusFilter value before useState settled.
+  const [baseStats, setBaseStats] = useState({ ..._placementsStatsCache });
 
-  // Calculate financial stats from placements
-  const totalCommission = placements.reduce((sum, p) => {
-    const commission = typeof p.commission === 'string' 
-      ? parseFloat(p.commission.replace(/[^0-9.]/g, '')) || 0
-      : (p.commission || 0);
-    return sum + commission;
-  }, 0);
-
-  const salaries = placements.map(p => {
-    const salary = typeof p.salary === 'string' 
-      ? parseFloat(p.salary.replace(/[^0-9.]/g, '')) || 0
-      : (p.salary || 0);
-    return salary;
-  }).filter(s => s > 0);
-  
-  const avgSalary = salaries.length > 0 
-    ? salaries.reduce((sum, s) => sum + s, 0) / salaries.length 
-    : 0;
-
-  const margins = placements.map(p => {
-    if (typeof p.margin === 'string') {
-      const margin = parseFloat(p.margin.replace(/[^0-9.]/g, '')) || 0;
-      return margin;
+  useEffect(() => {
+    if (!statusFilter && !typeFilter) {
+      const commission = placements.reduce((sum, p) => {
+        const c = typeof p.commission === 'string'
+          ? parseFloat(p.commission.replace(/[^0-9.]/g, '')) || 0
+          : (p.commission || 0);
+        return sum + c;
+      }, 0);
+      const salaryList = placements
+        .map(p => typeof p.salary === 'string'
+          ? parseFloat(p.salary.replace(/[^0-9.]/g, '')) || 0
+          : (p.salary || 0))
+        .filter(s => s > 0);
+      const marginList = placements
+        .map(p => typeof p.margin === 'string'
+          ? parseFloat(p.margin.replace(/[^0-9.]/g, '')) || 0
+          : (p.margin || 0))
+        .filter(m => m > 0);
+      const next = {
+        activePlacements: stats?.activePlacements ?? placements.filter(p => p.status === "active").length,
+        completedPlacements: stats?.completedPlacements ?? placements.filter(p => p.status === "completed").length,
+        totalPlacements: stats?.totalPlacements ?? placements.length,
+        totalCommission: commission,
+        avgSalary: salaryList.length > 0 ? salaryList.reduce((s, v) => s + v, 0) / salaryList.length : 0,
+        avgMargin: marginList.length > 0 ? Math.round(marginList.reduce((s, v) => s + v, 0) / marginList.length) : 0,
+      };
+      Object.assign(_placementsStatsCache, next);
+      setBaseStats(next);
     }
-    return p.margin || 0;
-  }).filter(m => m > 0);
-  
-  const avgMargin = margins.length > 0 
-    ? Math.round(margins.reduce((sum, m) => sum + m, 0) / margins.length)
-    : 0;
+  }, [placements, stats, statusFilter, typeFilter]);
+
+  const activeCardId =
+    statusFilter === "active" ? "active" :
+    statusFilter === "completed" ? "completed" : "all";
 
   const handleActiveClick = () => {
     setStatusFilter("active");
-    handleApplyFilters();
+    fetchPlacements({ status: "active" });
   };
 
   const handleCompletedClick = () => {
     setStatusFilter("completed");
-    handleApplyFilters();
+    fetchPlacements({ status: "completed" });
   };
+
+  const clearFilter = () => { setStatusFilter(""); setTypeFilter(""); fetchPlacements({}); };
 
   // Different navigation cards for recruiter vs candidate
   const recruiterCards = [
     {
+      id: "active",
       title: "Active Placements",
-      value: activePlacements.toString(),
+      value: baseStats.activePlacements.toString(),
       icon: CheckCircle,
       color: "text-green-700",
       gradientOverlay: "bg-gradient-to-br from-green-400/30 via-green-500/20 to-green-600/30",
-      onClick: handleActiveClick
+      onClick: handleActiveClick,
     },
     {
+      id: "completed",
       title: "Completed",
-      value: completedPlacements.toString(),
+      value: baseStats.completedPlacements.toString(),
       icon: Trophy,
       color: "text-blue-700",
       gradientOverlay: "bg-gradient-to-br from-blue-400/30 via-blue-500/20 to-blue-600/30",
-      onClick: handleCompletedClick
+      onClick: handleCompletedClick,
     },
     {
+      id: "commission",
       title: "Total Commission",
-      value: `$${(totalCommission / 1000).toFixed(0)}K`,
+      value: `$${(baseStats.totalCommission / 1000).toFixed(0)}K`,
       icon: DollarSign,
       color: "text-purple-700",
       gradientOverlay: "bg-gradient-to-br from-purple-400/30 via-purple-500/20 to-purple-600/30",
-      onClick: () => {}
+      onClick: clearFilter,
     },
     {
+      id: "salary",
       title: "Avg Salary",
-      value: `$${(avgSalary / 1000).toFixed(0)}K`,
+      value: `$${(baseStats.avgSalary / 1000).toFixed(0)}K`,
       icon: TrendingUp,
       color: "text-indigo-700",
       gradientOverlay: "bg-gradient-to-br from-indigo-400/30 via-indigo-500/20 to-indigo-600/30",
-      onClick: () => {}
+      onClick: clearFilter,
     },
     {
+      id: "all",
       title: "Total Placements",
-      value: totalPlacements.toString(),
+      value: baseStats.totalPlacements.toString(),
       icon: Target,
       color: "text-orange-700",
       gradientOverlay: "bg-gradient-to-br from-orange-400/30 via-orange-500/20 to-orange-600/30",
-      onClick: () => {}
+      onClick: clearFilter,
     },
     {
+      id: "margin",
       title: "Avg Margin",
-      value: `${avgMargin}%`,
+      value: `${baseStats.avgMargin}%`,
       icon: Award,
       color: "text-amber-700",
       gradientOverlay: "bg-gradient-to-br from-amber-400/30 via-amber-500/20 to-amber-600/30",
-      onClick: () => {}
-    }
+      onClick: clearFilter,
+    },
   ];
 
   const candidateCards = [
     {
+      id: "active",
       title: "Active Placements",
-      value: activePlacements.toString(),
+      value: baseStats.activePlacements.toString(),
       icon: CheckCircle,
       color: "text-green-700",
       gradientOverlay: "bg-gradient-to-br from-green-400/30 via-green-500/20 to-green-600/30",
-      onClick: handleActiveClick
+      onClick: handleActiveClick,
     },
     {
+      id: "completed",
       title: "Completed",
-      value: completedPlacements.toString(),
+      value: baseStats.completedPlacements.toString(),
       icon: Trophy,
       color: "text-blue-700",
       gradientOverlay: "bg-gradient-to-br from-blue-400/30 via-blue-500/20 to-blue-600/30",
-      onClick: handleCompletedClick
+      onClick: handleCompletedClick,
     },
     {
+      id: "all",
       title: "Total Placements",
-      value: totalPlacements.toString(),
+      value: baseStats.totalPlacements.toString(),
       icon: Target,
       color: "text-orange-700",
       gradientOverlay: "bg-gradient-to-br from-orange-400/30 via-orange-500/20 to-orange-600/30",
-      onClick: () => {}
-    }
+      onClick: clearFilter,
+    },
   ];
 
   const navigationCards = user?.role === "recruiter" ? recruiterCards : candidateCards;
@@ -285,18 +306,30 @@ const Placements = () => {
     {
       field: 'id',
       headerName: 'ID',
-      width: 80,
-      renderCell: (value: string, row: any) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`/dashboard/placements/${row.id}`);
-          }}
-          className="text-blue-600 hover:text-blue-800 hover:underline font-medium font-poppins text-xs"
-        >
-          #{value}
-        </button>
-      )
+      width: 110,
+      renderCell: (value: string, row: any) => {
+        const truncated = value && value.length > 10 ? value.slice(0, 10) + "…" : value;
+        return (
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/dashboard/placements/${row.id}`);
+                  }}
+                  className="text-blue-600 hover:text-blue-800 hover:underline font-medium font-poppins text-xs truncate max-w-[100px] block"
+                >
+                  {truncated}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="font-mono text-xs">
+                {value}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      }
     },
     {
       field: 'candidateName',
@@ -423,12 +456,22 @@ const Placements = () => {
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 font-roboto-slab">
-              {user?.role === "candidate" ? "My Placements" : "Placements"}
-            </h1>
-            <p className="text-lg text-gray-600 font-roboto-slab">
-              {user?.role === "candidate" 
-                ? "View your successful placements" 
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold text-gray-900 font-roboto-slab">
+                {user?.role === "candidate" ? "My Placements" : "Placements"}
+              </h1>
+              {statusFilter && (
+                <span className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                  {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
+                  <button onClick={clearFilter} className="hover:bg-green-100 rounded-full p-0.5 transition-colors">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-gray-600 font-roboto-slab">
+              {user?.role === "candidate"
+                ? "View your successful placements"
                 : "Track successful placements and revenue"}
             </p>
           </div>
@@ -481,10 +524,13 @@ const Placements = () => {
       <div className={`grid gap-2 ${user?.role === "recruiter" ? "grid-cols-6" : "grid-cols-3"}`}>
         {navigationCards.map((card) => {
           const IconComponent = card.icon;
+          const isActive = activeCardId === card.id;
           return (
-            <Card 
-              key={card.title} 
-              className="relative overflow-hidden border-0 shadow-md hover:shadow-lg transition-all duration-500 hover:-translate-y-1 group cursor-pointer backdrop-blur-xl bg-white/20"
+            <Card
+              key={card.title}
+              className={`relative overflow-hidden border-0 shadow-md hover:shadow-lg transition-all duration-500 hover:-translate-y-1 group cursor-pointer backdrop-blur-xl bg-white/20 ${
+                isActive ? "ring-2 ring-green-500 ring-offset-2 -translate-y-1 shadow-lg" : ""
+              }`}
               onClick={card.onClick}
             >
               <div className={`absolute inset-0 ${card.gradientOverlay}`}></div>

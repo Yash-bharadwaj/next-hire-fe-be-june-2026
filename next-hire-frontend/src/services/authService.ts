@@ -1,3 +1,4 @@
+import axios from "axios";
 import { apiClient, ApiResponse } from "@/lib/api";
 import {
   SignupRequest,
@@ -160,21 +161,21 @@ class AuthService {
    */
   async refreshToken(): Promise<string> {
     try {
-      const refreshToken = this.getRefreshToken();
-      if (!refreshToken) {
+      const storedRefreshToken = this.getRefreshToken();
+      if (!storedRefreshToken) {
         throw new Error("No refresh token available");
       }
 
-      const response = await apiClient.post<{
-        token: string;
-        refreshToken: string;
-      }>("/auth/refresh-token", {
-        refreshToken,
+      // Use raw axios (not intercepted apiClient) to avoid 401-loop on refresh failure
+      const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
+      const response = await axios.post(`${apiBase}/api/v1/auth/refresh-token`, {
+        refreshToken: storedRefreshToken,
       });
 
-      const { token, refreshToken: newRefreshToken } = response.data.data!;
+      // Backend returns { accessToken, refreshToken }
+      const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+      const token = accessToken;
 
-      // Update stored tokens
       localStorage.setItem("token", token);
       if (newRefreshToken) {
         localStorage.setItem("refreshToken", newRefreshToken);

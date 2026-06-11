@@ -242,6 +242,56 @@ export const getCandidateDetails = asyncHandler(
   }
 );
 
+// Update candidate profile (by recruiter)
+export const updateCandidateByRecruiter = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const userRole = req.user?.role;
+
+    if (userRole !== "recruiter") {
+      throw createError("Only recruiters can update candidate profiles", 403);
+    }
+
+    const candidate = await Candidate.findByPk(id);
+    if (!candidate) {
+      throw createError("Candidate not found", 404);
+    }
+
+    const allowedFields = [
+      "first_name", "last_name", "phone", "location", "bio",
+      "current_salary", "expected_salary", "experience_years",
+      "availability_status", "linkedin_url", "portfolio_url",
+    ];
+    // Fields with Sequelize isUrl validation — empty string must become null
+    const urlFields = new Set(["linkedin_url", "portfolio_url"]);
+
+    const updateData: any = {};
+    allowedFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        const val = req.body[field];
+        updateData[field] = urlFields.has(field) && val === "" ? null : val;
+      }
+    });
+
+    await candidate.update(updateData);
+
+    const updated = await Candidate.findByPk(id, {
+      include: [
+        { model: User, as: "user", attributes: ["id", "email", "status"] },
+        { model: Experience, as: "experiences", order: [["start_date", "DESC"]] },
+        { model: Education, as: "education", order: [["start_date", "DESC"]] },
+        { model: CandidateSkill, as: "candidateSkills", order: [["is_primary", "DESC"]] },
+      ],
+    });
+
+    res.json({
+      success: true,
+      message: "Candidate profile updated successfully",
+      data: { candidate: updated },
+    });
+  }
+);
+
 // Get candidate statistics (for dashboard)
 export const getCandidateStats = asyncHandler(
   async (req: AuthRequest, res: Response) => {

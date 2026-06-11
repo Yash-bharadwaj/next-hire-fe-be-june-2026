@@ -5,7 +5,7 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,12 @@ import {
 } from "@/components/ui/select";
 import { DataGrid } from "@/components/ui/data-grid";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Plus,
   Eye,
   Edit,
@@ -28,7 +34,6 @@ import {
   FileText,
   CheckCircle,
   AlertCircle,
-  FileSpreadsheet,
   Search,
   RefreshCw,
   Loader2,
@@ -38,6 +43,11 @@ import { useJobs, useJobManagement } from "@/hooks/useJobs";
 import { useAuth } from "@/contexts/AuthContext";
 import { jobService } from "@/services/jobService";
 import { toast } from "sonner";
+
+// Module-level cache — survives component remount so cards never flash 0
+const _jobsStatsCache = {
+  myJobs: 0, activeJobs: 0, onHoldJobs: 0, totalSubmissions: 0, highPriorityJobs: 0,
+};
 
 const Jobs = () => {
   const navigate = useNavigate();
@@ -60,17 +70,27 @@ const Jobs = () => {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [exporting, setExporting] = useState(false);
 
-  // Calculate stats from current jobs
-  const stats = {
-    myJobs: jobs.length,
-    activeJobs: jobs.filter((job) => job.status === "active").length,
-    onHoldJobs: jobs.filter((job) => job.status === "paused").length,
-    totalSubmissions: jobs.reduce(
-      (sum, job) => sum + (job.submission_count || 0),
-      0
-    ),
-    highPriorityJobs: jobs.filter((job) => job.priority === "high").length,
-  };
+  // Initialize from module-level cache so last-known values show instantly on remount
+  const [baseStats, setBaseStats] = useState({ ..._jobsStatsCache });
+
+  useEffect(() => {
+    if (statusFilter === "all" && priorityFilter === "all") {
+      const next = {
+        myJobs: jobs.length,
+        activeJobs: jobs.filter((j) => j.status === "active").length,
+        onHoldJobs: jobs.filter((j) => j.status === "paused").length,
+        totalSubmissions: jobs.reduce((sum, j) => sum + (j.submission_count || 0), 0),
+        highPriorityJobs: jobs.filter((j) => j.priority === "high").length,
+      };
+      Object.assign(_jobsStatsCache, next);
+      setBaseStats(next);
+    }
+  }, [jobs, statusFilter, priorityFilter]);
+
+  const activeCardId =
+    statusFilter === "active" ? "active" :
+    statusFilter === "paused" ? "on-hold" :
+    priorityFilter === "high" ? "high-priority" : "all";
 
   const buildFilterPayload = useCallback(
     (overrides: Record<string, any> = {}) => {
@@ -132,12 +152,12 @@ const Jobs = () => {
   const navigationCards = useMemo(
     () => [
       {
+        id: "all",
         title: "My Jobs",
-        value: stats.myJobs.toString(),
+        value: baseStats.myJobs.toString(),
         icon: Briefcase,
         color: "text-green-700",
-        gradientOverlay:
-          "bg-gradient-to-br from-green-400/30 via-green-500/20 to-green-600/30",
+        gradientOverlay: "bg-gradient-to-br from-green-400/30 via-green-500/20 to-green-600/30",
         onClick: () => {
           setStatusFilter("all");
           setPriorityFilter("all");
@@ -145,61 +165,59 @@ const Jobs = () => {
         },
       },
       {
+        id: "active",
         title: "Active Jobs",
-        value: stats.activeJobs.toString(),
+        value: baseStats.activeJobs.toString(),
         icon: CheckCircle,
         color: "text-emerald-700",
-        gradientOverlay:
-          "bg-gradient-to-br from-emerald-400/30 via-emerald-500/20 to-emerald-600/30",
+        gradientOverlay: "bg-gradient-to-br from-emerald-400/30 via-emerald-500/20 to-emerald-600/30",
         onClick: () => {
           setStatusFilter("active");
-          runSearch({ status: "active" });
+          setPriorityFilter("all");
+          runSearch({ status: "active", priority: undefined });
         },
       },
       {
+        id: "on-hold",
         title: "On Hold",
-        value: stats.onHoldJobs.toString(),
+        value: baseStats.onHoldJobs.toString(),
         icon: Clock,
         color: "text-amber-700",
-        gradientOverlay:
-          "bg-gradient-to-br from-amber-400/30 via-amber-500/20 to-amber-600/30",
+        gradientOverlay: "bg-gradient-to-br from-amber-400/30 via-amber-500/20 to-amber-600/30",
         onClick: () => {
           setStatusFilter("paused");
-          runSearch({ status: "paused" });
+          setPriorityFilter("all");
+          runSearch({ status: "paused", priority: undefined });
         },
       },
       {
+        id: "submissions",
         title: "Total Submissions",
-        value: stats.totalSubmissions.toString(),
+        value: baseStats.totalSubmissions.toString(),
         icon: FileText,
         color: "text-purple-700",
-        gradientOverlay:
-          "bg-gradient-to-br from-purple-400/30 via-purple-500/20 to-purple-600/30",
+        gradientOverlay: "bg-gradient-to-br from-purple-400/30 via-purple-500/20 to-purple-600/30",
         onClick: () => {
-          runSearch();
+          setStatusFilter("all");
+          setPriorityFilter("all");
+          runSearch({ status: undefined, priority: undefined });
         },
       },
       {
+        id: "high-priority",
         title: "High Priority",
-        value: stats.highPriorityJobs.toString(),
+        value: baseStats.highPriorityJobs.toString(),
         icon: AlertCircle,
         color: "text-red-700",
-        gradientOverlay:
-          "bg-gradient-to-br from-red-400/30 via-red-500/20 to-red-600/30",
+        gradientOverlay: "bg-gradient-to-br from-red-400/30 via-red-500/20 to-red-600/30",
         onClick: () => {
+          setStatusFilter("all");
           setPriorityFilter("high");
-          runSearch({ priority: "high" });
+          runSearch({ status: undefined, priority: "high" });
         },
       },
     ],
-    [
-      runSearch,
-      stats.highPriorityJobs,
-      stats.activeJobs,
-      stats.myJobs,
-      stats.onHoldJobs,
-      stats.totalSubmissions,
-    ]
+    [runSearch, baseStats]
   );
 
   const handleDeleteJob = async (jobId: string) => {
@@ -321,17 +339,30 @@ const Jobs = () => {
       field: "jobId",
       headerName: "Job ID",
       width: 110,
-      renderCell: (value: string, row: any) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleViewJob(row.id);
-          }}
-          className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-xs"
-        >
-          {value || row.id}
-        </button>
-      ),
+      renderCell: (value: string, row: any) => {
+        const full = value || row.id;
+        const truncated = full && full.length > 10 ? full.slice(0, 10) + "…" : full;
+        return (
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleViewJob(row.id);
+                  }}
+                  className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-xs truncate max-w-[100px] block"
+                >
+                  {truncated}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="font-mono text-xs">
+                {full}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
     },
     {
       field: "title",
@@ -490,23 +521,10 @@ const Jobs = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 font-roboto-slab">
-            Jobs
+            Jobs{typeof pagination.totalItems === "number" && pagination.totalItems > 0 ? ` (${pagination.totalItems})` : ""}
           </h1>
         </div>
         <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            onClick={handleExport}
-            disabled={exporting}
-            className="flex items-center space-x-2"
-          >
-            {exporting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <FileSpreadsheet className="h-4 w-4" />
-            )}
-            <span>{exporting ? "Exporting..." : "Export CSV"}</span>
-          </Button>
           <Button
             onClick={() => navigate("/dashboard/jobs/new")}
             className="flex items-center space-x-2"
@@ -524,7 +542,9 @@ const Jobs = () => {
           return (
             <Card
               key={card.title}
-              className="relative overflow-hidden border-0 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 group cursor-pointer backdrop-blur-xl bg-white/20"
+              className={`relative overflow-hidden border-0 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 group cursor-pointer backdrop-blur-xl bg-white/20 ${
+                activeCardId === card.id ? "ring-2 ring-green-500 ring-offset-2 -translate-y-0.5 shadow-md" : ""
+              }`}
               onClick={card.onClick}
             >
               <div className={`absolute inset-0 ${card.gradientOverlay}`}></div>
@@ -549,31 +569,8 @@ const Jobs = () => {
         })}
       </div>
 
-      {/* Search and Filters removed per request */}
-
       {/* Jobs Table */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>
-              Jobs{" "}
-              {typeof pagination.totalItems === "number"
-                ? `(${pagination.totalItems})`
-                : ""}
-            </span>
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExport}
-                disabled={exporting}
-              >
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                {exporting ? "Exporting..." : "Export CSV"}
-              </Button>
-            </div>
-          </CardTitle>
-        </CardHeader>
         <CardContent className="p-0">
           {loading ? (
             <div className="p-6 text-center">
@@ -611,6 +608,8 @@ const Jobs = () => {
               pageSizeOptions={[10, 25, 50, 100]}
               onRowClick={(row) => handleViewJob(row.id)}
               initialFilters={{}}
+              onExport={handleExport}
+              exportLoading={exporting}
             />
           )}
         </CardContent>

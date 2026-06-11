@@ -28,42 +28,63 @@ api.interceptors.request.use(
   }
 );
 
+// Refresh queue — prevents multiple concurrent 401s each triggering a separate refresh
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: any) => void }> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach(({ resolve, reject }) => (error ? reject(error) : resolve(token!)));
+  failedQueue = [];
+};
+
 // Response interceptor to handle errors and token refresh
 api.interceptors.response.use(
-  (response: AxiosResponse) => {
-    return response;
-  },
+  (response: AxiosResponse) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as any;
 
     // Handle 401 errors (unauthorized)
     if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
-      try {
-        const refreshToken = localStorage.getItem("refreshToken");
-        if (refreshToken) {
-          const response = await axios.post(
-            `${API_BASE_URL}/api/${API_VERSION}/auth/refresh-token`,
-            {
-              refreshToken,
-            }
-          );
-
-          const { token } = response.data.data;
-          localStorage.setItem("token", token);
-
-          // Retry the original request with new token
+      // If a refresh is already in flight, queue this request until it resolves
+      if (isRefreshing) {
+        return new Promise<string>((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then((token) => {
           originalRequest.headers.Authorization = `Bearer ${token}`;
           return api(originalRequest);
-        }
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const storedRefreshToken = localStorage.getItem("refreshToken");
+        if (!storedRefreshToken) throw new Error("No refresh token");
+
+        // Use a raw axios call — not the intercepted `api` instance — to avoid loops
+        const response = await axios.post(
+          `${API_BASE_URL}/api/${API_VERSION}/auth/refresh-token`,
+          { refreshToken: storedRefreshToken }
+        );
+
+        // Backend returns { accessToken, refreshToken } (not { token })
+        const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+        localStorage.setItem("token", accessToken);
+        if (newRefreshToken) localStorage.setItem("refreshToken", newRefreshToken);
+
+        processQueue(null, accessToken);
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        return api(originalRequest);
       } catch (refreshError) {
-        // Refresh failed, clear tokens and redirect to login
+        processQueue(refreshError, null);
         localStorage.removeItem("token");
         localStorage.removeItem("refreshToken");
         localStorage.removeItem("user");
         window.location.href = "/auth/login";
         return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
 
@@ -72,7 +93,7 @@ api.interceptors.response.use(
       throw new Error("Too many requests. Please try again later.");
     }
 
-    if (error.response?.status >= 500) {
+    if ((error.response?.status ?? 0) >= 500) {
       throw new Error("Server error. Please try again later.");
     }
 

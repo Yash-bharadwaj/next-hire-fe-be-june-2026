@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataGrid } from "@/components/ui/data-grid";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -218,10 +219,24 @@ const UserManagement = () => {
     {
       field: 'id',
       headerName: 'ID',
-      width: 60,
-      renderCell: (value: number) => (
-        <span className="text-gray-600 font-medium font-poppins text-xs">#{value}</span>
-      )
+      width: 110,
+      renderCell: (value: string) => {
+        const truncated = value && String(value).length > 10 ? String(value).slice(0, 10) + "…" : value;
+        return (
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-gray-600 font-medium font-poppins text-xs truncate max-w-[100px] block cursor-default">
+                  {truncated}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="font-mono text-xs">
+                {value}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      }
     },
     {
       field: 'user',

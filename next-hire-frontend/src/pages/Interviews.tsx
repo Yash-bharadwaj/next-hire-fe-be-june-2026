@@ -63,6 +63,7 @@ import {
   RotateCw,
   UserPlus,
   Loader2,
+  X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -71,6 +72,8 @@ import { useInterviews, useInterviewStats, useInterviewManagement } from "@/hook
 import { interviewService, InterviewStatus, InterviewType } from "@/services/interviewService";
 import { useAuth } from "@/contexts/AuthContext";
 import { downloadCsv } from "@/utils/csv";
+
+const _interviewsStatsCache = { total: 0, scheduled: 0, completed: 0, totalJobs: 0 };
 
 const Interviews = () => {
   const navigate = useNavigate();
@@ -344,9 +347,12 @@ const Interviews = () => {
     return "text-red-600";
   };
 
-  // Calculate statistics FIRST (before navigationCards uses them)
+  // Snapshot stats only when no filter is active so card counts never
+  // recompute against a filtered subset when the user clicks a card.
+  const [baseInterviewStats, setBaseInterviewStats] = useState({ ..._interviewsStatsCache });
+
   const safeInterviews = interviews || [];
-  
+
   // Group interviews by job (safe calculation)
   const interviewsByJob = safeInterviews.reduce((acc, interview) => {
     try {
@@ -370,50 +376,63 @@ const Interviews = () => {
   const totalInterviews = safeInterviews.length;
   const scheduledInterviews = safeInterviews.filter(i => i?.status === "scheduled").length;
   const completedInterviews = safeInterviews.filter(i => i?.status === "completed").length;
-  const upcomingInterviews = safeInterviews.filter(i => 
-    i?.status === "scheduled" && interviewService.isUpcoming(i.scheduled_at)
-  ).length;
   const totalJobs = Object.keys(interviewsByJob).length;
 
-  // Now define navigationCards AFTER all variables are initialized
+  // Freeze base stats when no filter is active
+  useEffect(() => {
+    if (!statusFilter && !typeFilter) {
+      const next = { total: totalInterviews, scheduled: scheduledInterviews, completed: completedInterviews, totalJobs };
+      Object.assign(_interviewsStatsCache, next);
+      setBaseInterviewStats(next);
+    }
+  }, [safeInterviews, statusFilter, typeFilter, totalInterviews, scheduledInterviews, completedInterviews, totalJobs]);
+
+  const activeInterviewCardId =
+    statusFilter === "scheduled" ? "scheduled" :
+    statusFilter === "completed" ? "completed" : "all";
+
   const navigationCards = [
     {
+      id: "all",
       title: "Total Interviews",
-      value: stats?.totalInterviews?.toString() || totalInterviews.toString(),
+      value: (stats?.totalInterviews ?? baseInterviewStats.total).toString(),
       icon: Users,
       color: "text-blue-700",
       gradientOverlay: "bg-gradient-to-br from-blue-400/30 via-blue-500/20 to-blue-600/30",
-      onClick: () => handleClearFilters()
+      onClick: () => handleClearFilters(),
     },
     {
+      id: "jobs",
       title: "Active Jobs",
-      value: totalJobs.toString(),
+      value: baseInterviewStats.totalJobs.toString(),
       icon: Briefcase,
       color: "text-green-700",
       gradientOverlay: "bg-gradient-to-br from-green-400/30 via-green-500/20 to-green-600/30",
-      onClick: () => handleClearFilters()
+      onClick: () => handleClearFilters(),
     },
     {
+      id: "scheduled",
       title: "Scheduled",
-      value: scheduledInterviews.toString(),
+      value: baseInterviewStats.scheduled.toString(),
       icon: Clock,
       color: "text-amber-700",
       gradientOverlay: "bg-gradient-to-br from-amber-400/30 via-amber-500/20 to-amber-600/30",
       onClick: () => {
         setStatusFilter("scheduled");
-        handleApplyFilters();
-      }
+        fetchInterviews({ status: "scheduled" });
+      },
     },
     {
+      id: "completed",
       title: "Completed",
-      value: completedInterviews.toString(),
+      value: baseInterviewStats.completed.toString(),
       icon: CheckCircle,
       color: "text-purple-700",
       gradientOverlay: "bg-gradient-to-br from-purple-400/30 via-purple-500/20 to-purple-600/30",
       onClick: () => {
         setStatusFilter("completed");
-        handleApplyFilters();
-      }
+        fetchInterviews({ status: "completed" });
+      },
     },
   ];
 
@@ -424,8 +443,16 @@ const Interviews = () => {
     <div className="space-y-2 sm:space-y-3 md:space-y-4 px-1 sm:px-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
-        <div>
+        <div className="flex items-center gap-2 flex-wrap">
           <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 font-roboto-slab">Interviews</h1>
+          {statusFilter && (
+            <span className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+              {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
+              <button onClick={handleClearFilters} className="hover:bg-green-100 rounded-full p-0.5 transition-colors">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto">
           {user?.role === "recruiter" && (
@@ -483,15 +510,19 @@ const Interviews = () => {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 sm:gap-2">
         {navigationCards.map((card, index) => {
           const IconComponent = card.icon;
+          const isActive = activeInterviewCardId === card.id;
           return (
-            <Card 
-              key={card.title} 
-              className="relative overflow-hidden border-0 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 group cursor-pointer backdrop-blur-xl bg-white/20 hover:scale-105"
+            <Card
+              key={card.title}
+              className={`relative overflow-hidden border-0 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 group cursor-pointer backdrop-blur-xl bg-white/20 hover:scale-105 ${
+                isActive ? "ring-2 ring-green-500 ring-offset-2 -translate-y-0.5 shadow-md" : ""
+              }`}
               style={{ animationDelay: `${index * 100}ms` }}
+              onClick={card.onClick}
             >
               <div className={`absolute inset-0 ${card.gradientOverlay} opacity-60 group-hover:opacity-80 transition-opacity duration-300`}></div>
               <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-white/20 to-transparent"></div>
-              
+
               <CardContent className="relative p-1.5 sm:p-2">
                 <div className="flex flex-col items-center space-y-1">
                   <div className="p-1 sm:p-1.5 rounded-full bg-white/30 backdrop-blur-sm shadow-sm group-hover:bg-white/40 transition-all border border-white/20 group-hover:rotate-6 group-hover:scale-110">

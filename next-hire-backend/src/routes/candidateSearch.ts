@@ -6,6 +6,7 @@ import {
   searchCandidates,
   getCandidateDetails,
   getCandidateStats,
+  updateCandidateByRecruiter,
 } from "../controllers/candidateSearchController";
 
 const router = Router();
@@ -61,5 +62,8 @@ router.get("/stats", getCandidateStats);
 
 // Get candidate details (recruiters only)
 router.get("/:id", candidateIdValidation, validate, getCandidateDetails);
+
+// Update candidate profile (recruiters only)
+router.put("/:id", candidateIdValidation, validate, updateCandidateByRecruiter);
 
 export default router;

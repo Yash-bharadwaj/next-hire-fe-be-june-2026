@@ -14,7 +14,7 @@ export interface CandidateProfile {
   resume_url?: string;
   linkedin_url?: string;
   portfolio_url?: string;
-  availability_status: "available" | "not_available" | "interviewing" | "employed";
+  availability_status: "available" | "not_available" | "interviewing";
   created_at: string;
   updated_at: string;
   user?: {
@@ -146,6 +146,15 @@ class CandidateSearchService {
 
   async getCandidateStats(): Promise<CandidateStatsResponse> {
     const response = await apiClient.get(`${this.baseUrl}/stats`);
+    return response.data;
+  }
+
+  async updateCandidate(id: string, data: Partial<Pick<CandidateProfile,
+    "first_name" | "last_name" | "phone" | "location" | "bio" |
+    "current_salary" | "expected_salary" | "experience_years" |
+    "availability_status" | "linkedin_url" | "portfolio_url"
+  >>): Promise<{ success: boolean; data: { candidate: CandidateProfile } }> {
+    const response = await apiClient.put(`${this.baseUrl}/${id}`, data);
     return response.data;
   }
 

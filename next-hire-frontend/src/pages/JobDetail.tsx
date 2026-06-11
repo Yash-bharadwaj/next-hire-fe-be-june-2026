@@ -913,7 +913,7 @@ const JobDetail = () => {
       <Card className="card-gradient border-green-200/50 shadow-lg">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="px-6 pt-6 pb-2">
-            <TabsList className="grid w-full grid-cols-5 lg:grid-cols-5 lg:w-auto bg-gradient-to-r from-green-50 to-blue-50 border border-green-200/50">
+            <TabsList className={`grid w-full lg:w-auto bg-gradient-to-r from-green-50 to-blue-50 border border-green-200/50 ${user?.role === "recruiter" ? "grid-cols-6" : "grid-cols-5"}`}>
               <TabsTrigger
                 value="overview"
                 className="text-xs font-medium data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-green-600 data-[state=active]:text-white"

@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Search, ChevronUp, ChevronDown, ArrowUpDown, Filter, Check, MoreVertical, Eye, EyeOff, Settings, X, Save, Bookmark, Trash2 } from "lucide-react";
+import { Search, ChevronUp, ChevronDown, ArrowUpDown, Filter, Check, MoreVertical, Eye, EyeOff, Settings, X, Save, Bookmark, Trash2, FileSpreadsheet, Loader2 } from "lucide-react";
 
 interface Column {
   field: string;
@@ -35,15 +35,19 @@ interface DataGridProps {
   checkboxSelection?: boolean;
   onRowClick?: (row: any) => void;
   initialFilters?: Record<string, string[]>;
+  onExport?: () => void;
+  exportLoading?: boolean;
 }
 
-export const DataGrid = ({ 
-  rows, 
-  columns, 
-  pageSizeOptions = [5, 10, 25, 50], 
+export const DataGrid = ({
+  rows,
+  columns,
+  pageSizeOptions = [5, 10, 25, 50],
   checkboxSelection = false,
   onRowClick,
-  initialFilters = {}
+  initialFilters = {},
+  onExport,
+  exportLoading = false,
 }: DataGridProps) => {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
@@ -315,6 +319,23 @@ export const DataGrid = ({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {onExport && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onExport}
+              disabled={exportLoading}
+              className="h-8 border-gray-300 hover:bg-gray-100 text-xs"
+            >
+              {exportLoading ? (
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="w-4 h-4 mr-1" />
+              )}
+              {exportLoading ? "Exporting..." : "Export CSV"}
+            </Button>
+          )}
 
           <Popover open={showSaveDialog} onOpenChange={setShowSaveDialog}>
             <PopoverTrigger asChild>
