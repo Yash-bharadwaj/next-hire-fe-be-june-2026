@@ -1,5 +1,7 @@
 import { Response } from "express";
 import { Op, QueryTypes } from "sequelize";
+import bcrypt from "bcrypt";
+import crypto from "crypto";
 import {
   User,
   Candidate,
@@ -386,6 +388,119 @@ export const getCandidateStats = asyncHandler(
         experienceStats,
         topSkills,
       },
+    });
+  }
+);
+
+// Create a new candidate profile (by recruiter)
+export const createCandidate = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const userRole = req.user?.role;
+
+    if (userRole !== "recruiter") {
+      throw createError("Only recruiters can add candidates", 403);
+    }
+
+    const {
+      first_name,
+      last_name,
+      email,
+      phone,
+      location,
+      experience_years,
+      expected_salary,
+      availability_status,
+    } = req.body;
+
+    const existingUser = await User.findOne({
+      where: { email: email.toLowerCase() },
+    });
+    if (existingUser) {
+      throw createError("A user with this email already exists", 409);
+    }
+
+    // Recruiter-added candidates are activated immediately so they
+    // appear in search results without going through OTP verification.
+    const tempPassword = crypto.randomBytes(9).toString("base64");
+    const hashedPassword = await bcrypt.hash(tempPassword, 12);
+
+    const user = await User.create({
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      role: "candidate",
+      status: "active",
+      email_verified: true,
+      email_verified_at: new Date(),
+    });
+
+    const candidate = await Candidate.create({
+      user_id: user.id,
+      created_by: req.user?.userId,
+      first_name,
+      last_name,
+      phone,
+      location,
+      experience_years,
+      expected_salary,
+      availability_status: availability_status || "available",
+    });
+
+    const created = await Candidate.findByPk(candidate.id, {
+      include: [
+        { model: User, as: "user", attributes: ["id", "email", "status", "created_at"] },
+      ],
+    });
+
+    logger.info(
+      `Recruiter ${req.user?.userId} created candidate profile for ${email}`
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Candidate created successfully",
+      data: { candidate: created },
+    });
+  }
+);
+
+// Delete a candidate profile (by recruiter)
+export const deleteCandidate = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const userRole = req.user?.role;
+
+    if (userRole !== "recruiter") {
+      throw createError("Only recruiters can delete candidates", 403);
+    }
+
+    const candidate = await Candidate.findByPk(id);
+    if (!candidate) {
+      throw createError("Candidate not found", 404);
+    }
+
+    const submissionCount = await Submission.count({
+      where: { candidate_id: id },
+    });
+    if (submissionCount > 0) {
+      throw createError(
+        "Cannot delete a candidate with existing submissions",
+        409
+      );
+    }
+
+    const userId = candidate.user_id;
+
+    await CandidateSkill.destroy({ where: { candidate_id: id } });
+    await Experience.destroy({ where: { candidate_id: id } });
+    await Education.destroy({ where: { candidate_id: id } });
+    await candidate.destroy();
+    await User.destroy({ where: { id: userId } });
+
+    logger.info(`Recruiter ${req.user?.userId} deleted candidate ${id}`);
+
+    res.json({
+      success: true,
+      message: "Candidate deleted successfully",
     });
   }
 );

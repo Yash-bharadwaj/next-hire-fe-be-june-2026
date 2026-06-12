@@ -41,9 +41,14 @@ import {
   X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useBusinessPartners, useBusinessPartnerStats } from "@/hooks/useBusinessPartners";
-import { businessPartnerService } from "@/services/businessPartnerService";
+import {
+  useBusinessPartners,
+  useBusinessPartnerStats,
+  useBusinessPartnerManagement,
+} from "@/hooks/useBusinessPartners";
+import { businessPartnerService, CreateBusinessPartnerRequest } from "@/services/businessPartnerService";
 import { useAuth } from "@/contexts/AuthContext";
+import BusinessPartnerFormDialog from "@/components/BusinessPartnerFormDialog";
 
 const BusinessPartners = () => {
   const navigate = useNavigate();
@@ -65,8 +70,21 @@ const BusinessPartners = () => {
     refresh: refreshStats
   } = useBusinessPartnerStats();
 
+  const { createBusinessPartner } = useBusinessPartnerManagement();
+
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({});
   const [activeCardFilter, setActiveCardFilter] = useState<string | null>(null);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+
+  const handleCreatePartner = async (data: CreateBusinessPartnerRequest) => {
+    const created = await createBusinessPartner(data);
+    if (created) {
+      refresh();
+      refreshStats();
+      return true;
+    }
+    return false;
+  };
 
   // Stats come from a dedicated hook — stable regardless of list filters
   const totalPartners = stats?.totalPartners || 0;
@@ -428,19 +446,19 @@ const BusinessPartners = () => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-white border-gray-200 z-50">
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowCreateDialog(true)}>
                 <PenTool className="w-4 h-4 mr-2" />
                 Manual Entry
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem disabled>
                 <Import className="w-4 h-4 mr-2" />
                 Import from file
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem disabled>
                 <Bot className="w-4 h-4 mr-2" />
                 AI Assistant
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem disabled>
                 <Mail className="w-4 h-4 mr-2" />
                 From Business Card
               </DropdownMenuItem>
@@ -526,7 +544,7 @@ const BusinessPartners = () => {
               <p className="text-gray-600 mb-4">
                 Get started by adding your first business partner.
               </p>
-              <Button className="bg-green-600 hover:bg-green-700">
+              <Button className="bg-green-600 hover:bg-green-700" onClick={() => setShowCreateDialog(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Business Partner
               </Button>
@@ -547,6 +565,13 @@ const BusinessPartners = () => {
           )}
         </CardContent>
       </Card>
+
+      <BusinessPartnerFormDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        mode="create"
+        onSubmit={handleCreatePartner}
+      />
     </div>
   );
 };

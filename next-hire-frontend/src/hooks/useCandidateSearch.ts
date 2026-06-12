@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { 
-  candidateSearchService, 
-  CandidateProfile, 
-  CandidateSearchFilters 
+import {
+  candidateSearchService,
+  CandidateProfile,
+  CandidateSearchFilters,
+  CreateCandidateRequest,
 } from "@/services/candidateSearchService";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -55,6 +56,23 @@ export const useCandidateSearch = (initialFilters: CandidateSearchFilters = {}) 
     searchCandidates(filters);
   }, [searchCandidates, filters]);
 
+  const createCandidate = useCallback(
+    async (data: CreateCandidateRequest) => {
+      const response = await candidateSearchService.createCandidate(data);
+      await searchCandidates(filters);
+      return response.data.candidate;
+    },
+    [searchCandidates, filters]
+  );
+
+  const deleteCandidate = useCallback(
+    async (id: string) => {
+      await candidateSearchService.deleteCandidate(id);
+      await searchCandidates(filters);
+    },
+    [searchCandidates, filters]
+  );
+
   // Load initial data
   useEffect(() => {
     if (user?.role === "recruiter") {
@@ -72,6 +90,8 @@ export const useCandidateSearch = (initialFilters: CandidateSearchFilters = {}) 
     loadMore,
     refresh,
     setFilters,
+    createCandidate,
+    deleteCandidate,
   };
 };
 

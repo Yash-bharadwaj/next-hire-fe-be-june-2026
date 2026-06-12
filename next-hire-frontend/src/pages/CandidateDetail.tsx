@@ -827,7 +827,7 @@ const CandidateDetail = () => {
                   </CardHeader>
                   <CardContent>
                     <p className="text-gray-700 leading-relaxed">
-                      {candidate.summary}
+                      {candidate.bio}
                     </p>
                   </CardContent>
                 </Card>
@@ -858,11 +858,11 @@ const CandidateDetail = () => {
                         {candidate.location}
                       </span>
                     </div>
-                    {candidate.linkedin_profile && (
+                    {candidate.linkedin_url && (
                       <div className="flex items-center gap-3">
                         <Building className="w-5 h-5 text-blue-600" />
                         <a
-                          href={candidate.linkedin_profile}
+                          href={candidate.linkedin_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline"

@@ -28,7 +28,7 @@ const createSkillValidation = [
     .isIn(["beginner", "intermediate", "advanced", "expert"])
     .withMessage("Proficiency level must be one of: beginner, intermediate, advanced, expert"),
   body("years_of_experience")
-    .optional()
+    .optional({ values: "falsy" })
     .isInt({ min: 0, max: 50 })
     .withMessage("Years of experience must be between 0 and 50"),
   body("is_primary")
@@ -51,7 +51,7 @@ const updateSkillValidation = [
     .isIn(["beginner", "intermediate", "advanced", "expert"])
     .withMessage("Proficiency level must be one of: beginner, intermediate, advanced, expert"),
   body("years_of_experience")
-    .optional()
+    .optional({ values: "falsy" })
     .isInt({ min: 0, max: 50 })
     .withMessage("Years of experience must be between 0 and 50"),
   body("is_primary")

@@ -6,9 +6,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,13 +46,10 @@ import {
   Share2,
   UserCheck,
   Activity,
-  Mail,
-  Bot,
   RotateCcw,
   Star,
   TrendingUp,
   PlusCircle,
-  Send,
   RefreshCw,
   Trash,
   Zap,
@@ -60,7 +59,6 @@ import {
   Phone,
   MessageSquare,
   Search,
-  RotateCw,
   UserPlus,
   Loader2,
   X,
@@ -85,6 +83,19 @@ const Interviews = () => {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("interviews");
   const [exporting, setExporting] = useState(false);
+
+  // Edit interview dialog state
+  const [editingInterview, setEditingInterview] = useState<any>(null);
+  const [editForm, setEditForm] = useState({
+    interview_type: "video" as InterviewType,
+    date: "",
+    time: "",
+    duration_minutes: "60",
+    status: "scheduled" as InterviewStatus,
+    location: "",
+    meeting_link: "",
+    notes: "",
+  });
 
   // Interview hooks
   const { 
@@ -213,6 +224,46 @@ const Interviews = () => {
         refreshInterviews();
         refreshStats();
       }
+    }
+  };
+
+  const openEditDialog = (interview: any) => {
+    const scheduled = new Date(interview.scheduled_at);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    setEditForm({
+      interview_type: interview.interview_type,
+      date: `${scheduled.getFullYear()}-${pad(scheduled.getMonth() + 1)}-${pad(scheduled.getDate())}`,
+      time: `${pad(scheduled.getHours())}:${pad(scheduled.getMinutes())}`,
+      duration_minutes: String(interview.duration_minutes || 60),
+      status: interview.status,
+      location: interview.location || "",
+      meeting_link: interview.meeting_link || "",
+      notes: interview.notes || "",
+    });
+    setEditingInterview(interview);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingInterview) return;
+
+    const [hours, minutes] = editForm.time.split(":");
+    const scheduledDateTime = new Date(editForm.date);
+    scheduledDateTime.setHours(parseInt(hours), parseInt(minutes));
+
+    const result = await updateInterview(editingInterview.id, {
+      interview_type: editForm.interview_type,
+      scheduled_at: scheduledDateTime.toISOString(),
+      duration_minutes: parseInt(editForm.duration_minutes),
+      status: editForm.status,
+      location: editForm.interview_type === "in_person" ? editForm.location : undefined,
+      meeting_link: editForm.interview_type === "video" ? editForm.meeting_link : undefined,
+      notes: editForm.notes,
+    });
+
+    if (result) {
+      setEditingInterview(null);
+      refreshInterviews();
+      refreshStats();
     }
   };
   
@@ -470,39 +521,33 @@ const Interviews = () => {
             </Button>
           )}
  
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="border-orange-200 hover:bg-orange-50 hover:border-orange-300 text-xs flex-1 sm:flex-none px-2 sm:px-3 transition-all duration-300">
-                <Settings className="w-3 h-3 mr-1" />
-                <span className="hidden sm:inline">Actions</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-white border-gray-200 z-50">
-              <DropdownMenuItem>
-                <PlusCircle className="w-4 h-4 mr-2" />
-                Schedule Interview
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Send className="w-4 h-4 mr-2" />
-                Send Reminders
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Update Status
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <Bot className="w-4 h-4 mr-2" />
-                AI Scheduler
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {user?.role === "recruiter" && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="border-orange-200 hover:bg-orange-50 hover:border-orange-300 text-xs flex-1 sm:flex-none px-2 sm:px-3 transition-all duration-300">
+                  <Settings className="w-3 h-3 mr-1" />
+                  <span className="hidden sm:inline">Actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-white border-gray-200 z-50">
+                <DropdownMenuItem onClick={() => navigate("/dashboard/submissions")}>
+                  <PlusCircle className="w-4 h-4 mr-2" />
+                  Schedule Interview
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
-          <Button className="button-gradient text-white shadow-lg hover:shadow-xl transition-all duration-300 text-xs flex-1 sm:flex-none px-2 sm:px-3 hover:scale-105">
-            <Plus className="w-3 h-3 mr-1" />
-            <span className="hidden sm:inline">Schedule Interview</span>
-            <span className="sm:hidden">New</span>
-          </Button>
+          {user?.role === "recruiter" && (
+            <Button
+              className="button-gradient text-white shadow-lg hover:shadow-xl transition-all duration-300 text-xs flex-1 sm:flex-none px-2 sm:px-3 hover:scale-105"
+              onClick={() => navigate("/dashboard/submissions")}
+            >
+              <Plus className="w-3 h-3 mr-1" />
+              <span className="hidden sm:inline">Schedule Interview</span>
+              <span className="sm:hidden">New</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -779,7 +824,10 @@ const Interviews = () => {
                                 </div>
                               </div>
                               
-                              <div className="flex items-center gap-4">
+                              <div
+                                className="flex items-center gap-4"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 {interview.rating && (
                                   <div className="text-center">
                                     <div className="flex items-center gap-1 mb-1">
@@ -791,7 +839,7 @@ const Interviews = () => {
                                     </p>
                                   </div>
                                 )}
-                                
+
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <Button variant="ghost" size="sm">
@@ -804,22 +852,16 @@ const Interviews = () => {
                                       View Details
                                     </DropdownMenuItem>
                                     {interviewService.canEdit(interview, user?.role || '') && (
-                                      <DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => openEditDialog(interview)}>
                                         <Edit className="w-4 h-4 mr-2" />
                                         Edit Interview
                                       </DropdownMenuItem>
                                     )}
                                     {interview.status === 'scheduled' && (
-                                      <>
-                                        <DropdownMenuItem onClick={() => handleCompleteInterview(interview.id)}>
-                                          <CheckCircle className="w-4 h-4 mr-2" />
-                                          Mark Complete
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem>
-                                          <Mail className="w-4 h-4 mr-2" />
-                                          Send Reminder
-                                        </DropdownMenuItem>
-                                      </>
+                                      <DropdownMenuItem onClick={() => handleCompleteInterview(interview.id)}>
+                                        <CheckCircle className="w-4 h-4 mr-2" />
+                                        Mark Complete
+                                      </DropdownMenuItem>
                                     )}
                                     <DropdownMenuSeparator />
                                     {interviewService.canCancel(interview, user?.role || '') && (
@@ -1116,6 +1158,138 @@ const Interviews = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Interview Dialog */}
+      <Dialog open={!!editingInterview} onOpenChange={(open) => !open && setEditingInterview(null)}>
+        <DialogContent className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Interview</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Interview Type</Label>
+              <Select
+                value={editForm.interview_type}
+                onValueChange={(value) => setEditForm({ ...editForm, interview_type: value as InterviewType })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="video">Video Call</SelectItem>
+                  <SelectItem value="phone">Phone Call</SelectItem>
+                  <SelectItem value="in_person">In Person</SelectItem>
+                  <SelectItem value="technical">Technical Interview</SelectItem>
+                  <SelectItem value="behavioral">Behavioral Interview</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-date">Date</Label>
+                <Input
+                  id="edit-date"
+                  type="date"
+                  value={editForm.date}
+                  onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-time">Time</Label>
+                <Input
+                  id="edit-time"
+                  type="time"
+                  value={editForm.time}
+                  onChange={(e) => setEditForm({ ...editForm, time: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Duration (minutes)</Label>
+              <Select
+                value={editForm.duration_minutes}
+                onValueChange={(value) => setEditForm({ ...editForm, duration_minutes: value })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30 minutes</SelectItem>
+                  <SelectItem value="45">45 minutes</SelectItem>
+                  <SelectItem value="60">1 hour</SelectItem>
+                  <SelectItem value="90">1.5 hours</SelectItem>
+                  <SelectItem value="120">2 hours</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {editForm.interview_type === "video" && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-meeting-link">Meeting Link</Label>
+                <Input
+                  id="edit-meeting-link"
+                  type="url"
+                  placeholder="https://zoom.us/j/..."
+                  value={editForm.meeting_link}
+                  onChange={(e) => setEditForm({ ...editForm, meeting_link: e.target.value })}
+                />
+              </div>
+            )}
+
+            {editForm.interview_type === "in_person" && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-location">Location</Label>
+                <Input
+                  id="edit-location"
+                  placeholder="Office address or meeting room"
+                  value={editForm.location}
+                  onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select
+                value={editForm.status}
+                onValueChange={(value) => setEditForm({ ...editForm, status: value as InterviewStatus })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="scheduled">Scheduled</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="no_show">No Show</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-notes">Notes</Label>
+              <Textarea
+                id="edit-notes"
+                rows={3}
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingInterview(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={managementLoading}>
+              {managementLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

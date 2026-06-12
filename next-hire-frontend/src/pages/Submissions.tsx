@@ -134,6 +134,7 @@ const Submissions = () => {
   const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [showAttachmentDialog, setShowAttachmentDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [showTimelineDialog, setShowTimelineDialog] = useState(false);
   const [newStatus, setNewStatus] = useState("");
   const [newNote, setNewNote] = useState("");
   const [attachmentUrl, setAttachmentUrl] = useState("");
@@ -313,6 +314,24 @@ const Submissions = () => {
     } catch (error: any) {
       toast.error(error.message || "Failed to add attachment");
     }
+  };
+
+  const handleWithdrawApplication = async (submissionId: string) => {
+    if (!window.confirm("Are you sure you want to withdraw this application?")) {
+      return;
+    }
+    try {
+      await submissionService.withdrawSubmission(submissionId);
+      toast.success("Application withdrawn successfully");
+      refresh();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to withdraw application");
+    }
+  };
+
+  const handleViewTimeline = (submission: any) => {
+    setSelectedSubmission(submission);
+    setShowTimelineDialog(true);
   };
 
   const toggleSubmissionExpansion = (submissionId: string) => {
@@ -955,13 +974,20 @@ const Submissions = () => {
                         </DropdownMenuItem>
                         {user.role === "candidate" &&
                           submission.status === "submitted" && (
-                            <DropdownMenuItem className="text-red-600">
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() =>
+                                handleWithdrawApplication(submission.id)
+                              }
+                            >
                               <Trash className="h-4 w-4 mr-2" />
                               Withdraw Application
                             </DropdownMenuItem>
                           )}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleViewTimeline(submission)}
+                        >
                           <ExternalLink className="h-4 w-4 mr-2" />
                           View Timeline
                         </DropdownMenuItem>
@@ -1131,6 +1157,83 @@ const Submissions = () => {
             >
               Add Attachment
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Timeline Dialog */}
+      <Dialog open={showTimelineDialog} onOpenChange={setShowTimelineDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Application Timeline</DialogTitle>
+            <DialogDescription>
+              {selectedSubmission?.job?.title} at{" "}
+              {selectedSubmission?.job?.company_name}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedSubmission && (
+            <div className="space-y-4 py-2">
+              <div className="flex items-start gap-3">
+                <FileText className="h-4 w-4 mt-1 text-blue-600" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    Application submitted
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {formatDate(selectedSubmission.submitted_at)}
+                  </p>
+                </div>
+              </div>
+              {selectedSubmission.reviewed_at && (
+                <div className="flex items-start gap-3">
+                  <Eye className="h-4 w-4 mt-1 text-amber-600" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      Reviewed by recruiter
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {formatDate(selectedSubmission.reviewed_at)}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {selectedSubmission.latestInterview && (
+                <div className="flex items-start gap-3">
+                  <Calendar className="h-4 w-4 mt-1 text-purple-600" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      Interview scheduled
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {formatDate(
+                        selectedSubmission.latestInterview.scheduled_at
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-4 w-4 mt-1 text-green-600" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    Current status
+                  </p>
+                  <Badge className={getStatusColor(selectedSubmission.status)}>
+                    {getStatusLabel(selectedSubmission.status)}
+                  </Badge>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Last updated{" "}
+                    {formatDate(
+                      selectedSubmission.updated_at ||
+                        selectedSubmission.submitted_at
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setShowTimelineDialog(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

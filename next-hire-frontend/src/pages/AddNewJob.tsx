@@ -160,6 +160,46 @@ const AddNewJob = () => {
     }
   };
 
+  // The backend has no dedicated columns for Terms/Client step fields, so on
+  // create they get appended as labeled lines to external_description. When
+  // editing, parse those lines back out so the form fields are prefilled and
+  // the External Job Description shown to the user is free of this metadata
+  // (otherwise saving would re-append a fresh, possibly conflicting block).
+  const TERMS_FIELD_LABELS: Array<{ key: string; label: string }> = [
+    { key: "taxTerms", label: "Tax Terms" },
+    { key: "paymentTerms", label: "Payment Terms" },
+    { key: "expensePaid", label: "Expenses Paid" },
+    { key: "spokenLanguages", label: "Spoken Languages" },
+    { key: "documentsRequired", label: "Required Documents" },
+    { key: "clientContact", label: "Client Contact" },
+    { key: "clientJobId", label: "Client Job ID" },
+  ];
+
+  const parseExternalDescription = (description: string) => {
+    const parsed: Record<string, string> = {};
+    let cleaned = description || "";
+
+    TERMS_FIELD_LABELS.forEach(({ key, label }) => {
+      const regex = new RegExp(`^[ \\t]*${label}:[ \\t]*(.*)$\\n?`, "mi");
+      const match = cleaned.match(regex);
+      if (match) {
+        parsed[key] = match[1].trim();
+        cleaned = cleaned.replace(regex, "");
+      }
+    });
+
+    return {
+      cleanDescription: cleaned.replace(/\n{3,}/g, "\n\n").trim(),
+      taxTerms: parsed.taxTerms || "",
+      paymentTerms: parsed.paymentTerms || "",
+      expensePaid: parsed.expensePaid === "Yes",
+      spokenLanguages: parsed.spokenLanguages || "",
+      documentsRequired: parsed.documentsRequired || "",
+      clientContact: parsed.clientContact || "",
+      clientJobId: parsed.clientJobId || "",
+    };
+  };
+
   // Prefill form when editing an existing job
   useEffect(() => {
     const loadJob = async () => {
@@ -170,12 +210,16 @@ const AddNewJob = () => {
         const res = await recruiterService.getJobDetails(jobId);
         const job: RecruiterJob = res.data.job;
 
+        // Terms/Client step fields are stored as labeled lines appended to
+        // external_description (the backend has no dedicated columns for them)
+        const parsedTerms = parseExternalDescription(job.external_description || "");
+
         // Prefill form fields
         form.reset({
           jobTitle: job.title || "",
           customer: job.company_name || "",
           jobDescription: job.description || "",
-          externalJobDescription: job.external_description || "",
+          externalJobDescription: parsedTerms.cleanDescription,
           jobType: mapJobTypeFromAPI(job.job_type),
           location: job.location || "",
           city: (job as any).city || "",
@@ -217,19 +261,19 @@ const AddNewJob = () => {
           applicationDeadline: job.application_deadline
             ? job.application_deadline.slice(0, 10)
             : "",
-          clientContact: "",
-          clientJobId: "",
+          clientContact: parsedTerms.clientContact,
+          clientJobId: parsedTerms.clientJobId,
           jobStartDate: "",
           jobEndDate: "",
           numberOfPositions:
             job.positions_available !== undefined && job.positions_available !== null
               ? String(job.positions_available)
               : "1",
-          taxTerms: "",
-          paymentTerms: "",
-          expensePaid: false,
-          spokenLanguages: "",
-          documentsRequired: "",
+          taxTerms: parsedTerms.taxTerms,
+          paymentTerms: parsedTerms.paymentTerms,
+          expensePaid: parsedTerms.expensePaid,
+          spokenLanguages: parsedTerms.spokenLanguages,
+          documentsRequired: parsedTerms.documentsRequired,
         });
 
         setSkills(job.required_skills || []);
@@ -1558,10 +1602,10 @@ const AddNewJob = () => {
             </div>
             <div>
               <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 font-roboto-slab">
-                Add New Job
+                {isEditMode ? "Edit Job" : "Add New Job"}
               </h1>
               <p className="text-sm lg:text-base text-gray-600 font-roboto-slab">
-                Create a new job posting
+                {isEditMode ? "Update this job posting" : "Create a new job posting"}
               </p>
             </div>
           </div>
@@ -1672,7 +1716,13 @@ const AddNewJob = () => {
                   className="bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white shadow-md disabled:opacity-50"
                 >
                   <Save className="w-4 h-4 mr-2" />
-                  {isSubmitting ? "Creating Job..." : "Create Job"}
+                  {isSubmitting
+                    ? isEditMode
+                      ? "Updating Job..."
+                      : "Creating Job..."
+                    : isEditMode
+                    ? "Update Job"
+                    : "Create Job"}
                 </Button>
               )}
             </div>

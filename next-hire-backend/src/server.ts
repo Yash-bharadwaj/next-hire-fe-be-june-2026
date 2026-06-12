@@ -55,7 +55,20 @@ app.use(
   cors({
     origin:
       process.env.NODE_ENV === "production"
-        ? ["https://yourdomain.com"]
+        ? (origin, callback) => {
+            // Allow server-to-server / health-check requests with no Origin header,
+            // any Amplify-hosted frontend (*.amplifyapp.com), and an optional
+            // explicit FRONTEND_URL override (e.g. for a future custom domain).
+            if (
+              !origin ||
+              /\.amplifyapp\.com$/.test(origin) ||
+              origin === process.env.FRONTEND_URL
+            ) {
+              callback(null, true);
+            } else {
+              callback(new Error("Not allowed by CORS"));
+            }
+          }
         : [
             "http://localhost:3000",
             "http://localhost:5173",
@@ -116,20 +129,19 @@ const startServer = async () => {
     await sequelize.authenticate();
     logger.info("Database connection has been established successfully.");
 
-    // Sync database (in development)
-    if (process.env.NODE_ENV === "development") {
-      try {
-        // Use alter: true to preserve existing data while updating schema
-        // IMPORTANT: Do NOT use force: true as it drops all tables and data!
-        await sequelize.sync({ alter: true });
-        logger.info("Database synchronized successfully.");
-      } catch (syncError) {
-        logger.error("Database sync failed:", syncError);
-        logger.warn(
-          "Database sync failed. If you need to recreate the database, run: npm run db:reset"
-        );
-        // Don't automatically drop the database - user data is important!
-      }
+    // Sync database schema (no migration framework is in use yet, so this
+    // also runs in production to keep tables up to date on every deploy).
+    try {
+      // Use alter: true to preserve existing data while updating schema
+      // IMPORTANT: Do NOT use force: true as it drops all tables and data!
+      await sequelize.sync({ alter: true });
+      logger.info("Database synchronized successfully.");
+    } catch (syncError) {
+      logger.error("Database sync failed:", syncError);
+      logger.warn(
+        "Database sync failed. If you need to recreate the database, run: npm run db:reset"
+      );
+      // Don't automatically drop the database - user data is important!
     }
 
     // Start server

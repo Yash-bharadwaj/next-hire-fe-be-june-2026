@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,11 @@ export default function JobSearch() {
 
   // Use the jobs hook
   const { jobs, loading, error, pagination, searchJobs, loadMore } = useJobs();
+
+  // Load jobs on initial mount
+  useEffect(() => {
+    searchJobs({ page: 1, limit: 20 });
+  }, []);
 
   // Handle search
   const handleSearch = () => {

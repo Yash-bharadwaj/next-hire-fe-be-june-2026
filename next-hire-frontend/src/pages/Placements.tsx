@@ -6,29 +6,28 @@ import { DataGrid } from "@/components/ui/data-grid";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Plus,
-  MoreHorizontal,
   Calendar,
   Trophy,
   DollarSign,
   User,
   Building,
   Star,
-  FileText,
   Eye,
   Edit,
   Trash2,
   CheckCircle,
   Clock,
-  Settings,
   FileSpreadsheet,
   Pencil,
   TrendingUp,
@@ -41,8 +40,19 @@ import {
   X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { usePlacements, usePlacementStats } from "@/hooks/usePlacements";
-import { placementService, PlacementStatus, PlacementType } from "@/services/placementService";
+import { usePlacements, usePlacementStats, usePlacementManagement } from "@/hooks/usePlacements";
+import {
+  placementService,
+  PlacementStatus,
+  PlacementType,
+  WorkArrangement,
+  OnboardingStatus,
+  CreatePlacementRequest,
+  UpdatePlacementRequest,
+  Placement,
+} from "@/services/placementService";
+import { jobService, Job } from "@/services/jobService";
+import { submissionService, Submission } from "@/services/submissionService";
 import { useAuth } from "@/contexts/AuthContext";
 import { downloadCsv } from "@/utils/csv";
 import { toast } from "sonner";
@@ -66,17 +76,53 @@ const Placements = () => {
     refresh 
   } = usePlacements();
   
-  const { 
-    stats, 
-    loading: statsLoading, 
-    refresh: refreshStats 
+  const {
+    stats,
+    loading: statsLoading,
+    refresh: refreshStats
   } = usePlacementStats();
+
+  const { createPlacement, updatePlacement, deletePlacement } = usePlacementManagement();
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<PlacementStatus | "">("");
   const [typeFilter, setTypeFilter] = useState<PlacementType | "">("");
   const [searchQuery, setSearchQuery] = useState("");
   const [exporting, setExporting] = useState(false);
+
+  // Record Placement dialog state
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [recruiterJobs, setRecruiterJobs] = useState<Job[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [jobSubmissions, setJobSubmissions] = useState<Submission[]>([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [newPlacement, setNewPlacement] = useState({
+    job_id: "",
+    submission_id: "",
+    start_date: "",
+    end_date: "",
+    salary: "",
+    salary_currency: "USD",
+    location: "",
+    placement_type: "permanent" as PlacementType,
+    work_arrangement: "onsite" as WorkArrangement,
+    commission_percentage: "",
+    notes: "",
+  });
+
+  // Edit Placement dialog state
+  const [editingPlacement, setEditingPlacement] = useState<Placement | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState({
+    status: "active" as PlacementStatus,
+    onboarding_status: "pending" as OnboardingStatus,
+    salary: "",
+    end_date: "",
+    performance_rating: "",
+    notes: "",
+  });
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Apply filters
   const handleApplyFilters = () => {
@@ -125,6 +171,151 @@ const Placements = () => {
       toast.error(err?.message || "Failed to export placements");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const resetNewPlacementForm = () => {
+    setNewPlacement({
+      job_id: "",
+      submission_id: "",
+      start_date: "",
+      end_date: "",
+      salary: "",
+      salary_currency: "USD",
+      location: "",
+      placement_type: "permanent",
+      work_arrangement: "onsite",
+      commission_percentage: "",
+      notes: "",
+    });
+    setJobSubmissions([]);
+  };
+
+  const openCreateDialog = async () => {
+    setShowCreateDialog(true);
+    if (recruiterJobs.length === 0) {
+      try {
+        setLoadingJobs(true);
+        const response = await jobService.getRecruiterJobs({ limit: 100 });
+        setRecruiterJobs(response.data.jobs);
+      } catch (err: any) {
+        toast.error(err.response?.data?.message || err.message || "Failed to load jobs");
+      } finally {
+        setLoadingJobs(false);
+      }
+    }
+  };
+
+  const handleJobSelect = async (jobId: string) => {
+    const job = recruiterJobs.find((j) => j.id === jobId);
+    setNewPlacement((prev) => ({
+      ...prev,
+      job_id: jobId,
+      submission_id: "",
+      location: prev.location || job?.location || "",
+    }));
+    setJobSubmissions([]);
+    if (!jobId) return;
+    try {
+      setLoadingSubmissions(true);
+      const response = await submissionService.getJobSubmissions(jobId, { limit: 100 });
+      setJobSubmissions(response.data.submissions);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || "Failed to load submissions");
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  };
+
+  const handleCreatePlacement = async () => {
+    const { job_id, submission_id, start_date, salary, location } = newPlacement;
+    if (!job_id || !submission_id || !start_date || !salary || !location.trim()) {
+      toast.error("Job, candidate, start date, salary, and location are required");
+      return;
+    }
+    const submission = jobSubmissions.find((s) => s.id === submission_id);
+    if (!submission) {
+      toast.error("Please select a valid candidate submission");
+      return;
+    }
+    try {
+      setCreating(true);
+      const data: CreatePlacementRequest = {
+        job_id,
+        candidate_id: submission.candidate_id,
+        submission_id,
+        start_date,
+        end_date: newPlacement.end_date || undefined,
+        salary: Number(salary),
+        salary_currency: newPlacement.salary_currency || "USD",
+        location: location.trim(),
+        placement_type: newPlacement.placement_type,
+        work_arrangement: newPlacement.work_arrangement,
+        commission_percentage: newPlacement.commission_percentage
+          ? Number(newPlacement.commission_percentage)
+          : undefined,
+        notes: newPlacement.notes.trim() || undefined,
+      };
+      const result = await createPlacement(data);
+      if (result) {
+        setShowCreateDialog(false);
+        resetNewPlacementForm();
+        refresh();
+        refreshStats();
+      }
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const openEditDialog = (placement: Placement) => {
+    setEditingPlacement(placement);
+    setEditForm({
+      status: placement.status || "active",
+      onboarding_status: placement.onboarding_status || "pending",
+      salary: placement.salary != null ? String(placement.salary) : "",
+      end_date: placement.end_date ? placement.end_date.slice(0, 10) : "",
+      performance_rating: placement.performance_rating != null ? String(placement.performance_rating) : "",
+      notes: placement.notes || "",
+    });
+  };
+
+  const handleUpdatePlacement = async () => {
+    if (!editingPlacement) return;
+    try {
+      setSavingEdit(true);
+      const data: UpdatePlacementRequest = {
+        status: editForm.status,
+        onboarding_status: editForm.onboarding_status,
+        salary: editForm.salary ? Number(editForm.salary) : undefined,
+        end_date: editForm.end_date || undefined,
+        performance_rating: editForm.performance_rating ? Number(editForm.performance_rating) : undefined,
+        notes: editForm.notes.trim() || undefined,
+      };
+      const result = await updatePlacement(editingPlacement.id, data);
+      if (result) {
+        setEditingPlacement(null);
+        refresh();
+        refreshStats();
+      }
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeletePlacement = async (placementId: string, label: string) => {
+    if (!window.confirm(`Are you sure you want to delete the placement for ${label}? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      setDeletingId(placementId);
+      const ok = await deletePlacement(placementId);
+      if (ok) {
+        refresh();
+        refreshStats();
+      }
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -444,9 +635,42 @@ const Placements = () => {
         <span className="text-purple-700 font-medium font-poppins text-xs whitespace-nowrap">{value}</span>
       )
     },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 80,
+      renderCell: (_value: string, row: any) => {
+        const placement = placements.find((p) => p.id === row.id);
+        return (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (placement) openEditDialog(placement);
+              }}
+              className="p-1 hover:bg-gray-100 rounded transition-colors"
+              title="Edit placement"
+            >
+              <Pencil className="w-3 h-3 text-gray-500 hover:text-blue-600" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeletePlacement(row.id, row.candidateName);
+              }}
+              disabled={deletingId === row.id}
+              className="p-1 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
+              title="Delete placement"
+            >
+              <Trash2 className="w-3 h-3 text-gray-500 hover:text-red-600" />
+            </button>
+          </div>
+        );
+      }
+    },
   ];
 
-  const columns = user?.role === "recruiter" 
+  const columns = user?.role === "recruiter"
     ? [...baseColumns, ...recruiterColumns]
     : baseColumns;
 
@@ -489,30 +713,10 @@ const Placements = () => {
               {exporting ? "Exporting..." : "Export CSV"}
             </Button>
           
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="border-blue-200 hover:bg-blue-50 hover:border-blue-300 text-xs">
-                  <Settings className="w-3 h-3 mr-1" />
-                  Actions
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-white border-gray-200 z-50">
-                <DropdownMenuItem>
-                  <FileText className="w-4 h-4 mr-2" />
-                  Generate Revenue Report
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Trophy className="w-4 h-4 mr-2" />
-                  Performance Summary
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <DollarSign className="w-4 h-4 mr-2" />
-                  Commission Report
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Button className="button-gradient text-white shadow-lg hover:shadow-xl transition-all duration-300 text-xs">
+            <Button
+              className="button-gradient text-white shadow-lg hover:shadow-xl transition-all duration-300 text-xs"
+              onClick={openCreateDialog}
+            >
               <Plus className="w-3 h-3 mr-1" />
               Record Placement
             </Button>
@@ -619,6 +823,303 @@ const Placements = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Record Placement Dialog */}
+      <Dialog
+        open={showCreateDialog}
+        onOpenChange={(open) => {
+          setShowCreateDialog(open);
+          if (!open) resetNewPlacementForm();
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Record Placement</DialogTitle>
+            <DialogDescription>
+              Convert a candidate's submission into a placement. The submission's status will be updated to "Hired".
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Job *</label>
+              <Select
+                value={newPlacement.job_id}
+                onValueChange={handleJobSelect}
+                disabled={loadingJobs}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingJobs ? "Loading jobs..." : "Select a job"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {recruiterJobs.map((job) => (
+                    <SelectItem key={job.id} value={job.id}>
+                      {job.title} ({job.job_id})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Candidate *</label>
+              <Select
+                value={newPlacement.submission_id}
+                onValueChange={(value) =>
+                  setNewPlacement((prev) => ({ ...prev, submission_id: value }))
+                }
+                disabled={!newPlacement.job_id || loadingSubmissions}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !newPlacement.job_id
+                        ? "Select a job first"
+                        : loadingSubmissions
+                        ? "Loading submissions..."
+                        : jobSubmissions.length === 0
+                        ? "No submissions for this job"
+                        : "Select a candidate"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {jobSubmissions.map((submission) => (
+                    <SelectItem key={submission.id} value={submission.id}>
+                      {submission.candidate?.first_name} {submission.candidate?.last_name} — {submission.status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Start Date *</label>
+              <Input
+                type="date"
+                value={newPlacement.start_date}
+                onChange={(e) =>
+                  setNewPlacement((prev) => ({ ...prev, start_date: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">End Date</label>
+              <Input
+                type="date"
+                value={newPlacement.end_date}
+                onChange={(e) =>
+                  setNewPlacement((prev) => ({ ...prev, end_date: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Salary *</label>
+              <Input
+                type="number"
+                min="0"
+                value={newPlacement.salary}
+                onChange={(e) =>
+                  setNewPlacement((prev) => ({ ...prev, salary: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Currency</label>
+              <Input
+                value={newPlacement.salary_currency}
+                maxLength={3}
+                onChange={(e) =>
+                  setNewPlacement((prev) => ({ ...prev, salary_currency: e.target.value.toUpperCase() }))
+                }
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Location *</label>
+              <Input
+                value={newPlacement.location}
+                onChange={(e) =>
+                  setNewPlacement((prev) => ({ ...prev, location: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Placement Type</label>
+              <Select
+                value={newPlacement.placement_type}
+                onValueChange={(value) =>
+                  setNewPlacement((prev) => ({ ...prev, placement_type: value as PlacementType }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="permanent">Permanent</SelectItem>
+                  <SelectItem value="contract">Contract</SelectItem>
+                  <SelectItem value="temporary">Temporary</SelectItem>
+                  <SelectItem value="temp_to_perm">Temp to Perm</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Work Arrangement</label>
+              <Select
+                value={newPlacement.work_arrangement}
+                onValueChange={(value) =>
+                  setNewPlacement((prev) => ({ ...prev, work_arrangement: value as WorkArrangement }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="onsite">Onsite</SelectItem>
+                  <SelectItem value="remote">Remote</SelectItem>
+                  <SelectItem value="hybrid">Hybrid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Commission %</label>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                value={newPlacement.commission_percentage}
+                onChange={(e) =>
+                  setNewPlacement((prev) => ({ ...prev, commission_percentage: e.target.value }))
+                }
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Notes</label>
+              <Textarea
+                value={newPlacement.notes}
+                onChange={(e) =>
+                  setNewPlacement((prev) => ({ ...prev, notes: e.target.value }))
+                }
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreatePlacement} disabled={creating}>
+              {creating ? "Saving..." : "Save Placement"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Placement Dialog */}
+      <Dialog
+        open={!!editingPlacement}
+        onOpenChange={(open) => {
+          if (!open) setEditingPlacement(null);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Placement</DialogTitle>
+            <DialogDescription>
+              {editingPlacement?.placement_id} — {editingPlacement?.candidate?.first_name}{" "}
+              {editingPlacement?.candidate?.last_name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Status</label>
+              <Select
+                value={editForm.status}
+                onValueChange={(value) =>
+                  setEditForm((prev) => ({ ...prev, status: value as PlacementStatus }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="terminated">Terminated</SelectItem>
+                  <SelectItem value="on_hold">On Hold</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Onboarding Status</label>
+              <Select
+                value={editForm.onboarding_status}
+                onValueChange={(value) =>
+                  setEditForm((prev) => ({ ...prev, onboarding_status: value as OnboardingStatus }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Salary</label>
+              <Input
+                type="number"
+                min="0"
+                value={editForm.salary}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, salary: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">End Date</label>
+              <Input
+                type="date"
+                value={editForm.end_date}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, end_date: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Performance Rating</label>
+              <Select
+                value={editForm.performance_rating}
+                onValueChange={(value) =>
+                  setEditForm((prev) => ({ ...prev, performance_rating: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Not rated" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 - Poor</SelectItem>
+                  <SelectItem value="2">2 - Below Average</SelectItem>
+                  <SelectItem value="3">3 - Average</SelectItem>
+                  <SelectItem value="4">4 - Good</SelectItem>
+                  <SelectItem value="5">5 - Excellent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Notes</label>
+              <Textarea
+                value={editForm.notes}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, notes: e.target.value }))}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditingPlacement(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdatePlacement} disabled={savingEdit}>
+              {savingEdit ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,7 +38,10 @@ import {
   StickyNote,
   BarChart3,
   Newspaper,
-  Plus
+  Plus,
+  Loader2,
+  AlertCircle,
+  Trash2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -49,14 +52,23 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line } from "recharts";
-import businessPartnersData from "@/data/business-partners.json";
 import BusinessPartnerDetailPersonalizationSettings from "@/components/BusinessPartnerDetailPersonalizationSettings";
+import BusinessPartnerFormDialog from "@/components/BusinessPartnerFormDialog";
+import {
+  useBusinessPartner,
+  useBusinessPartnerManagement,
+} from "@/hooks/useBusinessPartners";
+import {
+  businessPartnerService,
+  UpdateBusinessPartnerRequest,
+} from "@/services/businessPartnerService";
 
 const BusinessPartnerDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("overview");
-  
+
   // Search functionality state
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchPartnerId, setSearchPartnerId] = useState("");
@@ -65,32 +77,41 @@ const BusinessPartnerDetail = () => {
   const [isPersonalizationOpen, setIsPersonalizationOpen] = useState(false);
   const [personalizationSettings, setPersonalizationSettings] = useState(null);
 
+  // Edit/delete state
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const { businessPartner: partner, loading, error, refresh } = useBusinessPartner(id || "");
+  const { updateBusinessPartner, deleteBusinessPartner } = useBusinessPartnerManagement();
+
   // Load personalization settings and event listener
   useEffect(() => {
     const saved = localStorage.getItem('businessPartnerDetailPersonalization');
     if (saved) {
       try { setPersonalizationSettings(JSON.parse(saved)); } catch (error) {}
     }
-    
+
     const handleOpenPersonalization = () => setIsPersonalizationOpen(true);
     window.addEventListener('openPersonalizationSettings', handleOpenPersonalization);
     return () => window.removeEventListener('openPersonalizationSettings', handleOpenPersonalization);
   }, []);
 
-  const partner = businessPartnersData.businessPartners.find(bp => bp.id === parseInt(id || '0'));
+  // Auto-open edit dialog when navigated here with ?edit=true (from the list page's edit icon)
+  useEffect(() => {
+    if (searchParams.get("edit") === "true" && partner) {
+      setShowEditDialog(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("edit");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, partner]);
 
   // Search functionality
   const handleSearchPartner = () => {
     if (searchPartnerId.trim()) {
-      const partnerExists = businessPartnersData.businessPartners.find(bp => bp.id === parseInt(searchPartnerId.trim()));
-      if (partnerExists) {
-        navigate(`/dashboard/business-partners/${searchPartnerId.trim()}`);
-        setSearchPartnerId("");
-        setIsSearchExpanded(false);
-      } else {
-        // Show error feedback - partner not found
-        console.log("Business Partner not found");
-      }
+      navigate(`/dashboard/business-partners/${searchPartnerId.trim()}`);
+      setSearchPartnerId("");
+      setIsSearchExpanded(false);
     }
   };
 
@@ -100,12 +121,45 @@ const BusinessPartnerDetail = () => {
     }
   };
 
+  const handleUpdatePartner = async (data: UpdateBusinessPartnerRequest) => {
+    if (!id) return false;
+    const updated = await updateBusinessPartner(id, data);
+    if (updated) {
+      refresh();
+      return true;
+    }
+    return false;
+  };
+
+  const handleArchivePartner = async () => {
+    if (!id || !partner) return;
+    if (!window.confirm(`Are you sure you want to delete ${partner.name}? This cannot be undone.`)) {
+      return;
+    }
+    setDeleting(true);
+    const success = await deleteBusinessPartner(id);
+    setDeleting(false);
+    if (success) {
+      navigate('/dashboard/business-partners');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <span className="ml-2 text-gray-600">Loading business partner...</span>
+      </div>
+    );
+  }
+
   if (!partner) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
+          <AlertCircle className="h-16 w-16 text-yellow-300 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900">Business Partner Not Found</h2>
-          <p className="text-gray-600 mt-2">The requested business partner could not be found.</p>
+          <p className="text-gray-600 mt-2">{error || "The requested business partner could not be found."}</p>
           <Button onClick={() => navigate('/dashboard/business-partners')} className="mt-4">
             Back to Business Partners
           </Button>
@@ -113,31 +167,6 @@ const BusinessPartnerDetail = () => {
       </div>
     );
   }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Active': return 'bg-green-100 text-green-800 border-green-200';
-      case 'Prospect': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Inactive': return 'bg-gray-100 text-gray-800 border-gray-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  const getPartnerType = (partner: any) => {
-    const types = [];
-    if (partner.lead) types.push('Lead');
-    if (partner.client) types.push('Client');
-    if (partner.vendor) types.push('Vendor');
-    return types.join(', ') || 'Partner';
-  };
-
-  const getPartnerTypeColor = (partner: any) => {
-    if (partner.lead && partner.client) return 'bg-purple-100 text-purple-800 border-purple-200';
-    if (partner.lead) return 'bg-green-100 text-green-800 border-green-200';
-    if (partner.client) return 'bg-blue-100 text-blue-800 border-blue-200';
-    if (partner.vendor) return 'bg-orange-100 text-orange-800 border-orange-200';
-    return 'bg-gray-100 text-gray-800 border-gray-200';
-  };
 
   // Mock additional data for demonstration
   const partnerStats = [
@@ -154,9 +183,10 @@ const BusinessPartnerDetail = () => {
     { id: 4, type: "contract", description: "Contract renewal discussion", time: "1 week ago", icon: FileText }
   ];
 
+  const partnerDomain = partner.domain || "example.com";
   const contacts = [
-    { id: 1, name: "John Smith", role: "Account Manager", email: "john.smith@" + partner.domain, phone: "+1 (555) 123-4567" },
-    { id: 2, name: "Sarah Johnson", role: "HR Director", email: "sarah.johnson@" + partner.domain, phone: "+1 (555) 123-4568" }
+    { id: 1, name: "John Smith", role: "Account Manager", email: "john.smith@" + partnerDomain, phone: "+1 (555) 123-4567" },
+    { id: 2, name: "Sarah Johnson", role: "HR Director", email: "sarah.johnson@" + partnerDomain, phone: "+1 (555) 123-4568" }
   ];
 
   // Mock data for new tabs
@@ -251,14 +281,14 @@ const BusinessPartnerDetail = () => {
           <div>
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-bold text-gray-900 font-roboto-slab">{partner.name}</h1>
-              <Badge className={`${getPartnerTypeColor(partner)} border font-medium`}>
-                {getPartnerType(partner)}
+              <Badge className={`${businessPartnerService.getPartnerTypeColor(partner)} border font-medium`}>
+                {businessPartnerService.getPartnerType(partner)}
               </Badge>
-              <Badge className={`${getStatusColor(partner.status)} border font-medium`}>
-                {partner.status}
+              <Badge className={`${businessPartnerService.getStatusColor(partner.status)} border font-medium`}>
+                {businessPartnerService.getStatusLabel(partner.status)}
               </Badge>
             </div>
-            <p className="text-gray-600 font-roboto-slab">Partner ID: {partner.businessPartnerNumber}</p>
+            <p className="text-gray-600 font-roboto-slab">Partner ID: {partner.business_partner_number}</p>
           </div>
         </div>
         
@@ -280,7 +310,10 @@ const BusinessPartnerDetail = () => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 bg-white border border-gray-200 shadow-lg z-50">
-              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+              <DropdownMenuItem
+                className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                onClick={() => setShowEditDialog(true)}
+              >
                 <Edit className="w-4 h-4 mr-2" />
                 Edit Partner
               </DropdownMenuItem>
@@ -322,9 +355,13 @@ const BusinessPartnerDetail = () => {
                 Add to Favorites
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600">
-                <User className="w-4 h-4 mr-2" />
-                Archive Partner
+              <DropdownMenuItem
+                className="text-red-600 focus:text-red-600 cursor-pointer"
+                disabled={deleting}
+                onClick={handleArchivePartner}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                {deleting ? "Deleting..." : "Delete Partner"}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -380,30 +417,41 @@ const BusinessPartnerDetail = () => {
                     <Globe className="w-4 h-4 text-gray-500" />
                     <div>
                       <p className="font-medium">Website</p>
-                      <a 
-                        href={partner.website} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="text-blue-600 hover:underline flex items-center gap-1"
-                      >
-                        {partner.domain}
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
+                      {partner.website ? (
+                        <a
+                          href={partner.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          {partner.domain || partner.website}
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <p className="text-gray-600">{partner.domain || "Not specified"}</p>
+                      )}
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start gap-3">
                     <MapPin className="w-4 h-4 text-gray-500 mt-1" />
                     <div>
                       <p className="font-medium">Address</p>
-                      <p className="text-gray-600">
-                        {partner.address1}
-                        {partner.address2 && <><br />{partner.address2}</>}
-                        <br />
-                        {partner.city}, {partner.state}
-                        <br />
-                        {partner.country}
-                      </p>
+                      {partner.address1 || partner.city || partner.country ? (
+                        <p className="text-gray-600">
+                          {partner.address1}
+                          {partner.address2 && <><br />{partner.address2}</>}
+                          {(partner.city || partner.state) && (
+                            <>
+                              <br />
+                              {[partner.city, partner.state].filter(Boolean).join(", ")}
+                            </>
+                          )}
+                          {partner.country && <><br />{partner.country}</>}
+                        </p>
+                      ) : (
+                        <p className="text-gray-600">Not specified</p>
+                      )}
                     </div>
                   </div>
 
@@ -411,7 +459,7 @@ const BusinessPartnerDetail = () => {
                     <Tag className="w-4 h-4 text-gray-500" />
                     <div>
                       <p className="font-medium">Tax ID</p>
-                      <p className="text-gray-600">{partner.taxId}</p>
+                      <p className="text-gray-600">{partner.tax_id || "Not specified"}</p>
                     </div>
                   </div>
 
@@ -419,7 +467,7 @@ const BusinessPartnerDetail = () => {
                     <TrendingUp className="w-4 h-4 text-gray-500" />
                     <div>
                       <p className="font-medium">Source</p>
-                      <p className="text-gray-600">{partner.source}</p>
+                      <p className="text-gray-600">{businessPartnerService.getSourceLabel(partner.source)}</p>
                     </div>
                   </div>
                 </div>
@@ -440,25 +488,33 @@ const BusinessPartnerDetail = () => {
                     <Mail className="w-4 h-4 text-gray-500" />
                     <div>
                       <p className="font-medium">Email</p>
-                      <a 
-                        href={`mailto:${partner.primaryEmail}`} 
-                        className="text-blue-600 hover:underline"
-                      >
-                        {partner.primaryEmail}
-                      </a>
+                      {partner.primary_email ? (
+                        <a
+                          href={`mailto:${partner.primary_email}`}
+                          className="text-blue-600 hover:underline"
+                        >
+                          {partner.primary_email}
+                        </a>
+                      ) : (
+                        <p className="text-gray-600">Not specified</p>
+                      )}
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-3">
                     <Phone className="w-4 h-4 text-gray-500" />
                     <div>
                       <p className="font-medium">Phone</p>
-                      <a 
-                        href={`tel:${partner.primaryPhone}`} 
-                        className="text-green-600 hover:underline"
-                      >
-                        {partner.primaryPhone}
-                      </a>
+                      {partner.primary_phone ? (
+                        <a
+                          href={`tel:${partner.primary_phone}`}
+                          className="text-green-600 hover:underline"
+                        >
+                          {partner.primary_phone}
+                        </a>
+                      ) : (
+                        <p className="text-gray-600">Not specified</p>
+                      )}
                     </div>
                   </div>
 
@@ -466,7 +522,7 @@ const BusinessPartnerDetail = () => {
                     <Calendar className="w-4 h-4 text-gray-500" />
                     <div>
                       <p className="font-medium">Created</p>
-                      <p className="text-gray-600">{new Date(partner.createdOn).toLocaleDateString()}</p>
+                      <p className="text-gray-600">{new Date(partner.created_at).toLocaleDateString()}</p>
                     </div>
                   </div>
 
@@ -474,7 +530,11 @@ const BusinessPartnerDetail = () => {
                     <Activity className="w-4 h-4 text-gray-500" />
                     <div>
                       <p className="font-medium">Last Activity</p>
-                      <p className="text-gray-600">{new Date(partner.lastActivity).toLocaleDateString()}</p>
+                      <p className="text-gray-600">
+                        {partner.last_activity_at
+                          ? new Date(partner.last_activity_at).toLocaleDateString()
+                          : "No activity yet"}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -859,60 +919,6 @@ const BusinessPartnerDetail = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="details" className="space-y-6">
-          <Card className="border-gray-200">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-gray-600" />
-                Partner Details
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Business Partner Number</label>
-                    <p className="text-gray-900 font-mono">{partner.businessPartnerNumber}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">GUID</label>
-                    <p className="text-gray-900 font-mono text-xs">{partner.businessPartnerGuid}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Geocode</label>
-                    <p className="text-gray-900 font-mono">{partner.geocode}</p>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Partner Types</label>
-                    <div className="flex gap-2 mt-1">
-                      {partner.lead && <Badge className="bg-green-100 text-green-800 border-green-200">Lead</Badge>}
-                      {partner.client && <Badge className="bg-blue-100 text-blue-800 border-blue-200">Client</Badge>}
-                      {partner.vendor && <Badge className="bg-orange-100 text-orange-800 border-orange-200">Vendor</Badge>}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Created Date</label>
-                    <p className="text-gray-900">{new Date(partner.createdOn).toLocaleDateString('en-US', { 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Last Activity</label>
-                    <p className="text-gray-900">{new Date(partner.lastActivity).toLocaleDateString('en-US', { 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       {/* Personalization Settings Dialog */}
@@ -924,6 +930,15 @@ const BusinessPartnerDetail = () => {
           setPersonalizationSettings(settings);
           localStorage.setItem('businessPartnerDetailPersonalization', JSON.stringify(settings));
         }}
+      />
+
+      {/* Edit Partner Dialog */}
+      <BusinessPartnerFormDialog
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        mode="edit"
+        initialData={partner}
+        onSubmit={handleUpdatePartner}
       />
     </div>
   );

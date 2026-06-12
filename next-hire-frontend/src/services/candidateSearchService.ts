@@ -53,6 +53,17 @@ export interface CandidateProfile {
   }>;
 }
 
+export interface CreateCandidateRequest {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+  location?: string;
+  experience_years?: number;
+  expected_salary?: number;
+  availability_status?: "available" | "not_available" | "interviewing";
+}
+
 export interface CandidateSearchFilters {
   page?: number;
   limit?: number;
@@ -146,6 +157,16 @@ class CandidateSearchService {
 
   async getCandidateStats(): Promise<CandidateStatsResponse> {
     const response = await apiClient.get(`${this.baseUrl}/stats`);
+    return response.data;
+  }
+
+  async createCandidate(data: CreateCandidateRequest): Promise<{ success: boolean; message: string; data: { candidate: CandidateProfile } }> {
+    const response = await apiClient.post(`${this.baseUrl}`, data);
+    return response.data;
+  }
+
+  async deleteCandidate(id: string): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.delete(`${this.baseUrl}/${id}`);
     return response.data;
   }
 

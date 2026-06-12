@@ -37,6 +37,8 @@ import {
   Download,
   Trash2,
   Loader2,
+  Building2,
+  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -57,9 +59,15 @@ import {
   ProficiencyLevel,
   CreateSkillRequest,
 } from "@/services/skillsService";
+import {
+  vendorService,
+  VendorProfile,
+  UpdateVendorProfileRequest,
+} from "@/services/vendorService";
 
 export default function MyProfile() {
   const { user } = useAuth();
+  const isVendor = user?.role === "vendor";
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -137,16 +145,59 @@ export default function MyProfile() {
     preferred_locations: [] as string[],
   });
 
+  // Vendor profile state
+  const [vendorProfile, setVendorProfile] = useState<VendorProfile | null>(
+    null
+  );
+  const [vendorFormData, setVendorFormData] = useState({
+    company_name: "",
+    company_website: "",
+    contact_person_name: "",
+    phone: "",
+    address: "",
+    city: "",
+    state: "",
+    country: "",
+    years_in_business: "",
+    bio: "",
+    specializations: [] as string[],
+  });
+
   // Load profile data on component mount
   useEffect(() => {
     loadProfile();
-    loadExperiences();
-    loadSkills();
+    if (!isVendor) {
+      loadExperiences();
+      loadSkills();
+    }
   }, []);
+
+  const mapVendorProfileToForm = (profileData: VendorProfile) => ({
+    company_name: profileData.company_name || "",
+    company_website: profileData.company_website || "",
+    contact_person_name: profileData.contact_person_name || "",
+    phone: profileData.phone || "",
+    address: profileData.address || "",
+    city: profileData.city || "",
+    state: profileData.state || "",
+    country: profileData.country || "",
+    years_in_business: profileData.years_in_business?.toString() || "",
+    bio: profileData.bio || "",
+    specializations: profileData.specializations || [],
+  });
 
   const loadProfile = async () => {
     try {
       setIsLoading(true);
+
+      if (isVendor) {
+        const response = await vendorService.getProfile();
+        const profileData = response.data.profile;
+        setVendorProfile(profileData);
+        setVendorFormData(mapVendorProfileToForm(profileData));
+        return;
+      }
+
       const response = await candidateService.getProfile();
       const profileData = response.data.profile;
 
@@ -205,6 +256,35 @@ export default function MyProfile() {
     try {
       setIsSaving(true);
 
+      if (isVendor) {
+        const updateData: UpdateVendorProfileRequest = {
+          company_name: vendorFormData.company_name || undefined,
+          company_website: vendorFormData.company_website || undefined,
+          contact_person_name: vendorFormData.contact_person_name || undefined,
+          phone: vendorFormData.phone || undefined,
+          address: vendorFormData.address || undefined,
+          city: vendorFormData.city || undefined,
+          state: vendorFormData.state || undefined,
+          country: vendorFormData.country || undefined,
+          years_in_business: vendorFormData.years_in_business
+            ? parseInt(vendorFormData.years_in_business)
+            : undefined,
+          bio: vendorFormData.bio || undefined,
+          specializations:
+            vendorFormData.specializations.length > 0
+              ? vendorFormData.specializations
+              : undefined,
+        };
+
+        const response = await vendorService.updateProfile(updateData);
+        const updated = response.data!;
+        setVendorProfile(updated);
+        setVendorFormData(mapVendorProfileToForm(updated));
+        setIsEditing(false);
+        toast.success("Profile updated successfully!");
+        return;
+      }
+
       // Prepare update data
       const updateData: UpdateProfileRequest = {
         first_name: formData.first_name || undefined,
@@ -249,6 +329,14 @@ export default function MyProfile() {
   };
 
   const handleCancel = () => {
+    if (isVendor) {
+      if (vendorProfile) {
+        setVendorFormData(mapVendorProfileToForm(vendorProfile));
+      }
+      setIsEditing(false);
+      return;
+    }
+
     if (originalProfile) {
       // Reset form data to original values
       setFormData({
@@ -312,6 +400,27 @@ export default function MyProfile() {
       (_, i) => i !== index
     );
     setFormData({ ...formData, preferred_locations: newLocations });
+  };
+
+  const addSpecialization = (specialization: string) => {
+    if (
+      specialization &&
+      !vendorFormData.specializations.includes(specialization)
+    ) {
+      setVendorFormData({
+        ...vendorFormData,
+        specializations: [...vendorFormData.specializations, specialization],
+      });
+    }
+  };
+
+  const removeSpecialization = (index: number) => {
+    setVendorFormData({
+      ...vendorFormData,
+      specializations: vendorFormData.specializations.filter(
+        (_, i) => i !== index
+      ),
+    });
   };
 
   // Experience management functions
@@ -472,11 +581,17 @@ export default function MyProfile() {
       </div>
 
       <Tabs defaultValue="personal" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className={`grid w-full ${isVendor ? "grid-cols-4" : "grid-cols-6"}`}>
           <TabsTrigger value="personal">Personal Info</TabsTrigger>
-          <TabsTrigger value="professional">Professional</TabsTrigger>
-          <TabsTrigger value="experience">Experience</TabsTrigger>
-          <TabsTrigger value="skills">Skills</TabsTrigger>
+          <TabsTrigger value="professional">
+            {isVendor ? "Company Info" : "Professional"}
+          </TabsTrigger>
+          {!isVendor && (
+            <>
+              <TabsTrigger value="experience">Experience</TabsTrigger>
+              <TabsTrigger value="skills">Skills</TabsTrigger>
+            </>
+          )}
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
         </TabsList>
@@ -497,17 +612,22 @@ export default function MyProfile() {
                 <Avatar className="w-24 h-24">
                   <AvatarImage src="/api/placeholder/150/150" />
                   <AvatarFallback className="text-xl bg-green-100 text-green-700">
-                    {(
-                      (formData.first_name || "") +
-                      " " +
-                      (formData.last_name || "")
-                    )
-                      .trim()
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("") ||
-                      user?.email?.[0]?.toUpperCase() ||
-                      "U"}
+                    {isVendor
+                      ? (vendorFormData.contact_person_name ||
+                          vendorFormData.company_name ||
+                          user?.email ||
+                          "U")[0]?.toUpperCase()
+                      : (
+                          (formData.first_name || "") +
+                          " " +
+                          (formData.last_name || "")
+                        )
+                          .trim()
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("") ||
+                        user?.email?.[0]?.toUpperCase() ||
+                        "U"}
                   </AvatarFallback>
                 </Avatar>
                 {isEditing && (
@@ -516,224 +636,486 @@ export default function MyProfile() {
                       <Plus className="w-4 h-4 mr-2" />
                       Upload Photo
                     </Button>
-                    <Button variant="outline" size="sm" className="w-full">
-                      <FileText className="w-4 h-4 mr-2" />
-                      Upload Resume
-                    </Button>
+                    {!isVendor && (
+                      <Button variant="outline" size="sm" className="w-full">
+                        <FileText className="w-4 h-4 mr-2" />
+                        Upload Resume
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="first_name">First Name</Label>
-                  <Input
-                    id="first_name"
-                    value={formData.first_name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, first_name: e.target.value })
-                    }
-                    disabled={!isEditing}
-                    placeholder="Enter your first name"
-                  />
+              {isVendor ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="contact_person_name">
+                      Contact Person Name
+                    </Label>
+                    <Input
+                      id="contact_person_name"
+                      value={vendorFormData.contact_person_name}
+                      onChange={(e) =>
+                        setVendorFormData({
+                          ...vendorFormData,
+                          contact_person_name: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter contact person name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={user?.email || ""}
+                      disabled={true}
+                      className="bg-gray-50"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Email cannot be changed
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone</Label>
+                    <Input
+                      id="phone"
+                      value={vendorFormData.phone}
+                      onChange={(e) =>
+                        setVendorFormData({
+                          ...vendorFormData,
+                          phone: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter your phone number"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="address">Address</Label>
+                    <Input
+                      id="address"
+                      value={vendorFormData.address}
+                      onChange={(e) =>
+                        setVendorFormData({
+                          ...vendorFormData,
+                          address: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter street address"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City</Label>
+                    <Input
+                      id="city"
+                      value={vendorFormData.city}
+                      onChange={(e) =>
+                        setVendorFormData({
+                          ...vendorFormData,
+                          city: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter city"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="state">State / Province</Label>
+                    <Input
+                      id="state"
+                      value={vendorFormData.state}
+                      onChange={(e) =>
+                        setVendorFormData({
+                          ...vendorFormData,
+                          state: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter state or province"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country</Label>
+                    <Input
+                      id="country"
+                      value={vendorFormData.country}
+                      onChange={(e) =>
+                        setVendorFormData({
+                          ...vendorFormData,
+                          country: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter country"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="last_name">Last Name</Label>
-                  <Input
-                    id="last_name"
-                    value={formData.last_name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, last_name: e.target.value })
-                    }
-                    disabled={!isEditing}
-                    placeholder="Enter your last name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={user?.email || ""}
-                    disabled={true}
-                    className="bg-gray-50"
-                  />
-                  <p className="text-xs text-gray-500">
-                    Email cannot be changed
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                    disabled={!isEditing}
-                    placeholder="Enter your phone number"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="location">Location</Label>
-                  <Input
-                    id="location"
-                    value={formData.location}
-                    onChange={(e) =>
-                      setFormData({ ...formData, location: e.target.value })
-                    }
-                    disabled={!isEditing}
-                    placeholder="Enter your location"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="availability_status">
-                    Availability Status
-                  </Label>
-                  <Select
-                    value={formData.availability_status}
-                    onValueChange={(
-                      value: "available" | "not_available" | "interviewing"
-                    ) =>
-                      setFormData({ ...formData, availability_status: value })
-                    }
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select availability status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="available">Available</SelectItem>
-                      <SelectItem value="not_available">
-                        Not Available
-                      </SelectItem>
-                      <SelectItem value="interviewing">
-                        Currently Interviewing
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="first_name">First Name</Label>
+                      <Input
+                        id="first_name"
+                        value={formData.first_name}
+                        onChange={(e) =>
+                          setFormData({ ...formData, first_name: e.target.value })
+                        }
+                        disabled={!isEditing}
+                        placeholder="Enter your first name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="last_name">Last Name</Label>
+                      <Input
+                        id="last_name"
+                        value={formData.last_name}
+                        onChange={(e) =>
+                          setFormData({ ...formData, last_name: e.target.value })
+                        }
+                        disabled={!isEditing}
+                        placeholder="Enter your last name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={user?.email || ""}
+                        disabled={true}
+                        className="bg-gray-50"
+                      />
+                      <p className="text-xs text-gray-500">
+                        Email cannot be changed
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input
+                        id="phone"
+                        value={formData.phone}
+                        onChange={(e) =>
+                          setFormData({ ...formData, phone: e.target.value })
+                        }
+                        disabled={!isEditing}
+                        placeholder="Enter your phone number"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="location">Location</Label>
+                      <Input
+                        id="location"
+                        value={formData.location}
+                        onChange={(e) =>
+                          setFormData({ ...formData, location: e.target.value })
+                        }
+                        disabled={!isEditing}
+                        placeholder="Enter your location"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="availability_status">
+                        Availability Status
+                      </Label>
+                      <Select
+                        value={formData.availability_status}
+                        onValueChange={(
+                          value: "available" | "not_available" | "interviewing"
+                        ) =>
+                          setFormData({ ...formData, availability_status: value })
+                        }
+                        disabled={!isEditing}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select availability status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="available">Available</SelectItem>
+                          <SelectItem value="not_available">
+                            Not Available
+                          </SelectItem>
+                          <SelectItem value="interviewing">
+                            Currently Interviewing
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="bio">Bio</Label>
-                <Textarea
-                  id="bio"
-                  value={formData.bio}
-                  onChange={(e) =>
-                    setFormData({ ...formData, bio: e.target.value })
-                  }
-                  disabled={!isEditing}
-                  rows={4}
-                  placeholder="Tell us about yourself..."
-                />
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bio">Bio</Label>
+                    <Textarea
+                      id="bio"
+                      value={formData.bio}
+                      onChange={(e) =>
+                        setFormData({ ...formData, bio: e.target.value })
+                      }
+                      disabled={!isEditing}
+                      rows={4}
+                      placeholder="Tell us about yourself..."
+                    />
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="professional" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Briefcase className="w-5 h-5" />
-                Professional Information
-              </CardTitle>
-              <CardDescription>
-                Update your professional details and experience
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="experience_years">Years of Experience</Label>
-                  <Input
-                    id="experience_years"
-                    type="number"
-                    min="0"
-                    max="50"
-                    value={formData.experience_years}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        experience_years: e.target.value,
-                      })
-                    }
-                    disabled={!isEditing}
-                    placeholder="Enter years of experience"
-                  />
+          {isVendor ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5" />
+                  Company Information
+                </CardTitle>
+                <CardDescription>
+                  Update your company details and areas of specialization
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="company_name">Company Name</Label>
+                    <Input
+                      id="company_name"
+                      value={vendorFormData.company_name}
+                      onChange={(e) =>
+                        setVendorFormData({
+                          ...vendorFormData,
+                          company_name: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter company name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company_website">Company Website</Label>
+                    <Input
+                      id="company_website"
+                      type="url"
+                      value={vendorFormData.company_website}
+                      onChange={(e) =>
+                        setVendorFormData({
+                          ...vendorFormData,
+                          company_website: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="https://yourcompany.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="years_in_business">
+                      Years in Business
+                    </Label>
+                    <Input
+                      id="years_in_business"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={vendorFormData.years_in_business}
+                      onChange={(e) =>
+                        setVendorFormData({
+                          ...vendorFormData,
+                          years_in_business: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter years in business"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="current_salary">Current Salary (USD)</Label>
-                  <Input
-                    id="current_salary"
-                    type="number"
-                    min="0"
-                    value={formData.current_salary}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        current_salary: e.target.value,
-                      })
-                    }
-                    disabled={!isEditing}
-                    placeholder="Enter current salary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="expected_salary">Expected Salary (USD)</Label>
-                  <Input
-                    id="expected_salary"
-                    type="number"
-                    min="0"
-                    value={formData.expected_salary}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        expected_salary: e.target.value,
-                      })
-                    }
-                    disabled={!isEditing}
-                    placeholder="Enter expected salary"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="linkedin_url">LinkedIn Profile</Label>
-                  <Input
-                    id="linkedin_url"
-                    type="url"
-                    value={formData.linkedin_url}
-                    onChange={(e) =>
-                      setFormData({ ...formData, linkedin_url: e.target.value })
-                    }
-                    disabled={!isEditing}
-                    placeholder="https://linkedin.com/in/yourprofile"
-                  />
+                <div>
+                  <Label className="text-sm font-medium">
+                    Specializations
+                  </Label>
+                  <div className="flex flex-wrap gap-2 mt-2 mb-4">
+                    {vendorFormData.specializations.map((spec, index) => (
+                      <Badge
+                        key={index}
+                        variant="outline"
+                        className="border-blue-200 text-blue-800"
+                      >
+                        {spec}
+                        {isEditing && (
+                          <X
+                            className="w-3 h-3 ml-1 cursor-pointer"
+                            onClick={() => removeSpecialization(index)}
+                          />
+                        )}
+                      </Badge>
+                    ))}
+                    {vendorFormData.specializations.length === 0 && (
+                      <p className="text-gray-500 text-sm">
+                        No specializations specified
+                      </p>
+                    )}
+                  </div>
+                  {isEditing && (
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Add specialization (e.g., IT Staffing, Healthcare)"
+                        onKeyPress={(e) => {
+                          if (e.key === "Enter") {
+                            const spec = e.currentTarget.value.trim();
+                            if (spec) {
+                              addSpecialization(spec);
+                              e.currentTarget.value = "";
+                            }
+                          }
+                        }}
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={(e) => {
+                          const input =
+                            e.currentTarget.parentElement?.querySelector(
+                              "input"
+                            );
+                          const spec = input?.value.trim();
+                          if (spec) {
+                            addSpecialization(spec);
+                            input.value = "";
+                          }
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="portfolio_url">Portfolio URL</Label>
-                  <Input
-                    id="portfolio_url"
-                    type="url"
-                    value={formData.portfolio_url}
+                  <Label htmlFor="vendor_bio">About the Company</Label>
+                  <Textarea
+                    id="vendor_bio"
+                    value={vendorFormData.bio}
                     onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        portfolio_url: e.target.value,
+                      setVendorFormData({
+                        ...vendorFormData,
+                        bio: e.target.value,
                       })
                     }
                     disabled={!isEditing}
-                    placeholder="https://yourportfolio.com"
+                    rows={4}
+                    placeholder="Tell us about your company..."
                   />
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Briefcase className="w-5 h-5" />
+                  Professional Information
+                </CardTitle>
+                <CardDescription>
+                  Update your professional details and experience
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="experience_years">Years of Experience</Label>
+                    <Input
+                      id="experience_years"
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={formData.experience_years}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          experience_years: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter years of experience"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="current_salary">Current Salary (USD)</Label>
+                    <Input
+                      id="current_salary"
+                      type="number"
+                      min="0"
+                      value={formData.current_salary}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          current_salary: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter current salary"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="expected_salary">Expected Salary (USD)</Label>
+                    <Input
+                      id="expected_salary"
+                      type="number"
+                      min="0"
+                      value={formData.expected_salary}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          expected_salary: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter expected salary"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="linkedin_url">LinkedIn Profile</Label>
+                    <Input
+                      id="linkedin_url"
+                      type="url"
+                      value={formData.linkedin_url}
+                      onChange={(e) =>
+                        setFormData({ ...formData, linkedin_url: e.target.value })
+                      }
+                      disabled={!isEditing}
+                      placeholder="https://linkedin.com/in/yourprofile"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="portfolio_url">Portfolio URL</Label>
+                    <Input
+                      id="portfolio_url"
+                      type="url"
+                      value={formData.portfolio_url}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          portfolio_url: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="https://yourportfolio.com"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
+        {!isVendor && (
+        <>
         <TabsContent value="experience" className="space-y-6">
           <Card>
             <CardHeader>
@@ -1259,6 +1641,8 @@ export default function MyProfile() {
             </CardContent>
           </Card>
         </TabsContent>
+        </>
+        )}
 
         <TabsContent value="documents" className="space-y-6">
           <Card>
@@ -1351,6 +1735,7 @@ export default function MyProfile() {
         </TabsContent>
 
         <TabsContent value="preferences" className="space-y-6">
+          {!isVendor && (
           <Card>
             <CardHeader>
               <CardTitle>Job Preferences</CardTitle>
@@ -1476,104 +1861,8 @@ export default function MyProfile() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
+          )}
 
-        <TabsContent value="documents" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                Documents
-              </CardTitle>
-              <CardDescription>
-                Manage your resumes, cover letters, and other documents
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {/* Upload Area */}
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-1">
-                    Upload Documents
-                  </h3>
-                  <p className="text-gray-600 mb-4">
-                    Drag and drop files here, or click to select
-                  </p>
-                  <Button variant="outline">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Choose Files
-                  </Button>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Supported formats: PDF, DOC, DOCX (Max 10MB)
-                  </p>
-                </div>
-
-                {/* Documents List */}
-                <div className="space-y-3">
-                  <h4 className="font-medium text-gray-900">Your Documents</h4>
-                  {documents.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <FileText className="w-8 h-8 text-blue-600" />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h5 className="font-medium text-gray-900">
-                              {doc.name}
-                            </h5>
-                            {doc.isPrimary && (
-                              <Badge
-                                variant="default"
-                                className="bg-green-100 text-green-800"
-                              >
-                                Primary
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-gray-500">
-                            <span>{doc.type}</span>
-                            <span>{doc.size}</span>
-                            <span>Uploaded {doc.uploadDate}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Button size="sm" variant="ghost">
-                          <Download className="w-4 h-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {documents.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p>No documents uploaded yet</p>
-                    <p className="text-sm">
-                      Upload your resume and other documents to get started
-                    </p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="preferences" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Account Preferences</CardTitle>

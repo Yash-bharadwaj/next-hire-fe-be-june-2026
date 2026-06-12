@@ -8,36 +8,34 @@ import React, {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { DataGrid } from "@/components/ui/data-grid";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import {
   Plus,
-
   User,
-  Mail,
-  Phone,
   Star,
   FileText,
   Briefcase,
   Users,
-  Eye,
-  Edit,
   Trash2,
-  CheckCircle,
   AlertCircle,
   Clock,
-  Settings,
-  UserCheck,
-  Send,
-  Bot,
-  FileSpreadsheet,
   Pencil,
   RefreshCw,
 } from "lucide-react";
@@ -63,6 +61,8 @@ const Candidates = () => {
     searchCandidates,
     refresh,
     setFilters,
+    createCandidate,
+    deleteCandidate,
   } = useCandidateSearch();
   const { stats } = useCandidateStats();
 
@@ -72,12 +72,88 @@ const Candidates = () => {
   );
   const hasLoadedInitial = useRef(false);
 
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newCandidate, setNewCandidate] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    phone: "",
+    location: "",
+    experience_years: "",
+    expected_salary: "",
+    availability_status: "available",
+  });
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const handleViewCandidate = (candidateId: string) => {
     navigate(`/dashboard/candidates/${candidateId}`);
   };
 
   const handleEditCandidate = (candidateId: string) => {
     navigate(`/dashboard/candidates/${candidateId}?edit=true`);
+  };
+
+  const resetNewCandidateForm = () => {
+    setNewCandidate({
+      first_name: "",
+      last_name: "",
+      email: "",
+      phone: "",
+      location: "",
+      experience_years: "",
+      expected_salary: "",
+      availability_status: "available",
+    });
+  };
+
+  const handleCreateCandidate = async () => {
+    if (!newCandidate.first_name.trim() || !newCandidate.last_name.trim() || !newCandidate.email.trim()) {
+      toast.error("First name, last name, and email are required");
+      return;
+    }
+    try {
+      setCreating(true);
+      await createCandidate({
+        first_name: newCandidate.first_name.trim(),
+        last_name: newCandidate.last_name.trim(),
+        email: newCandidate.email.trim().toLowerCase(),
+        phone: newCandidate.phone.trim() || undefined,
+        location: newCandidate.location.trim() || undefined,
+        experience_years: newCandidate.experience_years
+          ? Number(newCandidate.experience_years)
+          : undefined,
+        expected_salary: newCandidate.expected_salary
+          ? Number(newCandidate.expected_salary)
+          : undefined,
+        availability_status: newCandidate.availability_status as
+          | "available"
+          | "not_available"
+          | "interviewing",
+      });
+      toast.success("Candidate added successfully");
+      setShowAddDialog(false);
+      resetNewCandidateForm();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || "Failed to add candidate");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDeleteCandidate = async (candidateId: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete ${name}? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      setDeletingId(candidateId);
+      await deleteCandidate(candidateId);
+      toast.success("Candidate deleted successfully");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || "Failed to delete candidate");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const handleExport = async () => {
@@ -216,7 +292,7 @@ const Candidates = () => {
     {
       field: "name",
       headerName: "Name",
-      width: 160,
+      width: 180,
       renderCell: (value: string, row: any) => (
         <div className="flex items-center gap-2">
           <button
@@ -238,6 +314,17 @@ const Candidates = () => {
             title="Edit candidate"
           >
             <Pencil className="w-3 h-3 text-gray-500 hover:text-blue-600" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeleteCandidate(row.id, value);
+            }}
+            disabled={deletingId === row.id}
+            className="p-1 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
+            title="Delete candidate"
+          >
+            <Trash2 className="w-3 h-3 text-gray-500 hover:text-red-600" />
           </button>
         </div>
       ),
@@ -358,46 +445,10 @@ const Candidates = () => {
             Refresh
           </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-blue-200 hover:bg-blue-50 hover:border-blue-300 text-xs"
-              >
-                <Settings className="w-3 h-3 mr-1" />
-                Actions
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="bg-white border-gray-200 z-50"
-            >
-              <DropdownMenuItem>
-                <Mail className="w-4 h-4 mr-2" />
-                Send a Followup
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <UserCheck className="w-4 h-4 mr-2" />
-                Change Ownership
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Change status
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Send className="w-4 h-4 mr-2" />
-                Send to Vendors
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <Bot className="w-4 h-4 mr-2" />
-                AI Recruiter
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Button className="button-gradient text-white shadow-lg hover:shadow-xl transition-all duration-300 text-xs">
+          <Button
+            onClick={() => setShowAddDialog(true)}
+            className="button-gradient text-white shadow-lg hover:shadow-xl transition-all duration-300 text-xs"
+          >
             <Plus className="w-3 h-3 mr-1" />
             Add Candidate
           </Button>
@@ -526,6 +577,142 @@ const Candidates = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Add Candidate Dialog */}
+      <Dialog
+        open={showAddDialog}
+        onOpenChange={(open) => {
+          setShowAddDialog(open);
+          if (!open) resetNewCandidateForm();
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add Candidate</DialogTitle>
+            <DialogDescription>
+              Create a new candidate profile. They'll appear in your candidate pool immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                First Name *
+              </label>
+              <Input
+                value={newCandidate.first_name}
+                onChange={(e) =>
+                  setNewCandidate((prev) => ({ ...prev, first_name: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Last Name *
+              </label>
+              <Input
+                value={newCandidate.last_name}
+                onChange={(e) =>
+                  setNewCandidate((prev) => ({ ...prev, last_name: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Email *
+              </label>
+              <Input
+                type="email"
+                value={newCandidate.email}
+                onChange={(e) =>
+                  setNewCandidate((prev) => ({ ...prev, email: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Phone
+              </label>
+              <Input
+                value={newCandidate.phone}
+                onChange={(e) =>
+                  setNewCandidate((prev) => ({ ...prev, phone: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Location
+              </label>
+              <Input
+                value={newCandidate.location}
+                onChange={(e) =>
+                  setNewCandidate((prev) => ({ ...prev, location: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Experience (years)
+              </label>
+              <Input
+                type="number"
+                min="0"
+                max="50"
+                value={newCandidate.experience_years}
+                onChange={(e) =>
+                  setNewCandidate((prev) => ({ ...prev, experience_years: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Expected Salary
+              </label>
+              <Input
+                type="number"
+                min="0"
+                value={newCandidate.expected_salary}
+                onChange={(e) =>
+                  setNewCandidate((prev) => ({ ...prev, expected_salary: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Availability
+              </label>
+              <Select
+                value={newCandidate.availability_status}
+                onValueChange={(value) =>
+                  setNewCandidate((prev) => ({ ...prev, availability_status: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="available">Available</SelectItem>
+                  <SelectItem value="not_available">Not Available</SelectItem>
+                  <SelectItem value="interviewing">Interviewing</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowAddDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleCreateCandidate} disabled={creating}>
+              {creating && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+              Save Candidate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

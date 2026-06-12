@@ -8,20 +8,30 @@ export interface VendorProfile {
   company_website?: string;
   contact_person_name?: string;
   phone?: string;
-  location?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
   specializations?: string[];
   years_in_business?: number;
   bio?: string;
+  status?: "pending" | "approved" | "suspended";
   created_at?: string;
   updated_at?: string;
 }
 
 export interface UpdateVendorProfileRequest {
+  company_name?: string;
   company_website?: string;
   contact_person_name?: string;
   phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
   specializations?: string[];
   years_in_business?: number;
+  bio?: string;
 }
 
 export interface VendorProfileResponse {

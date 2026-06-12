@@ -33,7 +33,7 @@ const createExperienceValidation = [
     .isISO8601()
     .withMessage("Start date must be a valid date"),
   body("end_date")
-    .optional()
+    .optional({ values: "falsy" })
     .isISO8601()
     .withMessage("End date must be a valid date"),
   body("is_current")
@@ -82,7 +82,7 @@ const updateExperienceValidation = [
     .isISO8601()
     .withMessage("Start date must be a valid date"),
   body("end_date")
-    .optional()
+    .optional({ values: "falsy" })
     .isISO8601()
     .withMessage("End date must be a valid date"),
   body("is_current")
