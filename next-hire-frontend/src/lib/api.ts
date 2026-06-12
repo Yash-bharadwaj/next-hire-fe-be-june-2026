@@ -28,6 +28,21 @@ api.interceptors.request.use(
   }
 );
 
+// On these endpoints a 401 means "invalid credentials" / "not verified", not
+// "session expired" - skip the refresh-retry flow so the real error message
+// (e.g. "Invalid credentials") reaches the caller instead of "No refresh token".
+const AUTH_ENDPOINTS_WITHOUT_REFRESH = [
+  "/auth/login",
+  "/auth/signup",
+  "/auth/refresh-token",
+  "/auth/verify-otp",
+  "/auth/resend-otp",
+  "/auth/login-otp/request",
+  "/auth/login-otp/verify",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+];
+
 // Refresh queue — prevents multiple concurrent 401s each triggering a separate refresh
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: any) => void }> = [];
@@ -45,6 +60,13 @@ api.interceptors.response.use(
 
     // Handle 401 errors (unauthorized)
     if (error.response?.status === 401 && !originalRequest._retry) {
+      const isAuthEndpoint = AUTH_ENDPOINTS_WITHOUT_REFRESH.some((path) =>
+        originalRequest.url?.includes(path)
+      );
+      if (isAuthEndpoint) {
+        return Promise.reject(error);
+      }
+
       // If a refresh is already in flight, queue this request until it resolves
       if (isRefreshing) {
         return new Promise<string>((resolve, reject) => {
