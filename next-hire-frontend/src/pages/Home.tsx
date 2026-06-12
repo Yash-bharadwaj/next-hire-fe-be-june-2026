@@ -27,7 +27,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useDashboard, useRecentActivity } from "@/hooks/useDashboard";
 import { useAuth } from "@/contexts/AuthContext";
 import { dashboardService } from "@/services/dashboardService";
-import { ApiDebug } from "@/components/ApiDebug";
 
 const Home = () => {
   const { user } = useAuth();
@@ -517,11 +516,6 @@ const Home = () => {
           </div>
         </CardContent>
       </Card>
-
-      {/* Debug Panel - Remove in production */}
-      <div className="mt-8">
-        <ApiDebug />
-      </div>
     </div>
   );
 };

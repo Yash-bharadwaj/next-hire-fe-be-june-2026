@@ -1333,6 +1333,7 @@ const AddNewJob = () => {
                   >
                     {skill}
                     <button
+                      type="button"
                       onClick={() => removeSkill(skill, "primary")}
                       className="ml-2 hover:text-red-600"
                     >
@@ -1378,6 +1379,7 @@ const AddNewJob = () => {
                   >
                     {skill}
                     <button
+                      type="button"
                       onClick={() => removeSkill(skill, "secondary")}
                       className="ml-2 hover:text-red-600"
                     >
