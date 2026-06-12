@@ -103,7 +103,7 @@ export default function VerifyOTP() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50/30 to-green-100/50 flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="h-screen bg-gradient-to-br from-green-50 via-emerald-50/30 to-green-100/50 flex items-center justify-center p-4 relative overflow-hidden">
       {/* Background decoration */}
       <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27 width=%2732%27 height=%2732%27 fill=%27none%27 stroke=%27rgb(34 197 94 / 0.03)%27%3e%3cpath d=%27m0 .5 32 32M32 .5 0 32%27/%3e%3c/svg%3e')] bg-top"></div>
 
@@ -111,7 +111,7 @@ export default function VerifyOTP() {
       <div className="absolute top-20 left-20 w-72 h-72 bg-gradient-to-r from-green-200/20 to-emerald-200/20 rounded-full blur-3xl animate-pulse"></div>
       <div className="absolute bottom-20 right-20 w-96 h-96 bg-gradient-to-r from-emerald-200/15 to-green-300/15 rounded-full blur-3xl animate-pulse [animation-delay:1s]"></div>
 
-      <div className="w-full max-w-md space-y-8 relative z-10">
+      <div className="w-full max-w-md space-y-4 relative z-10">
         {/* Back Button */}
         <div className="flex items-center">
           <Button
@@ -127,22 +127,22 @@ export default function VerifyOTP() {
 
         {/* Header */}
         <div className="text-center">
-          <div className="mx-auto w-20 h-20 bg-gradient-to-br from-green-600 via-green-500 to-emerald-500 rounded-2xl flex items-center justify-center mb-6 shadow-2xl shadow-green-500/25 relative">
+          <div className="mx-auto w-12 h-12 bg-gradient-to-br from-green-600 via-green-500 to-emerald-500 rounded-2xl flex items-center justify-center mb-3 shadow-lg shadow-green-500/25 relative">
             <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent rounded-2xl"></div>
-            <Mail className="text-white w-8 h-8 relative z-10" />
+            <Mail className="text-white w-6 h-6 relative z-10" />
           </div>
-          <h2 className="text-4xl font-bold bg-gradient-to-r from-green-700 via-green-600 to-emerald-600 bg-clip-text text-transparent mb-2">
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-green-700 via-green-600 to-emerald-600 bg-clip-text text-transparent mb-1">
             Verify Your Email
           </h2>
-          <p className="text-green-600/70 font-medium">
-            We sent a 6-digit code to
+          <p className="text-green-600/70 text-sm font-medium">
+            We sent a 6-digit code to{" "}
+            <span className="text-green-700 font-semibold">{email}</span>
           </p>
-          <p className="text-green-700 font-semibold">{email}</p>
         </div>
 
         {/* Alert Message */}
         {message && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2">
             <p className="text-green-700 text-sm font-medium">{message}</p>
           </div>
         )}
@@ -152,17 +152,17 @@ export default function VerifyOTP() {
           <div className="absolute inset-0 bg-gradient-to-br from-green-50/50 via-white/80 to-emerald-50/30"></div>
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 via-emerald-500 to-green-600"></div>
 
-          <CardHeader className="space-y-1 pb-6 relative z-10">
-            <CardTitle className="text-2xl text-center bg-gradient-to-r from-green-700 to-emerald-600 bg-clip-text text-transparent">
+          <CardHeader className="space-y-1 pb-3 pt-5 relative z-10">
+            <CardTitle className="text-lg text-center bg-gradient-to-r from-green-700 to-emerald-600 bg-clip-text text-transparent">
               Enter Verification Code
             </CardTitle>
-            <CardDescription className="text-center text-green-600/70">
+            <CardDescription className="text-center text-green-600/70 text-xs">
               Enter the 6-digit code sent to your email
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="relative z-10">
-            <form id="otp-form" onSubmit={handleSubmit} className="space-y-6">
+          <CardContent className="relative z-10 pb-5">
+            <form id="otp-form" onSubmit={handleSubmit} className="space-y-4">
               {/* OTP Input */}
               <div className="flex justify-center">
                 <InputOTP
@@ -174,34 +174,34 @@ export default function VerifyOTP() {
                   <InputOTPGroup>
                     <InputOTPSlot
                       index={0}
-                      className="w-12 h-12 text-lg border-green-200 focus:border-green-400"
+                      className="w-11 h-11 text-lg border-green-200 focus:border-green-400"
                     />
                     <InputOTPSlot
                       index={1}
-                      className="w-12 h-12 text-lg border-green-200 focus:border-green-400"
+                      className="w-11 h-11 text-lg border-green-200 focus:border-green-400"
                     />
                     <InputOTPSlot
                       index={2}
-                      className="w-12 h-12 text-lg border-green-200 focus:border-green-400"
+                      className="w-11 h-11 text-lg border-green-200 focus:border-green-400"
                     />
                     <InputOTPSlot
                       index={3}
-                      className="w-12 h-12 text-lg border-green-200 focus:border-green-400"
+                      className="w-11 h-11 text-lg border-green-200 focus:border-green-400"
                     />
                     <InputOTPSlot
                       index={4}
-                      className="w-12 h-12 text-lg border-green-200 focus:border-green-400"
+                      className="w-11 h-11 text-lg border-green-200 focus:border-green-400"
                     />
                     <InputOTPSlot
                       index={5}
-                      className="w-12 h-12 text-lg border-green-200 focus:border-green-400"
+                      className="w-11 h-11 text-lg border-green-200 focus:border-green-400"
                     />
                   </InputOTPGroup>
                 </InputOTP>
               </div>
 
               {/* Timer and Resend */}
-              <div className="text-center space-y-4">
+              <div className="text-center">
                 {!canResend ? (
                   <p className="text-green-600/70 text-sm">
                     Code expires in{" "}
@@ -210,13 +210,14 @@ export default function VerifyOTP() {
                     </span>
                   </p>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     <p className="text-green-600/70 text-sm">
                       Didn't receive the code?
                     </p>
                     <Button
                       type="button"
                       variant="ghost"
+                      size="sm"
                       onClick={handleResendOTP}
                       disabled={isResending}
                       className="text-green-600 hover:text-green-700 hover:bg-green-50"
@@ -240,7 +241,7 @@ export default function VerifyOTP() {
               {/* Submit Button */}
               <Button
                 type="submit"
-                className="w-full h-12 bg-gradient-to-r from-green-600 via-green-500 to-emerald-500 hover:from-green-700 hover:via-green-600 hover:to-emerald-600 text-white font-semibold rounded-xl shadow-lg shadow-green-500/25 transition-all duration-300 hover:shadow-xl hover:shadow-green-500/30 hover:scale-[1.02] relative overflow-hidden group"
+                className="w-full h-11 bg-gradient-to-r from-green-600 via-green-500 to-emerald-500 hover:from-green-700 hover:via-green-600 hover:to-emerald-600 text-white font-semibold rounded-xl shadow-lg shadow-green-500/25 transition-all duration-300 hover:shadow-xl hover:shadow-green-500/30 hover:scale-[1.02] relative overflow-hidden group"
                 disabled={isLoading || otp.length !== 6}
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -254,8 +255,8 @@ export default function VerifyOTP() {
             </form>
 
             {/* Help Text */}
-            <div className="mt-6 text-center">
-              <p className="text-sm text-green-600/70">
+            <div className="mt-4 text-center">
+              <p className="text-xs text-green-600/70">
                 Having trouble?{" "}
                 <Link
                   to="/support"

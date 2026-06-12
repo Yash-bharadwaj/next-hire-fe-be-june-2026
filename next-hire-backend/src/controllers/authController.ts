@@ -41,7 +41,12 @@ export const signup = asyncHandler(async (req: Request, res: Response) => {
     where: { email: email.toLowerCase() },
   });
   if (existingUser) {
-    throw createError("User already exists with this email", 409);
+    if (existingUser.email_verified) {
+      throw createError("User already exists with this email", 409);
+    }
+    // Previous signup never completed OTP verification - discard the stale
+    // record (cascades to its role profile) so the user can sign up again.
+    await existingUser.destroy();
   }
 
   // Hash password
