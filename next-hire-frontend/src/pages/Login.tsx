@@ -125,7 +125,7 @@ export default function Login() {
                   Password
                 </Label>
                 <Link
-                  to="/auth/forgot-password"
+                  to="/forgot-password"
                   className="text-xs text-green-600 hover:text-green-700 font-medium transition-colors"
                 >
                   Forgot password?

@@ -10,6 +10,11 @@ import * as amplify from 'aws-cdk-lib/aws-amplify';
 const GITHUB_REPO_URL = 'https://github.com/Yash-bharadwaj/next-hire-fe-be-june-2026';
 const GITHUB_BRANCH = 'main';
 
+// Amplify app domain is stable once created (https://<branch>.<appId>.amplifyapp.com).
+// Hardcoded (rather than Fn::GetAtt off FrontendApp) to avoid a circular CFN
+// dependency, since FrontendApp's env vars also reference BackendService's URL.
+const AMPLIFY_FRONTEND_URL = 'https://main.d2iuw7uqhboofs.amplifyapp.com';
+
 // AWS::AppRunner::Connection is not a CloudFormation resource type - it can
 // only be created via the CLI/console (`aws apprunner create-connection`).
 // This connection was created out-of-band; CDK just references its ARN.
@@ -171,6 +176,7 @@ export class InfrastructureStack extends cdk.Stack {
                   { name: 'SES_REGION', value: this.region },
                   { name: 'FROM_EMAIL', value: 'exclusivesvr@gmail.com' },
                   { name: 'FROM_NAME', value: 'The Next Hire' },
+                  { name: 'FRONTEND_URL', value: AMPLIFY_FRONTEND_URL },
                 ],
                 runtimeEnvironmentSecrets: [
                   { name: 'DB_USERNAME', value: `${dbSecret.secretArn}:username::` },
