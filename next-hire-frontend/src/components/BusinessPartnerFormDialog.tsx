@@ -28,6 +28,7 @@ import {
   BusinessPartnerPriority,
   CompanySize,
 } from "@/services/businessPartnerService";
+import { CountrySelect, StateSelect, CitySelect } from "@/components/location-fields";
 
 interface FormState {
   name: string;
@@ -289,18 +290,34 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
               />
             </div>
             <div>
-              <Label className="mb-1 block">City</Label>
-              <Input value={formData.city} onChange={(e) => update("city", e.target.value)} />
+              <Label className="mb-1 block">Country</Label>
+              <CountrySelect
+                value={formData.country}
+                onChange={(value) => {
+                  update("country", value);
+                  update("state", "");
+                  update("city", "");
+                }}
+              />
             </div>
             <div>
               <Label className="mb-1 block">State</Label>
-              <Input value={formData.state} onChange={(e) => update("state", e.target.value)} />
+              <StateSelect
+                country={formData.country}
+                value={formData.state}
+                onChange={(value) => {
+                  update("state", value);
+                  update("city", "");
+                }}
+              />
             </div>
             <div>
-              <Label className="mb-1 block">Country</Label>
-              <Input
-                value={formData.country}
-                onChange={(e) => update("country", e.target.value)}
+              <Label className="mb-1 block">City</Label>
+              <CitySelect
+                country={formData.country}
+                state={formData.state}
+                value={formData.city}
+                onChange={(value) => update("city", value)}
               />
             </div>
             <div>

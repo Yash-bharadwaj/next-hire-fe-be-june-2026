@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { CountrySelect, StateSelect, CitySelect, CurrencySelect } from "@/components/location-fields";
 import { Separator } from "@/components/ui/separator";
 import {
   Form,
@@ -42,7 +43,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { useToast } from "@/hooks/use-toast";
 import { recruiterService, Job as RecruiterJob } from "@/services/recruiterService";
 import { useAuth } from "@/contexts/AuthContext";
@@ -74,7 +75,7 @@ const AddNewJob = () => {
       location: "",
       city: "",
       state: "",
-      country: "US",
+      country: "United States",
       salaryMin: "",
       salaryMax: "",
       salaryCurrency: "USD",
@@ -102,6 +103,9 @@ const AddNewJob = () => {
       documentsRequired: "",
     },
   });
+
+  const watchedCountry = useWatch({ control: form.control, name: "country" });
+  const watchedState = useWatch({ control: form.control, name: "state" });
 
   const formValuesRef = useRef<Record<string, any>>(form.getValues());
 
@@ -224,7 +228,7 @@ const AddNewJob = () => {
           location: job.location || "",
           city: (job as any).city || "",
           state: (job as any).state || "",
-          country: (job as any).country || "US",
+          country: (job as any).country || "United States",
           salaryMin:
             job.salary_min !== undefined && job.salary_min !== null
               ? String(job.salary_min)
@@ -359,6 +363,52 @@ const AddNewJob = () => {
     });
   };
 
+  // Cross-field validation for the Start Date / End Date / Application
+  // Deadline trio. There's no zod resolver on this form, so date-ordering
+  // rules are enforced manually and surfaced via setError + a toast.
+  const validateJobDates = (data: Record<string, any>) => {
+    form.clearErrors(["jobStartDate", "jobEndDate", "applicationDeadline"]);
+
+    const startDate = data.jobStartDate ? new Date(data.jobStartDate) : null;
+    const endDate = data.jobEndDate ? new Date(data.jobEndDate) : null;
+    const deadline = data.applicationDeadline
+      ? new Date(data.applicationDeadline)
+      : null;
+
+    let valid = true;
+
+    if (startDate && endDate && endDate < startDate) {
+      form.setError("jobEndDate", {
+        type: "manual",
+        message: "End date must be on or after the start date.",
+      });
+      valid = false;
+    }
+
+    if (deadline) {
+      const compareDate = startDate || endDate;
+      if (compareDate && deadline > compareDate) {
+        form.setError("applicationDeadline", {
+          type: "manual",
+          message: startDate
+            ? "Application deadline must be on or before the start date."
+            : "Application deadline must be on or before the end date.",
+        });
+        valid = false;
+      }
+    }
+
+    if (!valid) {
+      toast({
+        title: "Invalid Dates",
+        description: "Please fix the highlighted date fields before continuing.",
+        variant: "destructive",
+      });
+    }
+
+    return valid;
+  };
+
   const parseNumberInput = (value: unknown) => {
     if (value === null || value === undefined) return undefined;
     if (typeof value === "number") {
@@ -384,6 +434,10 @@ const AddNewJob = () => {
     // Ensure we're on the final step before submitting
     if (currentStep !== 4) {
       showIncompleteStepsToast();
+      return;
+    }
+
+    if (!validateJobDates(data)) {
       return;
     }
 
@@ -465,7 +519,7 @@ const AddNewJob = () => {
         company_name: data.customer.trim(),
         location: data.location.trim(), // Required field
         job_type: mappedJobType, // Required field, already validated
-        country: data.country?.trim() || "US", // Always send country
+        country: data.country?.trim() || "United States", // Always send country
         salary_currency: data.salaryCurrency || "USD", // Always send currency
         city: getTrimmedString(data.city),
         state: getTrimmedString(data.state),
@@ -762,6 +816,9 @@ const AddNewJob = () => {
   };
 
   const nextStep = () => {
+    if (currentStep === 2 && !validateJobDates(form.getValues())) {
+      return;
+    }
     if (currentStep < 4) setCurrentStep(currentStep + 1);
   };
 
@@ -918,17 +975,20 @@ const AddNewJob = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <FormField
                 control={form.control}
-                name="city"
+                name="country"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-gray-700 font-medium">
-                      City
+                      Country
                     </FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="e.g. San Francisco"
-                        className="border-gray-200 focus:border-green-400"
-                        {...field}
+                      <CountrySelect
+                        value={field.value}
+                        onChange={(value) => {
+                          field.onChange(value);
+                          form.setValue("state", "");
+                          form.setValue("city", "");
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -945,10 +1005,13 @@ const AddNewJob = () => {
                       State
                     </FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="e.g. CA"
-                        className="border-gray-200 focus:border-green-400"
-                        {...field}
+                      <StateSelect
+                        country={watchedCountry}
+                        value={field.value}
+                        onChange={(value) => {
+                          field.onChange(value);
+                          form.setValue("city", "");
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -958,29 +1021,20 @@ const AddNewJob = () => {
 
               <FormField
                 control={form.control}
-                name="country"
+                name="city"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-gray-700 font-medium">
-                      Country
+                      City
                     </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="border-gray-200 focus:border-green-400">
-                          <SelectValue placeholder="Select country" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent className="bg-white">
-                        <SelectItem value="US">United States</SelectItem>
-                        <SelectItem value="CA">Canada</SelectItem>
-                        <SelectItem value="UK">United Kingdom</SelectItem>
-                        <SelectItem value="AU">Australia</SelectItem>
-                        <SelectItem value="IN">India</SelectItem>
-                        <SelectItem value="DE">Germany</SelectItem>
-                        <SelectItem value="FR">France</SelectItem>
-                        <SelectItem value="SG">Singapore</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <CitySelect
+                        country={watchedCountry}
+                        state={watchedState}
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1038,18 +1092,9 @@ const AddNewJob = () => {
                     <FormLabel className="text-gray-700 font-medium">
                       Currency
                     </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="border-gray-200 focus:border-green-400">
-                          <SelectValue placeholder="Select currency" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent className="bg-white">
-                        <SelectItem value="USD">USD</SelectItem>
-                        <SelectItem value="EUR">EUR</SelectItem>
-                        <SelectItem value="GBP">GBP</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <CurrencySelect value={field.value} onChange={field.onChange} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1302,6 +1347,7 @@ const AddNewJob = () => {
                   onChange={(e) => setNewSkill(e.target.value)}
                   placeholder="Add a skill"
                   className="border-gray-200 focus:border-green-400"
+                  autoComplete="off"
                   onKeyDown={(e) =>
                     e.key === "Enter" &&
                     (e.preventDefault(), addSkill("primary"))
@@ -1346,6 +1392,7 @@ const AddNewJob = () => {
                   onChange={(e) => setNewSecondarySkill(e.target.value)}
                   placeholder="Add a secondary skill"
                   className="border-gray-200 focus:border-green-400"
+                  autoComplete="off"
                   onKeyDown={(e) =>
                     e.key === "Enter" &&
                     (e.preventDefault(), addSkill("secondary"))
@@ -1374,6 +1421,7 @@ const AddNewJob = () => {
                     <Input
                       placeholder="e.g. English, Spanish"
                       className="border-gray-200 focus:border-green-400"
+                      autoComplete="off"
                       {...field}
                     />
                   </FormControl>

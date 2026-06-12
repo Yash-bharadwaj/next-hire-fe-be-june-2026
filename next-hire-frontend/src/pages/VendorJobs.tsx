@@ -27,6 +27,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertCircle,
@@ -75,6 +84,7 @@ const VendorJobs = () => {
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [limitReachedJob, setLimitReachedJob] = useState<Job | null>(null);
   const [submissionForm, setSubmissionForm] = useState({
     candidate_id: "",
     expected_salary: "",
@@ -119,6 +129,13 @@ const VendorJobs = () => {
   };
 
   const openSubmitDialog = (job: Job) => {
+    if (
+      job.max_submissions_allowed &&
+      (job.total_submissions || 0) >= job.max_submissions_allowed
+    ) {
+      setLimitReachedJob(job);
+      return;
+    }
     setSelectedJob(job);
     setSubmissionForm({
       candidate_id: "",
@@ -174,7 +191,13 @@ const VendorJobs = () => {
       });
       refresh();
     } catch (err: any) {
-      toast.error(err.message || "Failed to submit candidate");
+      const message = err.message || "Failed to submit candidate";
+      if (message.toLowerCase().includes("maximum number of submissions")) {
+        setSubmitDialogOpen(false);
+        setLimitReachedJob(selectedJob);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -617,6 +640,32 @@ const VendorJobs = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!limitReachedJob}
+        onOpenChange={(open) => !open && setLimitReachedJob(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
+              <AlertCircle className="h-6 w-6 text-amber-600" />
+            </div>
+            <AlertDialogTitle className="text-center">
+              Submission Limit Reached
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-center">
+              {limitReachedJob
+                ? `"${limitReachedJob.title}" has already received its maximum of ${limitReachedJob.max_submissions_allowed} candidate submission${limitReachedJob.max_submissions_allowed === 1 ? "" : "s"}. No further candidates can be submitted for this job.`
+                : "This job has reached its maximum number of candidate submissions."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:justify-center">
+            <AlertDialogAction onClick={() => setLimitReachedJob(null)}>
+              Got it
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

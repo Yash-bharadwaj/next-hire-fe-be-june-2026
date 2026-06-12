@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CountrySelect, StateSelect, CitySelect } from "@/components/location-fields";
 import {
   User,
   Mail,
@@ -709,48 +710,48 @@ export default function MyProfile() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="city">City</Label>
-                    <Input
-                      id="city"
-                      value={vendorFormData.city}
-                      onChange={(e) =>
+                    <Label htmlFor="country">Country</Label>
+                    <CountrySelect
+                      value={vendorFormData.country}
+                      onChange={(value) =>
                         setVendorFormData({
                           ...vendorFormData,
-                          city: e.target.value,
+                          country: value,
+                          state: "",
+                          city: "",
                         })
                       }
                       disabled={!isEditing}
-                      placeholder="Enter city"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="state">State / Province</Label>
-                    <Input
-                      id="state"
+                    <StateSelect
+                      country={vendorFormData.country}
                       value={vendorFormData.state}
-                      onChange={(e) =>
+                      onChange={(value) =>
                         setVendorFormData({
                           ...vendorFormData,
-                          state: e.target.value,
+                          state: value,
+                          city: "",
                         })
                       }
                       disabled={!isEditing}
-                      placeholder="Enter state or province"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="country">Country</Label>
-                    <Input
-                      id="country"
-                      value={vendorFormData.country}
-                      onChange={(e) =>
+                    <Label htmlFor="city">City</Label>
+                    <CitySelect
+                      country={vendorFormData.country}
+                      state={vendorFormData.state}
+                      value={vendorFormData.city}
+                      onChange={(value) =>
                         setVendorFormData({
                           ...vendorFormData,
-                          country: e.target.value,
+                          city: value,
                         })
                       }
                       disabled={!isEditing}
-                      placeholder="Enter country"
                     />
                   </div>
                 </div>
