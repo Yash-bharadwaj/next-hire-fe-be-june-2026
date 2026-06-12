@@ -111,6 +111,17 @@ export class InfrastructureStack extends cdk.Stack {
     jwtRefreshSecret.grantRead(appRunnerInstanceRole);
     resendApiKeySecret.grantRead(appRunnerInstanceRole);
 
+    // Allow the backend to send OTP / password-reset emails via SES using
+    // its instance role - no SMTP credentials to manage.
+    appRunnerInstanceRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+        resources: [
+          `arn:aws:ses:${this.region}:${this.account}:identity/*`,
+        ],
+      })
+    );
+
     // ------------------------------------------------------------------
     // App Runner service (backend)
     //
@@ -156,6 +167,10 @@ export class InfrastructureStack extends cdk.Stack {
                   { name: 'DB_HOST', value: database.dbInstanceEndpointAddress },
                   { name: 'DB_PORT', value: database.dbInstanceEndpointPort },
                   { name: 'DB_NAME', value: 'nexthire' },
+                  { name: 'EMAIL_PROVIDER', value: 'ses' },
+                  { name: 'SES_REGION', value: this.region },
+                  { name: 'FROM_EMAIL', value: 'exclusivesvr@gmail.com' },
+                  { name: 'FROM_NAME', value: 'The Next Hire' },
                 ],
                 runtimeEnvironmentSecrets: [
                   { name: 'DB_USERNAME', value: `${dbSecret.secretArn}:username::` },
@@ -194,46 +209,50 @@ export class InfrastructureStack extends cdk.Stack {
     // Amplify Hosting (frontend)
     //
     // AWS::Amplify::App requires a GitHub auth token (accessToken or
-    // oauthToken) up front when `repository` is set - CloudFormation
-    // rejects creation otherwise. Pass a GitHub PAT via
-    // `-c githubToken=ghp_xxx` (or GITHUB_TOKEN env var) to enable this.
+    // oauthToken) up front when `repository` is set. The token is stored
+    // in Secrets Manager (created out-of-band via the CLI:
+    // `aws secretsmanager create-secret --name nexthire/github-token ...`)
+    // and referenced here via a CloudFormation dynamic reference, so this
+    // resource is always defined - a `cdk deploy` that forgets a CLI flag
+    // can never accidentally delete the frontend app.
     // ------------------------------------------------------------------
-    const githubToken = (this.node.tryGetContext('githubToken') as string | undefined)
-      || process.env.GITHUB_TOKEN;
+    const githubTokenSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      'GitHubTokenSecret',
+      'nexthire/github-token'
+    );
 
-    if (githubToken) {
-      const amplifyApp = new amplify.CfnApp(this, 'FrontendApp', {
-        name: 'next-hire-frontend',
-        repository: GITHUB_REPO_URL,
-        accessToken: githubToken,
-        environmentVariables: [
-          { name: 'AMPLIFY_MONOREPO_APP_ROOT', value: 'next-hire-frontend' },
-          ...(backendServiceUrl ? [{ name: 'VITE_API_BASE_URL', value: backendServiceUrl }] : []),
-        ],
-        customRules: [
-          {
-            source: '/<*>',
-            target: '/index.html',
-            status: '404-200',
-          },
-        ],
-      });
+    const amplifyApp = new amplify.CfnApp(this, 'FrontendApp', {
+      name: 'next-hire-frontend',
+      repository: GITHUB_REPO_URL,
+      accessToken: githubTokenSecret.secretValue.unsafeUnwrap(),
+      environmentVariables: [
+        { name: 'AMPLIFY_MONOREPO_APP_ROOT', value: 'next-hire-frontend' },
+        ...(backendServiceUrl ? [{ name: 'VITE_API_BASE_URL', value: backendServiceUrl }] : []),
+      ],
+      customRules: [
+        {
+          source: '/<*>',
+          target: '/index.html',
+          status: '404-200',
+        },
+      ],
+    });
 
-      const amplifyBranch = new amplify.CfnBranch(this, 'FrontendBranch', {
-        appId: amplifyApp.attrAppId,
-        branchName: GITHUB_BRANCH,
-        enableAutoBuild: true,
-        environmentVariables: backendServiceUrl
-          ? [{ name: 'VITE_API_BASE_URL', value: backendServiceUrl }]
-          : [],
-      });
-      amplifyBranch.addDependency(amplifyApp);
+    const amplifyBranch = new amplify.CfnBranch(this, 'FrontendBranch', {
+      appId: amplifyApp.attrAppId,
+      branchName: GITHUB_BRANCH,
+      enableAutoBuild: true,
+      environmentVariables: backendServiceUrl
+        ? [{ name: 'VITE_API_BASE_URL', value: backendServiceUrl }]
+        : [],
+    });
+    amplifyBranch.addDependency(amplifyApp);
 
-      new cdk.CfnOutput(this, 'FrontendUrl', {
-        value: `https://${GITHUB_BRANCH}.${amplifyApp.attrDefaultDomain}`,
-        description: 'Amplify frontend URL',
-      });
-    }
+    new cdk.CfnOutput(this, 'FrontendUrl', {
+      value: `https://${GITHUB_BRANCH}.${amplifyApp.attrDefaultDomain}`,
+      description: 'Amplify frontend URL',
+    });
 
     // ------------------------------------------------------------------
     // Outputs

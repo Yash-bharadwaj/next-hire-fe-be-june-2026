@@ -1,7 +1,18 @@
 import nodemailer from "nodemailer";
+import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { logger } from "./logger";
 
-// Validate email configuration
+// EMAIL_PROVIDER=ses uses Amazon SES (via the App Runner instance role's IAM
+// permissions - no SMTP credentials needed). Anything else falls back to a
+// generic SMTP transport (nodemailer), used for local development.
+const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || "smtp";
+
+const sesClient =
+  EMAIL_PROVIDER === "ses"
+    ? new SESv2Client({ region: process.env.SES_REGION || "us-east-1" })
+    : null;
+
+// Validate SMTP configuration
 const validateEmailConfig = () => {
   const required = ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "FROM_EMAIL"];
   const missing = required.filter((key) => !process.env[key]);
@@ -13,10 +24,16 @@ const validateEmailConfig = () => {
   return true;
 };
 
-// Create transporter with validation
+// Create SMTP transporter with validation
 let transporter: nodemailer.Transporter | null = null;
 
-if (validateEmailConfig()) {
+if (EMAIL_PROVIDER === "ses") {
+  if (!process.env.FROM_EMAIL) {
+    logger.warn("EMAIL_PROVIDER=ses but FROM_EMAIL is not set");
+  } else {
+    logger.info(`Email transporter configured successfully (provider: ses, from: ${process.env.FROM_EMAIL})`);
+  }
+} else if (validateEmailConfig()) {
   try {
     transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -33,7 +50,7 @@ if (validateEmailConfig()) {
       if (error) {
         logger.error("Email transporter verification failed:", error);
       } else {
-        logger.info("Email transporter configured successfully");
+        logger.info("Email transporter configured successfully (provider: smtp)");
       }
     });
   } catch (error) {
@@ -50,16 +67,50 @@ export interface EmailOptions {
   text?: string;
 }
 
+const sendViaSES = async (options: EmailOptions): Promise<boolean> => {
+  try {
+    const fromName = process.env.FROM_NAME || "The Next Hire";
+    await sesClient!.send(
+      new SendEmailCommand({
+        FromEmailAddress: `${fromName} <${process.env.FROM_EMAIL}>`,
+        Destination: { ToAddresses: [options.to] },
+        Content: {
+          Simple: {
+            Subject: { Data: options.subject, Charset: "UTF-8" },
+            Body: {
+              ...(options.html && { Html: { Data: options.html, Charset: "UTF-8" } }),
+              ...(options.text && { Text: { Data: options.text, Charset: "UTF-8" } }),
+            },
+          },
+        },
+      })
+    );
+    logger.info(`Email sent successfully via SES to ${options.to}`);
+    return true;
+  } catch (error: any) {
+    logger.error("Failed to send email via SES:", {
+      error: error.message,
+      to: options.to,
+      subject: options.subject,
+    });
+    return false;
+  }
+};
+
 export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
+  if (!process.env.FROM_EMAIL) {
+    logger.error("FROM_EMAIL not configured in environment variables");
+    return false;
+  }
+
+  if (EMAIL_PROVIDER === "ses") {
+    return sendViaSES(options);
+  }
+
   if (!transporter) {
     logger.error(
       "Email transporter not configured. Please check your .env file."
     );
-    return false;
-  }
-
-  if (!process.env.FROM_EMAIL) {
-    logger.error("FROM_EMAIL not configured in environment variables");
     return false;
   }
 
