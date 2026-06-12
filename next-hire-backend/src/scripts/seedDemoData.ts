@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import { Op } from "sequelize";
+import bcrypt from "bcrypt";
 import {
   sequelize,
   applyAssociations,
@@ -26,9 +27,10 @@ const DEFAULT_PASSWORD = "Password@123";
 async function upsertUser(email: string, role: "candidate" | "recruiter" | "vendor") {
   let user = await User.findOne({ where: { email } });
   if (!user) {
+    const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, 12);
     user = await User.create({
       email,
-      password: DEFAULT_PASSWORD,
+      password: hashedPassword,
       role,
       status: "active",
       email_verified: true,
@@ -89,9 +91,20 @@ async function main() {
     },
   });
 
+  const jobYear = new Date().getFullYear();
+  const jobCount = await Job.count({
+    where: {
+      job_id: {
+        [Op.like]: `JOB-${jobYear}-%`,
+      },
+    },
+  });
+  const jobId = `JOB-${jobYear}-${String(jobCount + 1).padStart(3, "0")}`;
+
   const [job] = await Job.findOrCreate({
     where: { title: "Full Stack Engineer (Demo)", created_by: recruiterUser.id },
     defaults: {
+      job_id: jobId,
       created_by: recruiterUser.id,
       assigned_to: recruiterUser.id,
       title: "Full Stack Engineer (Demo)",
