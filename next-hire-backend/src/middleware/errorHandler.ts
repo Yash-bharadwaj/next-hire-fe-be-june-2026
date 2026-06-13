@@ -47,6 +47,11 @@ export const errorHandler = (
     message = "Token expired";
   }
 
+  // Multer file upload errors (file too large, unexpected field, etc.)
+  if (err.name === "MulterError") {
+    statusCode = 400;
+  }
+
   // Don't leak error details in production
   const response: any = {
     success: false,

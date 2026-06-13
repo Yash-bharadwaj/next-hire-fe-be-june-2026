@@ -622,12 +622,38 @@ export const getCurrentUserProfile = asyncHandler(
           email_verified: user.email_verified,
           first_name: profile?.first_name || null,
           last_name: profile?.last_name || null,
+          profile_image_url: user.profile_image_url || null,
           created_at: user.created_at,
           updated_at: user.updated_at,
           last_login_at: user.last_login_at,
         },
         profile: profileData,
       },
+    });
+  }
+);
+
+// Upload/update the current user's profile photo (all roles)
+export const uploadAvatar = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const userId = req.user?.userId;
+
+    if (!req.file) {
+      throw createError("Avatar image file is required", 400);
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw createError("User not found", 404);
+    }
+
+    const profile_image_url = `/uploads/avatars/${req.file.filename}`;
+    await user.update({ profile_image_url });
+
+    res.json({
+      success: true,
+      message: "Profile photo updated successfully",
+      data: { profile_image_url },
     });
   }
 );

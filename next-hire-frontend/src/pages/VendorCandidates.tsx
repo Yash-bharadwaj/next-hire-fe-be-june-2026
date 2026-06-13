@@ -27,16 +27,27 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
   AlertCircle,
   Briefcase,
   DollarSign,
+  Edit,
   MapPin,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Search,
+  Trash2,
   User,
 } from "lucide-react";
 import { useVendorCandidates } from "@/hooks/useVendor";
+import { Candidate } from "@/services/vendorService";
 import { toast } from "sonner";
 
 const VendorCandidates = () => {
@@ -51,6 +62,8 @@ const VendorCandidates = () => {
     searchCandidates,
     refresh,
     createCandidate,
+    updateCandidate,
+    deleteCandidate,
   } = useVendorCandidates({ page: 1, limit: 12 });
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -69,6 +82,24 @@ const VendorCandidates = () => {
     expected_salary: "",
     skills: "",
     bio: "",
+  });
+
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingCandidateId, setEditingCandidateId] = useState<string | null>(null);
+  const [editCandidate, setEditCandidate] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    phone: "",
+    location: "",
+    experience_years: "",
+    current_salary: "",
+    expected_salary: "",
+    skills: "",
+    bio: "",
+    availability_status: "available" as "available" | "not_available" | "interviewing",
   });
 
   if (!user || user.role !== "vendor") {
@@ -153,6 +184,90 @@ const VendorCandidates = () => {
       toast.error(err.message || "Failed to create candidate");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleEditClick = (candidate: Candidate) => {
+    setEditingCandidateId(candidate.id);
+    setEditCandidate({
+      first_name: candidate.first_name || "",
+      last_name: candidate.last_name || "",
+      email: candidate.email || candidate.user?.email || "",
+      phone: candidate.phone || "",
+      location: candidate.location || "",
+      experience_years:
+        candidate.experience_years !== undefined && candidate.experience_years !== null
+          ? String(candidate.experience_years)
+          : "",
+      current_salary:
+        candidate.current_salary !== undefined && candidate.current_salary !== null
+          ? String(candidate.current_salary)
+          : "",
+      expected_salary:
+        candidate.expected_salary !== undefined && candidate.expected_salary !== null
+          ? String(candidate.expected_salary)
+          : "",
+      skills: candidate.skills ? candidate.skills.join(", ") : "",
+      bio: candidate.bio || "",
+      availability_status: candidate.availability_status,
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateCandidate = async () => {
+    if (!editingCandidateId) return;
+
+    if (!editCandidate.first_name || !editCandidate.last_name) {
+      toast.error("First name and last name are required");
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      await updateCandidate(editingCandidateId, {
+        first_name: editCandidate.first_name.trim(),
+        last_name: editCandidate.last_name.trim(),
+        phone: editCandidate.phone || undefined,
+        location: editCandidate.location || undefined,
+        experience_years: editCandidate.experience_years
+          ? Number(editCandidate.experience_years)
+          : undefined,
+        current_salary: editCandidate.current_salary
+          ? Number(editCandidate.current_salary)
+          : undefined,
+        expected_salary: editCandidate.expected_salary
+          ? Number(editCandidate.expected_salary)
+          : undefined,
+        skills: editCandidate.skills
+          ? editCandidate.skills
+              .split(",")
+              .map((skill) => skill.trim())
+              .filter(Boolean)
+          : [],
+        bio: editCandidate.bio || undefined,
+        availability_status: editCandidate.availability_status,
+      });
+
+      setEditDialogOpen(false);
+      setEditingCandidateId(null);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update candidate");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDeleteCandidate = async (candidate: Candidate) => {
+    const name = `${candidate.first_name} ${candidate.last_name}`.trim();
+    if (!window.confirm(`Remove ${name || "this candidate"} from your pool? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingId(candidate.id);
+    try {
+      await deleteCandidate(candidate.id);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -288,9 +403,37 @@ const VendorCandidates = () => {
                         {candidate.email || candidate.user?.email || "Email not available"}
                       </p>
                     </div>
-                    <Badge className={getAvailabilityBadge(candidate.availability_status)}>
-                      {candidate.availability_status.replace("_", " ")}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge className={getAvailabilityBadge(candidate.availability_status)}>
+                        {candidate.availability_status.replace("_", " ")}
+                      </Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            disabled={deletingId === candidate.id}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEditClick(candidate)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-red-600 focus:text-red-600"
+                            onClick={() => handleDeleteCandidate(candidate)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 text-sm text-gray-700">
                     <div className="flex items-center gap-2">
@@ -513,6 +656,176 @@ const VendorCandidates = () => {
             <Button onClick={handleCreateCandidate} disabled={creating}>
               {creating && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
               Save Candidate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Candidate</DialogTitle>
+            <DialogDescription>
+              Update this candidate's information.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                First Name *
+              </label>
+              <Input
+                value={editCandidate.first_name}
+                onChange={(e) =>
+                  setEditCandidate((prev) => ({ ...prev, first_name: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Last Name *
+              </label>
+              <Input
+                value={editCandidate.last_name}
+                onChange={(e) =>
+                  setEditCandidate((prev) => ({ ...prev, last_name: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Email
+              </label>
+              <Input type="email" value={editCandidate.email} disabled />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Phone
+              </label>
+              <Input
+                value={editCandidate.phone}
+                onChange={(e) =>
+                  setEditCandidate((prev) => ({ ...prev, phone: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Location
+              </label>
+              <Input
+                value={editCandidate.location}
+                onChange={(e) =>
+                  setEditCandidate((prev) => ({ ...prev, location: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Availability
+              </label>
+              <Select
+                value={editCandidate.availability_status}
+                onValueChange={(value) =>
+                  setEditCandidate((prev) => ({
+                    ...prev,
+                    availability_status: value as "available" | "not_available" | "interviewing",
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="available">Available</SelectItem>
+                  <SelectItem value="interviewing">Interviewing</SelectItem>
+                  <SelectItem value="not_available">Not Available</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Experience (years)
+              </label>
+              <Input
+                type="number"
+                value={editCandidate.experience_years}
+                onChange={(e) =>
+                  setEditCandidate((prev) => ({
+                    ...prev,
+                    experience_years: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Current Salary
+              </label>
+              <Input
+                type="number"
+                value={editCandidate.current_salary}
+                onChange={(e) =>
+                  setEditCandidate((prev) => ({
+                    ...prev,
+                    current_salary: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Expected Salary
+              </label>
+              <Input
+                type="number"
+                value={editCandidate.expected_salary}
+                onChange={(e) =>
+                  setEditCandidate((prev) => ({
+                    ...prev,
+                    expected_salary: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Skills (comma separated)
+              </label>
+              <Input
+                value={editCandidate.skills}
+                onChange={(e) =>
+                  setEditCandidate((prev) => ({ ...prev, skills: e.target.value }))
+                }
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Summary / Notes
+              </label>
+              <Textarea
+                rows={3}
+                value={editCandidate.bio}
+                onChange={(e) =>
+                  setEditCandidate((prev) => ({ ...prev, bio: e.target.value }))
+                }
+                placeholder="Share highlights about this candidate"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateCandidate} disabled={updating}>
+              {updating && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+              Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>

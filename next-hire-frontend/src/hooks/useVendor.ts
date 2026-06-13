@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { 
-  vendorService, 
-  Job, 
+import {
+  vendorService,
+  Job,
   Candidate,
   CreateCandidateRequest,
+  UpdateCandidateRequest,
   Submission,
   SubmitCandidateRequest,
   SubmissionStatus
@@ -167,6 +168,54 @@ export const useVendorCandidates = (initialFilters: {
     }
   }, [user?.role, fetchCandidates]);
 
+  const updateCandidate = useCallback(async (candidateId: string, data: UpdateCandidateRequest): Promise<Candidate | null> => {
+    if (user?.role !== "vendor") {
+      toast.error("Only vendors can update candidates");
+      return null;
+    }
+
+    try {
+      setLoading(true);
+      const response = await vendorService.updateCandidate(candidateId, data);
+      toast.success("Candidate updated successfully!");
+
+      // Refresh the candidates list
+      fetchCandidates();
+
+      return response.data;
+    } catch (err: any) {
+      const errorMessage = err.message || "Failed to update candidate";
+      toast.error(errorMessage);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.role, fetchCandidates]);
+
+  const deleteCandidate = useCallback(async (candidateId: string): Promise<boolean> => {
+    if (user?.role !== "vendor") {
+      toast.error("Only vendors can delete candidates");
+      return false;
+    }
+
+    try {
+      setLoading(true);
+      await vendorService.deleteCandidate(candidateId);
+      toast.success("Candidate removed from your pool");
+
+      // Refresh the candidates list
+      fetchCandidates();
+
+      return true;
+    } catch (err: any) {
+      const errorMessage = err.message || "Failed to delete candidate";
+      toast.error(errorMessage);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.role, fetchCandidates]);
+
   const searchCandidates = useCallback((searchFilters: any) => {
     fetchCandidates(searchFilters);
   }, [fetchCandidates]);
@@ -195,6 +244,8 @@ export const useVendorCandidates = (initialFilters: {
     pagination,
     filters,
     createCandidate,
+    updateCandidate,
+    deleteCandidate,
     searchCandidates,
     loadMore,
     refresh,

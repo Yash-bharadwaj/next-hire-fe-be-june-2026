@@ -228,6 +228,35 @@ export const ensureCandidateSkillsSchema = async () => {
 };
 
 /**
+ * Ensure users.profile_image_url exists (profile photo uploads, all roles).
+ */
+export const ensureUserProfileImageColumn = async () => {
+  const queryInterface = sequelize.getQueryInterface();
+
+  try {
+    const tables: string[] = await queryInterface.showAllTables();
+    if (!tables.includes("users")) {
+      logger.warn('Skipping ensureUserProfileImageColumn: "users" table not found yet.');
+      return;
+    }
+
+    const tableDefinition = await queryInterface.describeTable("users");
+    if (tableDefinition.profile_image_url) {
+      return; // Column already exists
+    }
+
+    logger.info("Adding users.profile_image_url column (profile photo upload)");
+    await queryInterface.addColumn("users", "profile_image_url", {
+      type: DataTypes.STRING,
+      allowNull: true,
+    });
+  } catch (error) {
+    logger.error("ensureUserProfileImageColumn failed", error);
+    throw error;
+  }
+};
+
+/**
  * Ensure submissions schema/indexes are correct.
  * Some legacy schemas created immutable autoindexes on job_id and candidate_id individually,
  * which block multiple applications per candidate across different jobs.

@@ -117,6 +117,24 @@ class CandidateService {
   }
 
   /**
+   * Upload resume file (PDF/DOC/DOCX)
+   */
+  async uploadResumeFile(file: File): Promise<UploadResumeResponse> {
+    try {
+      const formData = new FormData();
+      formData.append("resume", file);
+
+      const response = await apiClient.upload<UploadResumeResponse["data"]>(
+        "/candidate/resume/upload",
+        formData
+      );
+      return response.data as UploadResumeResponse;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
    * Fetch onboarding tasks and placements after hire
    */
   async getOnboarding(): Promise<OnboardingResponse> {

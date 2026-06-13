@@ -9,10 +9,12 @@ import {
   getMySubmissions,
   getUpcomingInterviews,
   uploadResume,
+  uploadResumeFile,
   getOnboardingTasks,
 } from "../controllers/candidateController";
 import { authenticate, candidateOnly } from "../middleware/auth";
 import { validate } from "../middleware/validation";
+import { resumeUpload } from "../middleware/upload";
 
 const router = Router();
 
@@ -152,6 +154,7 @@ router.put("/profile", updateProfileValidation, validate, updateProfile);
 
 // Resume upload
 router.post("/resume", uploadResumeValidation, validate, uploadResume);
+router.post("/resume/upload", resumeUpload.single("resume"), uploadResumeFile);
 
 // Job browsing and application
 router.get("/jobs", browseJobsValidation, validate, browseJobs);

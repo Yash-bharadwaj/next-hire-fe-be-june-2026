@@ -12,6 +12,8 @@ export interface RecruiterProfile {
   company_size?: string;
   industry?: string;
   location?: string;
+  job_title?: string;
+  department?: string;
   bio?: string;
   created_at?: string;
   updated_at?: string;
@@ -21,7 +23,11 @@ export interface UpdateRecruiterProfileRequest {
   first_name?: string;
   last_name?: string;
   phone?: string;
+  company_name?: string;
   company_website?: string;
+  job_title?: string;
+  department?: string;
+  bio?: string;
 }
 
 export interface RecruiterProfileResponse {

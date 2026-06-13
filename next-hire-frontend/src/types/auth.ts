@@ -10,6 +10,7 @@ export interface User {
   email_verified: boolean;
   first_name?: string;
   last_name?: string;
+  profile_image_url?: string | null;
   created_at: string;
   updated_at: string;
   last_login_at?: string | null;

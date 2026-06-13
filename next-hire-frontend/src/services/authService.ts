@@ -209,6 +209,25 @@ class AuthService {
   }
 
   /**
+   * Upload/update the current user's profile photo (all roles)
+   */
+  async uploadAvatar(file: File): Promise<{ profile_image_url: string }> {
+    try {
+      const formData = new FormData();
+      formData.append("avatar", file);
+
+      const response = await apiClient.upload<{ profile_image_url: string }>(
+        "/auth/me/avatar",
+        formData
+      );
+
+      return response.data.data!;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
    * Get current user from token/storage
    */
   getCurrentUser(): User | null {

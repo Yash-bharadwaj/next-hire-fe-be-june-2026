@@ -34,6 +34,7 @@ interface DataGridProps {
   pageSizeOptions?: number[];
   checkboxSelection?: boolean;
   onRowClick?: (row: any) => void;
+  onSelectionChange?: (selectedRows: any[]) => void;
   initialFilters?: Record<string, string[]>;
   onExport?: () => void;
   exportLoading?: boolean;
@@ -45,6 +46,7 @@ export const DataGrid = ({
   pageSizeOptions = [5, 10, 25, 50],
   checkboxSelection = false,
   onRowClick,
+  onSelectionChange,
   initialFilters = {},
   onExport,
   exportLoading = false,
@@ -67,6 +69,16 @@ export const DataGrid = ({
     setColumnFilters(initialFilters);
     setCurrentPage(1);
   }, [initialFilters]);
+
+  // Drop selections for rows that no longer exist (e.g. after a delete/refresh)
+  useEffect(() => {
+    setSelectedRows(prev => prev.filter(selected => rows.some(row => row.id === selected.id)));
+  }, [rows]);
+
+  // Notify parent whenever the selection changes
+  useEffect(() => {
+    onSelectionChange?.(selectedRows);
+  }, [selectedRows, onSelectionChange]);
 
   // Get visible columns
   const visibleColumns = useMemo(() => 

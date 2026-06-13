@@ -13,9 +13,11 @@ import {
   changePassword,
   logout,
   getCurrentUserProfile,
+  uploadAvatar,
 } from "../controllers/authController";
 import { authenticate } from "../middleware/auth";
 import { validate } from "../middleware/validation";
+import { avatarUpload } from "../middleware/upload";
 
 const router = Router();
 
@@ -137,5 +139,11 @@ router.post(
 );
 router.post("/logout", authenticate, logout);
 router.get("/me", authenticate, getCurrentUserProfile);
+router.post(
+  "/me/avatar",
+  authenticate,
+  avatarUpload.single("avatar"),
+  uploadAvatar
+);
 
 export default router;

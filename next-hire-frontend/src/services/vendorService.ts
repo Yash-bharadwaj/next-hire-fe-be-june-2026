@@ -101,6 +101,7 @@ export interface Candidate {
   linkedin_url?: string;
   portfolio_url?: string;
   skills?: string[];
+  bio?: string;
   availability_status: "available" | "not_available" | "interviewing";
   created_by: string;
   created_at: string;
@@ -126,6 +127,22 @@ export interface CreateCandidateRequest {
   portfolio_url?: string;
   skills?: string[];
   bio?: string;
+}
+
+export interface UpdateCandidateRequest {
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  location?: string;
+  current_salary?: number;
+  expected_salary?: number;
+  experience_years?: number;
+  resume_url?: string;
+  linkedin_url?: string;
+  portfolio_url?: string;
+  skills?: string[];
+  bio?: string;
+  availability_status?: "available" | "not_available" | "interviewing";
 }
 
 // Submission types
@@ -371,6 +388,38 @@ class VendorService {
 
       const response = await apiClient.get<CandidatesResponse>(
         `/vendor/candidates?${params.toString()}`
+      );
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Update a candidate in the vendor's pool
+   */
+  async updateCandidate(
+    candidateId: string,
+    data: UpdateCandidateRequest
+  ): Promise<SingleCandidateResponse> {
+    try {
+      const response = await apiClient.put<SingleCandidateResponse>(
+        `/vendor/candidates/${candidateId}`,
+        data
+      );
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Remove a candidate from the vendor's pool
+   */
+  async deleteCandidate(candidateId: string): Promise<ApiResponse<null>> {
+    try {
+      const response = await apiClient.delete<ApiResponse<null>>(
+        `/vendor/candidates/${candidateId}`
       );
       return response.data;
     } catch (error: any) {

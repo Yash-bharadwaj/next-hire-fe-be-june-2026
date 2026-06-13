@@ -70,11 +70,13 @@ const BusinessPartners = () => {
     refresh: refreshStats
   } = useBusinessPartnerStats();
 
-  const { createBusinessPartner } = useBusinessPartnerManagement();
+  const { createBusinessPartner, deleteBusinessPartner } = useBusinessPartnerManagement();
 
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({});
   const [activeCardFilter, setActiveCardFilter] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [selectedPartners, setSelectedPartners] = useState<any[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const handleCreatePartner = async (data: CreateBusinessPartnerRequest) => {
     const created = await createBusinessPartner(data);
@@ -84,6 +86,30 @@ const BusinessPartners = () => {
       return true;
     }
     return false;
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedPartners.length === 0) return;
+
+    const confirmed = window.confirm(
+      `Delete ${selectedPartners.length} selected business partner${selectedPartners.length > 1 ? "s" : ""}? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setBulkDeleting(true);
+    try {
+      const results = await Promise.all(
+        selectedPartners.map((partner) => deleteBusinessPartner(partner.id))
+      );
+      const successCount = results.filter(Boolean).length;
+      if (successCount > 0) {
+        setSelectedPartners([]);
+        refresh();
+        refreshStats();
+      }
+    } finally {
+      setBulkDeleting(false);
+    }
   };
 
   // Stats come from a dedicated hook — stable regardless of list filters
@@ -425,9 +451,13 @@ const BusinessPartners = () => {
                 <UserCheck className="w-4 h-4 mr-2" />
                 Update status
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleBulkDelete}
+                disabled={selectedPartners.length === 0 || bulkDeleting}
+                className={selectedPartners.length > 0 ? "text-red-600 focus:text-red-600" : ""}
+              >
                 <Trash2 className="w-4 h-4 mr-2" />
-                Bulk delete
+                Bulk delete{selectedPartners.length > 0 ? ` (${selectedPartners.length})` : ""}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
@@ -558,6 +588,7 @@ const BusinessPartners = () => {
                   pageSizeOptions={[5, 10, 25, 50]}
                   checkboxSelection
                   onRowClick={(row) => handleViewDetails(row.id)}
+                  onSelectionChange={setSelectedPartners}
                   initialFilters={activeFilters}
                 />
               </div>

@@ -668,3 +668,127 @@ export const getMyCandidates = asyncHandler(
     });
   }
 );
+
+// Update a candidate in the vendor's pool
+export const updateCandidate = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const vendorUserId = req.user?.userId;
+    if (!vendorUserId) {
+      throw createError("Unable to identify vendor user", 401);
+    }
+
+    const { candidateId } = req.params;
+
+    const candidate = await Candidate.findOne({
+      where: { id: candidateId, created_by: vendorUserId },
+    });
+
+    if (!candidate) {
+      throw createError(
+        "Candidate not found or you do not have permission to update it",
+        404
+      );
+    }
+
+    const {
+      first_name,
+      last_name,
+      phone,
+      location,
+      current_salary,
+      expected_salary,
+      experience_years,
+      resume_url,
+      linkedin_url,
+      portfolio_url,
+      skills,
+      bio,
+      availability_status,
+    } = req.body;
+
+    const updates: Record<string, unknown> = {
+      first_name,
+      last_name,
+      phone,
+      location,
+      current_salary,
+      expected_salary,
+      experience_years,
+      resume_url,
+      linkedin_url,
+      portfolio_url,
+      skills,
+      bio,
+      availability_status,
+    };
+
+    Object.keys(updates).forEach((key) => {
+      if (updates[key] === undefined) {
+        delete updates[key];
+      }
+    });
+
+    await candidate.update(updates);
+
+    const updatedCandidate = await Candidate.findByPk(candidate.id, {
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "email", "status"],
+        },
+      ],
+    });
+
+    logger.info(`Vendor ${vendorUserId} updated candidate ${candidate.id}`);
+
+    res.json({
+      success: true,
+      message: "Candidate updated successfully",
+      data: updatedCandidate,
+    });
+  }
+);
+
+// Remove a candidate from the vendor's pool
+export const deleteCandidate = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const vendorUserId = req.user?.userId;
+    if (!vendorUserId) {
+      throw createError("Unable to identify vendor user", 401);
+    }
+
+    const { candidateId } = req.params;
+
+    const candidate = await Candidate.findOne({
+      where: { id: candidateId, created_by: vendorUserId },
+    });
+
+    if (!candidate) {
+      throw createError(
+        "Candidate not found or you do not have permission to delete it",
+        404
+      );
+    }
+
+    const candidateUserId = candidate.user_id;
+
+    await candidate.destroy();
+
+    // Best-effort cleanup of the placeholder user account created alongside the candidate profile
+    try {
+      await User.destroy({ where: { id: candidateUserId } });
+    } catch (cleanupError) {
+      logger.warn(
+        `Failed to clean up user account ${candidateUserId} after deleting candidate ${candidateId}: ${cleanupError}`
+      );
+    }
+
+    logger.info(`Vendor ${vendorUserId} deleted candidate ${candidateId}`);
+
+    res.json({
+      success: true,
+      message: "Candidate removed from your pool",
+    });
+  }
+);

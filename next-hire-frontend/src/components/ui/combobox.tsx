@@ -73,6 +73,7 @@ export function Combobox({
 
   return (
     <Popover
+      modal
       open={open}
       onOpenChange={(next) => {
         setOpen(next);

@@ -10,6 +10,8 @@ import {
   getSubmissionStatus,
   createCandidate,
   getMyCandidates,
+  updateCandidate,
+  deleteCandidate,
 } from "../controllers/vendorController";
 import { authenticate, vendorOnly } from "../middleware/auth";
 import { validate } from "../middleware/validation";
@@ -189,6 +191,54 @@ const getCandidatesValidation = [
     .withMessage("Invalid availability status"),
 ];
 
+const candidateIdValidation = [
+  param("candidateId").isUUID().withMessage("Valid candidate ID is required"),
+];
+
+const updateCandidateValidation = [
+  ...candidateIdValidation,
+  body("first_name")
+    .optional()
+    .notEmpty()
+    .isLength({ max: 100 })
+    .withMessage("First name must be less than 100 characters"),
+  body("last_name")
+    .optional()
+    .notEmpty()
+    .isLength({ max: 100 })
+    .withMessage("Last name must be less than 100 characters"),
+  body("phone")
+    .optional()
+    .isMobilePhone("any")
+    .withMessage("Valid phone number is required"),
+  body("current_salary")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("Current salary must be positive"),
+  body("expected_salary")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("Expected salary must be positive"),
+  body("experience_years")
+    .optional()
+    .isInt({ min: 0, max: 50 })
+    .withMessage("Experience years must be between 0 and 50"),
+  body("resume_url").optional().isURL().withMessage("Resume URL must be valid"),
+  body("linkedin_url")
+    .optional()
+    .isURL()
+    .withMessage("LinkedIn URL must be valid"),
+  body("portfolio_url")
+    .optional()
+    .isURL()
+    .withMessage("Portfolio URL must be valid"),
+  body("skills").optional().isArray().withMessage("Skills must be an array"),
+  body("availability_status")
+    .optional()
+    .isIn(["available", "not_available", "interviewing"])
+    .withMessage("Invalid availability status"),
+];
+
 // Routes
 
 // Profile management
@@ -227,5 +277,17 @@ router.post(
   createCandidate
 );
 router.get("/candidates", getCandidatesValidation, validate, getMyCandidates);
+router.put(
+  "/candidates/:candidateId",
+  updateCandidateValidation,
+  validate,
+  updateCandidate
+);
+router.delete(
+  "/candidates/:candidateId",
+  candidateIdValidation,
+  validate,
+  deleteCandidate
+);
 
 export default router;

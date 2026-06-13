@@ -14,6 +14,7 @@ export interface UserAttributes {
   reset_token?: string;
   reset_token_expires_at?: Date;
   last_login_at?: Date;
+  profile_image_url?: string;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -40,6 +41,7 @@ export class User
   public reset_token?: string;
   public reset_token_expires_at?: Date;
   public last_login_at?: Date;
+  public profile_image_url?: string;
 
   // Timestamps
   public readonly created_at!: Date;
@@ -109,6 +111,10 @@ User.init(
     },
     last_login_at: {
       type: DataTypes.DATE,
+      allowNull: true,
+    },
+    profile_image_url: {
+      type: DataTypes.STRING,
       allowNull: true,
     },
   },

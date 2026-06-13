@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { API_BASE_URL } from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -39,9 +40,9 @@ import {
   Trash2,
   Loader2,
   Building2,
-  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
+import { authService } from "@/services/authService";
 import {
   candidateService,
   CandidateProfile,
@@ -65,10 +66,17 @@ import {
   VendorProfile,
   UpdateVendorProfileRequest,
 } from "@/services/vendorService";
+import {
+  recruiterService,
+  RecruiterProfile,
+  UpdateRecruiterProfileRequest,
+} from "@/services/recruiterService";
 
 export default function MyProfile() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const isVendor = user?.role === "vendor";
+  const isRecruiter = user?.role === "recruiter";
+  const isCandidate = !isVendor && !isRecruiter;
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -113,17 +121,11 @@ export default function MyProfile() {
     is_primary: false,
   });
 
-  // Mock documents for now - will be integrated later
-  const [documents, setDocuments] = useState([
-    {
-      id: 1,
-      name: "Resume_2024.pdf",
-      type: "Resume",
-      size: "245 KB",
-      uploadDate: "2024-01-15",
-      isPrimary: true,
-    },
-  ]);
+  // Avatar / resume upload state
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [resumeUploading, setResumeUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const resumeInputRef = useRef<HTMLInputElement>(null);
 
   // Form data state
   const [formData, setFormData] = useState({
@@ -164,10 +166,24 @@ export default function MyProfile() {
     specializations: [] as string[],
   });
 
+  // Recruiter profile state
+  const [recruiterProfile, setRecruiterProfile] =
+    useState<RecruiterProfile | null>(null);
+  const [recruiterFormData, setRecruiterFormData] = useState({
+    first_name: "",
+    last_name: "",
+    phone: "",
+    company_name: "",
+    company_website: "",
+    job_title: "",
+    department: "",
+    bio: "",
+  });
+
   // Load profile data on component mount
   useEffect(() => {
     loadProfile();
-    if (!isVendor) {
+    if (isCandidate) {
       loadExperiences();
       loadSkills();
     }
@@ -187,6 +203,17 @@ export default function MyProfile() {
     specializations: profileData.specializations || [],
   });
 
+  const mapRecruiterProfileToForm = (profileData: RecruiterProfile) => ({
+    first_name: profileData.first_name || "",
+    last_name: profileData.last_name || "",
+    phone: profileData.phone || "",
+    company_name: profileData.company_name || "",
+    company_website: profileData.company_website || "",
+    job_title: profileData.job_title || "",
+    department: profileData.department || "",
+    bio: profileData.bio || "",
+  });
+
   const loadProfile = async () => {
     try {
       setIsLoading(true);
@@ -196,6 +223,14 @@ export default function MyProfile() {
         const profileData = response.data.profile;
         setVendorProfile(profileData);
         setVendorFormData(mapVendorProfileToForm(profileData));
+        return;
+      }
+
+      if (isRecruiter) {
+        const response = await recruiterService.getProfile();
+        const profileData = response.data.profile;
+        setRecruiterProfile(profileData);
+        setRecruiterFormData(mapRecruiterProfileToForm(profileData));
         return;
       }
 
@@ -286,6 +321,27 @@ export default function MyProfile() {
         return;
       }
 
+      if (isRecruiter) {
+        const updateData: UpdateRecruiterProfileRequest = {
+          first_name: recruiterFormData.first_name || undefined,
+          last_name: recruiterFormData.last_name || undefined,
+          phone: recruiterFormData.phone || undefined,
+          company_name: recruiterFormData.company_name || undefined,
+          company_website: recruiterFormData.company_website || undefined,
+          job_title: recruiterFormData.job_title || undefined,
+          department: recruiterFormData.department || undefined,
+          bio: recruiterFormData.bio || undefined,
+        };
+
+        const response = await recruiterService.updateProfile(updateData);
+        const updated = response.data!;
+        setRecruiterProfile(updated);
+        setRecruiterFormData(mapRecruiterProfileToForm(updated));
+        setIsEditing(false);
+        toast.success("Profile updated successfully!");
+        return;
+      }
+
       // Prepare update data
       const updateData: UpdateProfileRequest = {
         first_name: formData.first_name || undefined,
@@ -333,6 +389,14 @@ export default function MyProfile() {
     if (isVendor) {
       if (vendorProfile) {
         setVendorFormData(mapVendorProfileToForm(vendorProfile));
+      }
+      setIsEditing(false);
+      return;
+    }
+
+    if (isRecruiter) {
+      if (recruiterProfile) {
+        setRecruiterFormData(mapRecruiterProfileToForm(recruiterProfile));
       }
       setIsEditing(false);
       return;
@@ -544,6 +608,51 @@ export default function MyProfile() {
     setEditingSkill(skill.id);
   };
 
+  // Profile photo upload (all roles)
+  const handleAvatarFileSelected = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setAvatarUploading(true);
+    try {
+      const { profile_image_url } = await authService.uploadAvatar(file);
+      if (user) {
+        setUser({ ...user, profile_image_url });
+      }
+      toast.success("Profile photo updated successfully!");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to upload profile photo");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  // Resume upload (candidates only)
+  const handleResumeFileSelected = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setResumeUploading(true);
+    try {
+      const { data } = await candidateService.uploadResumeFile(file);
+      setProfile((prev) => (prev ? { ...prev, resume_url: data.resume_url } : prev));
+      setOriginalProfile((prev) =>
+        prev ? { ...prev, resume_url: data.resume_url } : prev
+      );
+      toast.success("Resume uploaded successfully!");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to upload resume");
+    } finally {
+      setResumeUploading(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -582,18 +691,18 @@ export default function MyProfile() {
       </div>
 
       <Tabs defaultValue="personal" className="space-y-6">
-        <TabsList className={`grid w-full ${isVendor ? "grid-cols-4" : "grid-cols-6"}`}>
+        <TabsList className={`grid w-full ${isCandidate ? "grid-cols-6" : "grid-cols-3"}`}>
           <TabsTrigger value="personal">Personal Info</TabsTrigger>
           <TabsTrigger value="professional">
-            {isVendor ? "Company Info" : "Professional"}
+            {isCandidate ? "Professional" : "Company Info"}
           </TabsTrigger>
-          {!isVendor && (
+          {isCandidate && (
             <>
               <TabsTrigger value="experience">Experience</TabsTrigger>
               <TabsTrigger value="skills">Skills</TabsTrigger>
+              <TabsTrigger value="documents">Documents</TabsTrigger>
             </>
           )}
-          <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
         </TabsList>
 
@@ -611,13 +720,27 @@ export default function MyProfile() {
             <CardContent className="space-y-6">
               <div className="flex items-center space-x-6">
                 <Avatar className="w-24 h-24">
-                  <AvatarImage src="/api/placeholder/150/150" />
+                  {user?.profile_image_url && (
+                    <AvatarImage
+                      src={`${API_BASE_URL}${user.profile_image_url}`}
+                    />
+                  )}
                   <AvatarFallback className="text-xl bg-green-100 text-green-700">
                     {isVendor
                       ? (vendorFormData.contact_person_name ||
                           vendorFormData.company_name ||
                           user?.email ||
                           "U")[0]?.toUpperCase()
+                      : isRecruiter
+                      ? ((recruiterFormData.first_name || "") +
+                          " " +
+                          (recruiterFormData.last_name || ""))
+                          .trim()
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("") ||
+                        user?.email?.[0]?.toUpperCase() ||
+                        "U"
                       : (
                           (formData.first_name || "") +
                           " " +
@@ -633,15 +756,50 @@ export default function MyProfile() {
                 </Avatar>
                 {isEditing && (
                   <div className="space-y-2">
-                    <Button variant="outline" size="sm">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Upload Photo
+                    <input
+                      type="file"
+                      ref={avatarInputRef}
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={handleAvatarFileSelected}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={avatarUploading}
+                    >
+                      {avatarUploading ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Plus className="w-4 h-4 mr-2" />
+                      )}
+                      {avatarUploading ? "Uploading..." : "Upload Photo"}
                     </Button>
-                    {!isVendor && (
-                      <Button variant="outline" size="sm" className="w-full">
-                        <FileText className="w-4 h-4 mr-2" />
-                        Upload Resume
-                      </Button>
+                    {isCandidate && (
+                      <>
+                        <input
+                          type="file"
+                          ref={resumeInputRef}
+                          accept=".pdf,.doc,.docx"
+                          className="hidden"
+                          onChange={handleResumeFileSelected}
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => resumeInputRef.current?.click()}
+                          disabled={resumeUploading}
+                        >
+                          {resumeUploading ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <FileText className="w-4 h-4 mr-2" />
+                          )}
+                          {resumeUploading ? "Uploading..." : "Upload Resume"}
+                        </Button>
+                      </>
                     )}
                   </div>
                 )}
@@ -755,6 +913,86 @@ export default function MyProfile() {
                     />
                   </div>
                 </div>
+              ) : isRecruiter ? (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="first_name">First Name</Label>
+                      <Input
+                        id="first_name"
+                        value={recruiterFormData.first_name}
+                        onChange={(e) =>
+                          setRecruiterFormData({
+                            ...recruiterFormData,
+                            first_name: e.target.value,
+                          })
+                        }
+                        disabled={!isEditing}
+                        placeholder="Enter your first name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="last_name">Last Name</Label>
+                      <Input
+                        id="last_name"
+                        value={recruiterFormData.last_name}
+                        onChange={(e) =>
+                          setRecruiterFormData({
+                            ...recruiterFormData,
+                            last_name: e.target.value,
+                          })
+                        }
+                        disabled={!isEditing}
+                        placeholder="Enter your last name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={user?.email || ""}
+                        disabled={true}
+                        className="bg-gray-50"
+                      />
+                      <p className="text-xs text-gray-500">
+                        Email cannot be changed
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input
+                        id="phone"
+                        value={recruiterFormData.phone}
+                        onChange={(e) =>
+                          setRecruiterFormData({
+                            ...recruiterFormData,
+                            phone: e.target.value,
+                          })
+                        }
+                        disabled={!isEditing}
+                        placeholder="Enter your phone number"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="bio">Bio</Label>
+                    <Textarea
+                      id="bio"
+                      value={recruiterFormData.bio}
+                      onChange={(e) =>
+                        setRecruiterFormData({
+                          ...recruiterFormData,
+                          bio: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      rows={4}
+                      placeholder="Tell us about yourself..."
+                    />
+                  </div>
+                </>
               ) : (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1012,6 +1250,83 @@ export default function MyProfile() {
                 </div>
               </CardContent>
             </Card>
+          ) : isRecruiter ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5" />
+                  Company Information
+                </CardTitle>
+                <CardDescription>
+                  Update your company and role details
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="company_name">Company Name</Label>
+                    <Input
+                      id="company_name"
+                      value={recruiterFormData.company_name}
+                      onChange={(e) =>
+                        setRecruiterFormData({
+                          ...recruiterFormData,
+                          company_name: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="Enter company name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company_website">Company Website</Label>
+                    <Input
+                      id="company_website"
+                      type="url"
+                      value={recruiterFormData.company_website}
+                      onChange={(e) =>
+                        setRecruiterFormData({
+                          ...recruiterFormData,
+                          company_website: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="https://yourcompany.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="job_title">Job Title</Label>
+                    <Input
+                      id="job_title"
+                      value={recruiterFormData.job_title}
+                      onChange={(e) =>
+                        setRecruiterFormData({
+                          ...recruiterFormData,
+                          job_title: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="e.g., Senior Technical Recruiter"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="department">Department</Label>
+                    <Input
+                      id="department"
+                      value={recruiterFormData.department}
+                      onChange={(e) =>
+                        setRecruiterFormData({
+                          ...recruiterFormData,
+                          department: e.target.value,
+                        })
+                      }
+                      disabled={!isEditing}
+                      placeholder="e.g., Talent Acquisition"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           ) : (
             <Card>
               <CardHeader>
@@ -1115,7 +1430,7 @@ export default function MyProfile() {
           )}
         </TabsContent>
 
-        {!isVendor && (
+        {isCandidate && (
         <>
         <TabsContent value="experience" className="space-y-6">
           <Card>
@@ -1653,7 +1968,7 @@ export default function MyProfile() {
                 Documents
               </CardTitle>
               <CardDescription>
-                Manage your resumes, cover letters, and other documents
+                Manage your resume
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1662,70 +1977,67 @@ export default function MyProfile() {
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                   <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                   <h3 className="text-lg font-medium text-gray-900 mb-1">
-                    Upload Documents
+                    Upload Resume
                   </h3>
                   <p className="text-gray-600 mb-4">
-                    Drag and drop files here, or click to select
+                    PDF, DOC, or DOCX up to 5MB
                   </p>
-                  <Button variant="outline">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Choose Files
+                  <input
+                    type="file"
+                    ref={resumeInputRef}
+                    accept=".pdf,.doc,.docx"
+                    className="hidden"
+                    onChange={handleResumeFileSelected}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => resumeInputRef.current?.click()}
+                    disabled={resumeUploading}
+                  >
+                    {resumeUploading ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Plus className="w-4 h-4 mr-2" />
+                    )}
+                    {resumeUploading ? "Uploading..." : "Choose File"}
                   </Button>
                 </div>
 
-                {/* Documents List */}
+                {/* Resume */}
                 <div className="space-y-3">
-                  <h4 className="font-medium text-gray-900">Your Documents</h4>
-                  {documents.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
-                    >
+                  <h4 className="font-medium text-gray-900">Your Resume</h4>
+                  {profile?.resume_url ? (
+                    <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
                       <div className="flex items-center space-x-3">
                         <FileText className="w-8 h-8 text-blue-600" />
                         <div>
-                          <div className="flex items-center gap-2">
-                            <h5 className="font-medium text-gray-900">
-                              {doc.name}
-                            </h5>
-                            {doc.isPrimary && (
-                              <Badge
-                                variant="default"
-                                className="bg-green-100 text-green-800"
-                              >
-                                Primary
-                              </Badge>
-                            )}
-                          </div>
+                          <h5 className="font-medium text-gray-900">Resume</h5>
                           <p className="text-sm text-gray-500">
-                            {doc.type} • {doc.size} • Uploaded {doc.uploadDate}
+                            {profile.resume_url.split("/").pop()}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Button size="sm" variant="ghost">
-                          <Download className="w-4 h-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost">
-                          <Edit className="w-4 h-4" />
-                        </Button>
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="text-red-600 hover:text-red-700"
+                          onClick={() =>
+                            window.open(
+                              `${API_BASE_URL}${profile.resume_url}`,
+                              "_blank"
+                            )
+                          }
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Download className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>
-                  ))}
-
-                  {documents.length === 0 && (
+                  ) : (
                     <div className="text-center py-8 text-gray-500">
                       <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                      <p>No documents uploaded yet</p>
+                      <p>No resume uploaded yet</p>
                       <p className="text-sm">
-                        Upload your resume and other documents to get started
+                        Upload your resume to get started
                       </p>
                     </div>
                   )}
@@ -1736,7 +2048,7 @@ export default function MyProfile() {
         </TabsContent>
 
         <TabsContent value="preferences" className="space-y-6">
-          {!isVendor && (
+          {isCandidate && (
           <Card>
             <CardHeader>
               <CardTitle>Job Preferences</CardTitle>

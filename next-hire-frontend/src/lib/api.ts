@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from "axios";
 
 // API Configuration
-const API_BASE_URL =
+export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 const API_VERSION = "v1";
 
@@ -169,6 +169,11 @@ export const apiClient = {
 
   patch: <T>(url: string, data?: any): Promise<AxiosResponse<ApiResponse<T>>> =>
     api.patch(url, data),
+
+  // For multipart/form-data uploads. Unsets the default JSON Content-Type so
+  // axios/the browser can set the correct multipart boundary automatically.
+  upload: <T>(url: string, formData: FormData): Promise<AxiosResponse<ApiResponse<T>>> =>
+    api.post(url, formData, { headers: { "Content-Type": undefined } }),
 };
 
 // Health check

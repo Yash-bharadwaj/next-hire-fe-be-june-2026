@@ -286,9 +286,7 @@ class InterviewService {
   }
 
   canEdit(interview: Interview, userRole: string): boolean {
-    if (userRole === "recruiter") return true;
-    if (userRole === "candidate" && interview.status === "scheduled") return true;
-    return false;
+    return userRole === "recruiter";
   }
 
   canCancel(interview: Interview, userRole: string): boolean {

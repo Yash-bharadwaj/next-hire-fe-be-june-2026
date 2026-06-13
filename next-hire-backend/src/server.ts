@@ -1,3 +1,4 @@
+import path from "path";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -16,6 +17,7 @@ import {
   ensureJobAndSubmissionJsonColumns,
   ensureCandidateSkillsSchema,
   ensureSubmissionsSchema,
+  ensureUserProfileImageColumn,
 } from "./utils/schemaPatcher";
 
 // Routes
@@ -50,7 +52,7 @@ const limiter = rateLimit({
 });
 
 // Middleware
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(
   cors({
     origin:
@@ -88,6 +90,9 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 app.use(limiter);
 
+// Serve uploaded files (avatars, resumes, etc.)
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -124,6 +129,7 @@ const startServer = async () => {
     await ensureJobAndSubmissionJsonColumns();
     await ensureCandidateSkillsSchema();
     await ensureSubmissionsSchema();
+    await ensureUserProfileImageColumn();
     applyAssociations();
     // Test database connection
     await sequelize.authenticate();

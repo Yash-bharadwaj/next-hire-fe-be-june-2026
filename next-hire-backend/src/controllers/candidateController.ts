@@ -603,3 +603,28 @@ export const uploadResume = asyncHandler(
     });
   }
 );
+
+// Upload resume file (actual file upload via multipart/form-data)
+export const uploadResumeFile = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.userId;
+
+    if (!req.file) {
+      throw createError("Resume file is required", 400);
+    }
+
+    const candidate = await Candidate.findOne({ where: { user_id: userId } });
+    if (!candidate) {
+      throw createError("Candidate profile not found", 404);
+    }
+
+    const resume_url = `/uploads/resumes/${req.file.filename}`;
+    await candidate.update({ resume_url });
+
+    res.json({
+      success: true,
+      message: "Resume uploaded successfully",
+      data: { resume_url },
+    });
+  }
+);

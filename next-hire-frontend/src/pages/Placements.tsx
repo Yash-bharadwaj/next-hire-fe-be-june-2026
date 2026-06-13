@@ -319,40 +319,56 @@ const Placements = () => {
     }
   };
 
-  // Snapshot stats only when no filter is active so card counts never
-  // recompute against a filtered subset. Also fixes the stale-state bug where
-  // handleApplyFilters() read the old statusFilter value before useState settled.
+  // Headline counts (active/completed/total) always sync from the stats API,
+  // since that reflects the recruiter's full placement set regardless of the
+  // currently active status/type filter on the placements list below. The
+  // commission/salary/margin aggregates, however, are derived from the
+  // placements list itself, so they're only recomputed when no filter is
+  // active (otherwise they'd reflect a filtered subset).
   const [baseStats, setBaseStats] = useState({ ..._placementsStatsCache });
 
   useEffect(() => {
-    if (!statusFilter && !typeFilter) {
-      const commission = placements.reduce((sum, p) => {
-        const c = typeof p.commission === 'string'
-          ? parseFloat(p.commission.replace(/[^0-9.]/g, '')) || 0
-          : (p.commission || 0);
-        return sum + c;
-      }, 0);
-      const salaryList = placements
-        .map(p => typeof p.salary === 'string'
-          ? parseFloat(p.salary.replace(/[^0-9.]/g, '')) || 0
-          : (p.salary || 0))
-        .filter(s => s > 0);
-      const marginList = placements
-        .map(p => typeof p.margin === 'string'
-          ? parseFloat(p.margin.replace(/[^0-9.]/g, '')) || 0
-          : (p.margin || 0))
-        .filter(m => m > 0);
-      const next = {
-        activePlacements: stats?.activePlacements ?? placements.filter(p => p.status === "active").length,
-        completedPlacements: stats?.completedPlacements ?? placements.filter(p => p.status === "completed").length,
-        totalPlacements: stats?.totalPlacements ?? placements.length,
-        totalCommission: commission,
-        avgSalary: salaryList.length > 0 ? salaryList.reduce((s, v) => s + v, 0) / salaryList.length : 0,
-        avgMargin: marginList.length > 0 ? Math.round(marginList.reduce((s, v) => s + v, 0) / marginList.length) : 0,
-      };
+    setBaseStats((prev) => {
+      const next = { ...prev };
+
+      if (stats) {
+        next.activePlacements = stats.activePlacements ?? next.activePlacements;
+        next.completedPlacements = stats.completedPlacements ?? next.completedPlacements;
+        next.totalPlacements = stats.totalPlacements ?? next.totalPlacements;
+      }
+
+      if (!statusFilter && !typeFilter) {
+        const commission = placements.reduce((sum, p) => {
+          const c = typeof p.commission === 'string'
+            ? parseFloat(p.commission.replace(/[^0-9.]/g, '')) || 0
+            : (p.commission || 0);
+          return sum + c;
+        }, 0);
+        const salaryList = placements
+          .map(p => typeof p.salary === 'string'
+            ? parseFloat(p.salary.replace(/[^0-9.]/g, '')) || 0
+            : (p.salary || 0))
+          .filter(s => s > 0);
+        const marginList = placements
+          .map(p => typeof p.margin === 'string'
+            ? parseFloat(p.margin.replace(/[^0-9.]/g, '')) || 0
+            : (p.margin || 0))
+          .filter(m => m > 0);
+
+        next.totalCommission = commission;
+        next.avgSalary = salaryList.length > 0 ? salaryList.reduce((s, v) => s + v, 0) / salaryList.length : 0;
+        next.avgMargin = marginList.length > 0 ? Math.round(marginList.reduce((s, v) => s + v, 0) / marginList.length) : 0;
+
+        if (!stats) {
+          next.activePlacements = placements.filter(p => p.status === "active").length;
+          next.completedPlacements = placements.filter(p => p.status === "completed").length;
+          next.totalPlacements = placements.length;
+        }
+      }
+
       Object.assign(_placementsStatsCache, next);
-      setBaseStats(next);
-    }
+      return next;
+    });
   }, [placements, stats, statusFilter, typeFilter]);
 
   const activeCardId =

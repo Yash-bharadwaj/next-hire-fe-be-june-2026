@@ -857,7 +857,7 @@ const Interviews = () => {
                                         Edit Interview
                                       </DropdownMenuItem>
                                     )}
-                                    {interview.status === 'scheduled' && (
+                                    {user?.role === 'recruiter' && interview.status === 'scheduled' && (
                                       <DropdownMenuItem onClick={() => handleCompleteInterview(interview.id)}>
                                         <CheckCircle className="w-4 h-4 mr-2" />
                                         Mark Complete

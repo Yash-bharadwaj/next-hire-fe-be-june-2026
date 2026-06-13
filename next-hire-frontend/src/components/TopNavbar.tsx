@@ -43,6 +43,7 @@ import {
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { API_BASE_URL } from "@/lib/api";
 
 export function TopNavbar() {
   const [open, setOpen] = useState(false);
@@ -117,6 +118,9 @@ export function TopNavbar() {
     user?.status === "inactive" || user?.status === "suspended"
       ? "bg-amber-500"
       : "bg-green-600";
+  const avatarUrl = user?.profile_image_url
+    ? `${API_BASE_URL}${user.profile_image_url}`
+    : undefined;
 
   // Command palette shortcuts
   useEffect(() => {
@@ -290,7 +294,7 @@ export function TopNavbar() {
               className="flex items-center gap-2 px-3 hover:bg-green-50"
             >
               <Avatar className="w-8 h-8 border-2 border-green-200">
-                <AvatarImage src="" />
+                {avatarUrl && <AvatarImage src={avatarUrl} />}
                 <AvatarFallback className="bg-gradient-to-br from-green-500 to-green-600 text-white">
                   {userInitials}
                 </AvatarFallback>
@@ -312,7 +316,7 @@ export function TopNavbar() {
             <div className="p-4 border-b border-green-100 bg-gradient-to-r from-green-50 to-green-100/50">
               <div className="flex items-center gap-3">
                 <Avatar className="w-12 h-12 border-2 border-green-400">
-                  <AvatarImage src="" />
+                  {avatarUrl && <AvatarImage src={avatarUrl} />}
                   <AvatarFallback className="bg-gradient-to-br from-green-500 to-green-600 text-white text-lg">
                     {userInitials}
                   </AvatarFallback>

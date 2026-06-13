@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { GlowingEffect } from "@/components/ui/glowing-effect";
 import { 
   Search, 
@@ -47,6 +48,11 @@ const AdvancedSearch = () => {
   const [isAiSearching, setIsAiSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [profileCandidate, setProfileCandidate] = useState<any | null>(null);
+
+  const handleContactCandidate = (candidate: any) => {
+    window.location.href = `mailto:${candidate.email}`;
+  };
   
   // Additional criteria state
   const [education, setEducation] = useState("");
@@ -502,10 +508,14 @@ const AdvancedSearch = () => {
                             </div>
                           </div>
                           <div className="flex flex-col gap-2">
-                            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                            <Button
+                              size="sm"
+                              className="bg-green-600 hover:bg-green-700 text-white"
+                              onClick={() => handleContactCandidate(candidate)}
+                            >
                               Contact
                             </Button>
-                            <Button size="sm" variant="outline">
+                            <Button size="sm" variant="outline" onClick={() => setProfileCandidate(candidate)}>
                               View Profile
                             </Button>
                           </div>
@@ -538,6 +548,65 @@ const AdvancedSearch = () => {
           </Card>
         </div>
       </div>
+
+      <Dialog open={!!profileCandidate} onOpenChange={(open) => !open && setProfileCandidate(null)}>
+        <DialogContent className="max-w-lg">
+          {profileCandidate && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+                    <span className="text-sm font-semibold text-blue-700">{profileCandidate.avatar}</span>
+                  </div>
+                  {profileCandidate.name}
+                </DialogTitle>
+                <DialogDescription>{profileCandidate.title} at {profileCandidate.company}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center gap-2 text-gray-600">
+                  <MapPin className="w-4 h-4" /> {profileCandidate.location}
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Briefcase className="w-4 h-4" /> {profileCandidate.experience} experience
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <DollarSign className="w-4 h-4" /> {profileCandidate.salary}
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <GraduationCap className="w-4 h-4" /> {profileCandidate.education}
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Clock className="w-4 h-4" /> Available: {profileCandidate.availability}
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Mail className="w-4 h-4" /> {profileCandidate.email}
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Phone className="w-4 h-4" /> {profileCandidate.phone}
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {profileCandidate.skills.map((skill: string) => (
+                    <Badge key={skill} variant="outline" className="text-xs">
+                      {skill}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setProfileCandidate(null)}>
+                  Close
+                </Button>
+                <Button
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => handleContactCandidate(profileCandidate)}
+                >
+                  Contact
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
