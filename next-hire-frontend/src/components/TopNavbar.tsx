@@ -337,21 +337,15 @@ export function TopNavbar() {
 
             {/* Menu Items */}
             <div className="py-2">
-              {String(user?.role || "").toLowerCase() !== "recruiter" && (
-                <DropdownMenuItem className="p-0 hover:bg-green-50 focus:bg-green-50">
-                  <button
-                    className="w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:text-green-700"
-                    onClick={() =>
-                      window.location.assign(
-                        "http://localhost:8080/dashboard/profile"
-                      )
-                    }
-                  >
-                    <User className="w-5 h-5 text-green-600" />
-                    <span>Personal Info</span>
-                  </button>
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem className="p-0 hover:bg-green-50 focus:bg-green-50">
+                <button
+                  className="w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:text-green-700"
+                  onClick={() => navigate("/dashboard/profile")}
+                >
+                  <User className="w-5 h-5 text-green-600" />
+                  <span>Personal Info</span>
+                </button>
+              </DropdownMenuItem>
               <DropdownMenuItem className="p-0 hover:bg-green-50 focus:bg-green-50">
                 <button
                   className="w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:text-green-700"
