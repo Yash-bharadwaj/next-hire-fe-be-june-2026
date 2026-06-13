@@ -63,11 +63,29 @@ export interface UploadResumeRequest {
   resume_url: string;
 }
 
+export interface CandidateResume {
+  id: string;
+  candidate_id: string;
+  file_url: string;
+  file_name: string;
+  is_primary: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface UploadResumeResponse {
   success: boolean;
   message: string;
   data: {
     resume_url: string;
+    resumes?: CandidateResume[];
+  };
+}
+
+export interface ResumesResponse {
+  success: boolean;
+  data: {
+    resumes: CandidateResume[];
   };
 }
 
@@ -129,6 +147,48 @@ class CandidateService {
         formData
       );
       return response.data as UploadResumeResponse;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get all resumes for the logged-in candidate
+   */
+  async getResumes(): Promise<ResumesResponse> {
+    try {
+      const response = await apiClient.get<ResumesResponse["data"]>(
+        "/candidate/resumes"
+      );
+      return response.data as ResumesResponse;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Mark a resume as the candidate's primary resume
+   */
+  async setPrimaryResume(resumeId: string): Promise<ResumesResponse> {
+    try {
+      const response = await apiClient.patch<ResumesResponse["data"]>(
+        `/candidate/resumes/${resumeId}/primary`
+      );
+      return response.data as ResumesResponse;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Delete a resume
+   */
+  async deleteResume(resumeId: string): Promise<ResumesResponse> {
+    try {
+      const response = await apiClient.delete<ResumesResponse["data"]>(
+        `/candidate/resumes/${resumeId}`
+      );
+      return response.data as ResumesResponse;
     } catch (error: any) {
       throw this.handleError(error);
     }

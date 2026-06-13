@@ -4,6 +4,7 @@ import { User, Vendor, Job, Submission, Candidate } from "../models";
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import { likeOp } from "../utils/searchOperators";
 
 // Get vendor profile
 export const getProfile = asyncHandler(
@@ -111,13 +112,19 @@ export const getVendorJobs = asyncHandler(
       },
     };
 
+    // Each filter below contributes its own OR-group; all groups are
+    // combined with AND so multiple filters can be applied together.
+    const andConditions: any[] = [];
+
     // Search in title, description, and company name
     if (search) {
-      whereConditions[Op.or] = [
-        { title: { [Op.iLike]: `%${search}%` } },
-        { description: { [Op.iLike]: `%${search}%` } },
-        { company_name: { [Op.iLike]: `%${search}%` } },
-      ];
+      andConditions.push({
+        [Op.or]: [
+          { title: { [likeOp]: `%${search}%` } },
+          { description: { [likeOp]: `%${search}%` } },
+          { company_name: { [likeOp]: `%${search}%` } },
+        ],
+      });
     }
 
     if (job_type) {
@@ -125,11 +132,13 @@ export const getVendorJobs = asyncHandler(
     }
 
     if (location) {
-      whereConditions[Op.or] = [
-        { location: { [Op.iLike]: `%${location}%` } },
-        { city: { [Op.iLike]: `%${location}%` } },
-        { state: { [Op.iLike]: `%${location}%` } },
-      ];
+      andConditions.push({
+        [Op.or]: [
+          { location: { [likeOp]: `%${location}%` } },
+          { city: { [likeOp]: `%${location}%` } },
+          { state: { [likeOp]: `%${location}%` } },
+        ],
+      });
     }
 
     if (salary_min) {
@@ -157,8 +166,20 @@ export const getVendorJobs = asyncHandler(
     }
 
     if (skills) {
-      const skillsArray = Array.isArray(skills) ? skills : [skills];
-      whereConditions.required_skills = { [Op.overlap]: skillsArray };
+      // required_skills / preferred_skills are stored as JSON-encoded text,
+      // so match each requested skill against the serialized arrays.
+      const skillsArray = (Array.isArray(skills) ? skills : (skills as string).split(","))
+        .map((skill) => String(skill).trim())
+        .filter(Boolean);
+
+      if (skillsArray.length > 0) {
+        andConditions.push({
+          [Op.or]: skillsArray.flatMap((skill) => [
+            { required_skills: { [likeOp]: `%${skill}%` } },
+            { preferred_skills: { [likeOp]: `%${skill}%` } },
+          ]),
+        });
+      }
     }
 
     if (remote_work_allowed === "true") {
@@ -166,7 +187,11 @@ export const getVendorJobs = asyncHandler(
     }
 
     if (company_name) {
-      whereConditions.company_name = { [Op.iLike]: `%${company_name}%` };
+      whereConditions.company_name = { [likeOp]: `%${company_name}%` };
+    }
+
+    if (andConditions.length > 0) {
+      whereConditions[Op.and] = andConditions;
     }
 
     const { rows: jobs, count: total } = await Job.findAndCountAll({

@@ -10,6 +10,9 @@ import {
   getUpcomingInterviews,
   uploadResume,
   uploadResumeFile,
+  getResumes,
+  setPrimaryResume,
+  deleteResume,
   getOnboardingTasks,
 } from "../controllers/candidateController";
 import { authenticate, candidateOnly } from "../middleware/auth";
@@ -152,9 +155,22 @@ const uploadResumeValidation = [
 router.get("/profile", getProfile);
 router.put("/profile", updateProfileValidation, validate, updateProfile);
 
-// Resume upload
+// Resume upload & management
 router.post("/resume", uploadResumeValidation, validate, uploadResume);
 router.post("/resume/upload", resumeUpload.single("resume"), uploadResumeFile);
+router.get("/resumes", getResumes);
+router.patch(
+  "/resumes/:id/primary",
+  [param("id").isUUID().withMessage("Valid resume ID is required")],
+  validate,
+  setPrimaryResume
+);
+router.delete(
+  "/resumes/:id",
+  [param("id").isUUID().withMessage("Valid resume ID is required")],
+  validate,
+  deleteResume
+);
 
 // Job browsing and application
 router.get("/jobs", browseJobsValidation, validate, browseJobs);

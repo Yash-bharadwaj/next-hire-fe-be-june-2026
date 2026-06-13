@@ -40,12 +40,14 @@ import {
   Trash2,
   Loader2,
   Building2,
+  Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import { authService } from "@/services/authService";
 import {
   candidateService,
   CandidateProfile,
+  CandidateResume,
   UpdateProfileRequest,
 } from "@/services/candidateService";
 import {
@@ -127,6 +129,11 @@ export default function MyProfile() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const resumeInputRef = useRef<HTMLInputElement>(null);
 
+  // Resume list state (multiple resumes with primary/delete)
+  const [resumes, setResumes] = useState<CandidateResume[]>([]);
+  const [resumesLoading, setResumesLoading] = useState(false);
+  const [resumeActionId, setResumeActionId] = useState<string | null>(null);
+
   // Form data state
   const [formData, setFormData] = useState({
     first_name: "",
@@ -186,6 +193,7 @@ export default function MyProfile() {
     if (isCandidate) {
       loadExperiences();
       loadSkills();
+      loadResumes();
     }
   }, []);
 
@@ -630,6 +638,19 @@ export default function MyProfile() {
     }
   };
 
+  // Load all resumes for the candidate
+  const loadResumes = async () => {
+    setResumesLoading(true);
+    try {
+      const { data } = await candidateService.getResumes();
+      setResumes(data.resumes || []);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to load resumes");
+    } finally {
+      setResumesLoading(false);
+    }
+  };
+
   // Resume upload (candidates only)
   const handleResumeFileSelected = async (
     e: React.ChangeEvent<HTMLInputElement>
@@ -645,11 +666,62 @@ export default function MyProfile() {
       setOriginalProfile((prev) =>
         prev ? { ...prev, resume_url: data.resume_url } : prev
       );
+      if (data.resumes) {
+        setResumes(data.resumes);
+      } else {
+        await loadResumes();
+      }
       toast.success("Resume uploaded successfully!");
     } catch (error: any) {
       toast.error(error.message || "Failed to upload resume");
     } finally {
       setResumeUploading(false);
+    }
+  };
+
+  // Set a resume as the primary resume
+  const handleSetPrimaryResume = async (resumeId: string) => {
+    setResumeActionId(resumeId);
+    try {
+      const { data } = await candidateService.setPrimaryResume(resumeId);
+      setResumes(data.resumes || []);
+      const primary = data.resumes?.find((r) => r.is_primary);
+      setProfile((prev) =>
+        prev ? { ...prev, resume_url: primary?.file_url } : prev
+      );
+      setOriginalProfile((prev) =>
+        prev ? { ...prev, resume_url: primary?.file_url } : prev
+      );
+      toast.success("Primary resume updated!");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to set primary resume");
+    } finally {
+      setResumeActionId(null);
+    }
+  };
+
+  // Delete a resume
+  const handleDeleteResume = async (resume: CandidateResume) => {
+    if (!window.confirm(`Delete "${resume.file_name}"? This cannot be undone.`)) {
+      return;
+    }
+
+    setResumeActionId(resume.id);
+    try {
+      const { data } = await candidateService.deleteResume(resume.id);
+      setResumes(data.resumes || []);
+      const primary = data.resumes?.find((r) => r.is_primary);
+      setProfile((prev) =>
+        prev ? { ...prev, resume_url: primary?.file_url } : prev
+      );
+      setOriginalProfile((prev) =>
+        prev ? { ...prev, resume_url: primary?.file_url } : prev
+      );
+      toast.success("Resume deleted successfully!");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to delete resume");
+    } finally {
+      setResumeActionId(null);
     }
   };
 
@@ -2003,34 +2075,87 @@ export default function MyProfile() {
                   </Button>
                 </div>
 
-                {/* Resume */}
+                {/* Resumes */}
                 <div className="space-y-3">
-                  <h4 className="font-medium text-gray-900">Your Resume</h4>
-                  {profile?.resume_url ? (
-                    <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
-                      <div className="flex items-center space-x-3">
-                        <FileText className="w-8 h-8 text-blue-600" />
-                        <div>
-                          <h5 className="font-medium text-gray-900">Resume</h5>
-                          <p className="text-sm text-gray-500">
-                            {profile.resume_url.split("/").pop()}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() =>
-                            window.open(
-                              `${API_BASE_URL}${profile.resume_url}`,
-                              "_blank"
-                            )
-                          }
+                  <h4 className="font-medium text-gray-900">Your Resumes</h4>
+                  {resumesLoading ? (
+                    <div className="flex items-center justify-center py-8 text-gray-500">
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Loading resumes...
+                    </div>
+                  ) : resumes.length > 0 ? (
+                    <div className="space-y-2">
+                      {resumes.map((resume) => (
+                        <div
+                          key={resume.id}
+                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
                         >
-                          <Download className="w-4 h-4" />
-                        </Button>
-                      </div>
+                          <div className="flex items-center space-x-3 min-w-0">
+                            <FileText className="w-8 h-8 text-blue-600 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h5 className="font-medium text-gray-900 truncate">
+                                  {resume.file_name}
+                                </h5>
+                                {resume.is_primary && (
+                                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                                    Primary
+                                  </Badge>
+                                )}
+                              </div>
+                              {resume.created_at && (
+                                <p className="text-sm text-gray-500">
+                                  Uploaded{" "}
+                                  {new Date(resume.created_at).toLocaleDateString()}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-1 flex-shrink-0">
+                            {!resume.is_primary && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                title="Set as Primary"
+                                disabled={resumeActionId === resume.id}
+                                onClick={() => handleSetPrimaryResume(resume.id)}
+                              >
+                                {resumeActionId === resume.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Star className="w-4 h-4" />
+                                )}
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title="Download"
+                              onClick={() =>
+                                window.open(
+                                  `${API_BASE_URL}${resume.file_url}`,
+                                  "_blank"
+                                )
+                              }
+                            >
+                              <Download className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title="Delete"
+                              disabled={resumeActionId === resume.id}
+                              onClick={() => handleDeleteResume(resume)}
+                            >
+                              {resumeActionId === resume.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     <div className="text-center py-8 text-gray-500">

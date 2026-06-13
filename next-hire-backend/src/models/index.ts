@@ -13,6 +13,7 @@ import { Task } from "./Task";
 import { Experience } from "./Experience";
 import { Education } from "./Education";
 import { CandidateSkill } from "./CandidateSkill";
+import { CandidateResume } from "./CandidateResume";
 import { BusinessPartner } from "./BusinessPartner";
 
 let associationsApplied = false;
@@ -105,6 +106,16 @@ export function applyAssociations() {
     as: "candidate",
   });
 
+  // Candidate Resumes
+  Candidate.hasMany(CandidateResume, {
+    foreignKey: "candidate_id",
+    as: "resumes",
+  });
+  CandidateResume.belongsTo(Candidate, {
+    foreignKey: "candidate_id",
+    as: "candidate",
+  });
+
   // Business Partners
   BusinessPartner.belongsTo(User, { foreignKey: "created_by", as: "creator" });
   BusinessPartner.belongsTo(User, {
@@ -127,6 +138,7 @@ export {
   Experience,
   Education,
   CandidateSkill,
+  CandidateResume,
   BusinessPartner,
   sequelize,
 };

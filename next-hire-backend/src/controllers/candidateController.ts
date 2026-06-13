@@ -1,5 +1,7 @@
 import { Response } from "express";
 import { Op } from "sequelize";
+import fs from "fs";
+import path from "path";
 import {
   User,
   Candidate,
@@ -9,6 +11,7 @@ import {
   Experience,
   Education,
   CandidateSkill,
+  CandidateResume,
   Placement,
   Task,
 } from "../models";
@@ -579,6 +582,143 @@ export const getOnboardingTasks = asyncHandler(
   }
 );
 
+// Migrate a legacy single resume_url into the candidate_resumes table the
+// first time a candidate's resumes are accessed, so it isn't lost once
+// multi-resume support is in place.
+const migrateLegacyResumeIfNeeded = async (candidate: Candidate) => {
+  const existingCount = await CandidateResume.count({
+    where: { candidate_id: candidate.id },
+  });
+
+  if (existingCount === 0 && candidate.resume_url) {
+    const fileName = candidate.resume_url.split("/").pop() || "resume";
+    await CandidateResume.create({
+      candidate_id: candidate.id,
+      file_url: candidate.resume_url,
+      file_name: fileName,
+      is_primary: true,
+    });
+  }
+};
+
+// Get all resumes for the logged-in candidate
+export const getResumes = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.userId;
+
+    const candidate = await Candidate.findOne({ where: { user_id: userId } });
+    if (!candidate) {
+      throw createError("Candidate profile not found", 404);
+    }
+
+    await migrateLegacyResumeIfNeeded(candidate);
+
+    const resumes = await CandidateResume.findAll({
+      where: { candidate_id: candidate.id },
+      order: [["created_at", "DESC"]],
+    });
+
+    res.json({
+      success: true,
+      data: { resumes },
+    });
+  }
+);
+
+// Set a resume as the candidate's primary resume
+export const setPrimaryResume = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+
+    const candidate = await Candidate.findOne({ where: { user_id: userId } });
+    if (!candidate) {
+      throw createError("Candidate profile not found", 404);
+    }
+
+    const resume = await CandidateResume.findOne({
+      where: { id, candidate_id: candidate.id },
+    });
+    if (!resume) {
+      throw createError("Resume not found", 404);
+    }
+
+    await CandidateResume.update(
+      { is_primary: false },
+      { where: { candidate_id: candidate.id, is_primary: true } }
+    );
+    await resume.update({ is_primary: true });
+    await candidate.update({ resume_url: resume.file_url });
+
+    const resumes = await CandidateResume.findAll({
+      where: { candidate_id: candidate.id },
+      order: [["created_at", "DESC"]],
+    });
+
+    res.json({
+      success: true,
+      message: "Primary resume updated successfully",
+      data: { resumes },
+    });
+  }
+);
+
+// Delete a resume
+export const deleteResume = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+
+    const candidate = await Candidate.findOne({ where: { user_id: userId } });
+    if (!candidate) {
+      throw createError("Candidate profile not found", 404);
+    }
+
+    const resume = await CandidateResume.findOne({
+      where: { id, candidate_id: candidate.id },
+    });
+    if (!resume) {
+      throw createError("Resume not found", 404);
+    }
+
+    const wasPrimary = resume.is_primary;
+    const filePath = path.join(__dirname, "../../", resume.file_url);
+
+    await resume.destroy();
+
+    // Best-effort removal of the file from disk
+    fs.unlink(filePath, () => {});
+
+    let newPrimaryUrl: string | null = candidate.resume_url ?? null;
+    if (wasPrimary) {
+      const nextPrimary = await CandidateResume.findOne({
+        where: { candidate_id: candidate.id },
+        order: [["created_at", "DESC"]],
+      });
+
+      if (nextPrimary) {
+        await nextPrimary.update({ is_primary: true });
+        newPrimaryUrl = nextPrimary.file_url;
+      } else {
+        newPrimaryUrl = null;
+      }
+    }
+
+    await candidate.update({ resume_url: newPrimaryUrl } as Partial<Candidate>);
+
+    const resumes = await CandidateResume.findAll({
+      where: { candidate_id: candidate.id },
+      order: [["created_at", "DESC"]],
+    });
+
+    res.json({
+      success: true,
+      message: "Resume deleted successfully",
+      data: { resumes },
+    });
+  }
+);
+
 // Upload resume (placeholder - would integrate with file upload service)
 export const uploadResume = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -618,13 +758,34 @@ export const uploadResumeFile = asyncHandler(
       throw createError("Candidate profile not found", 404);
     }
 
-    const resume_url = `/uploads/resumes/${req.file.filename}`;
-    await candidate.update({ resume_url });
+    await migrateLegacyResumeIfNeeded(candidate);
+
+    const file_url = `/uploads/resumes/${req.file.filename}`;
+    const existingCount = await CandidateResume.count({
+      where: { candidate_id: candidate.id },
+    });
+    const isPrimary = existingCount === 0;
+
+    await CandidateResume.create({
+      candidate_id: candidate.id,
+      file_url,
+      file_name: req.file.originalname,
+      is_primary: isPrimary,
+    });
+
+    if (isPrimary) {
+      await candidate.update({ resume_url: file_url });
+    }
+
+    const resumes = await CandidateResume.findAll({
+      where: { candidate_id: candidate.id },
+      order: [["created_at", "DESC"]],
+    });
 
     res.json({
       success: true,
       message: "Resume uploaded successfully",
-      data: { resume_url },
+      data: { resume_url: file_url, resumes },
     });
   }
 );
