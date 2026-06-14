@@ -150,9 +150,13 @@ const startServer = async () => {
     // Sync database schema (no migration framework is in use yet, so this
     // also runs in production to keep tables up to date on every deploy).
     try {
-      // Use alter: true to preserve existing data while updating schema
+      // Use alter: true to preserve existing data while updating schema.
+      // drop: false stops Sequelize from dropping/altering columns that
+      // aren't part of a model (e.g. the raw pgvector `embedding_vector`
+      // shadow columns managed by ensurePgVectorSupport) - without this,
+      // every sync drops and empties those columns.
       // IMPORTANT: Do NOT use force: true as it drops all tables and data!
-      await sequelize.sync({ alter: true });
+      await sequelize.sync({ alter: { drop: false } });
       logger.info("Database synchronized successfully.");
 
       // No-op on SQLite; on Postgres enables pgvector + similarity indexes.

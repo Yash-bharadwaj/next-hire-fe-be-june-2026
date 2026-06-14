@@ -4,25 +4,15 @@ import { logger } from "../utils/logger";
 
 dotenv.config();
 
-// Use SQLite for local development, PostgreSQL for production
-const isDevelopment = process.env.NODE_ENV !== "production";
+// Use PostgreSQL (e.g. the AWS RDS instance) whenever DB_HOST is configured,
+// SQLite otherwise. This lets local dev point at the same Postgres database
+// as production without flipping NODE_ENV (which also gates CORS/logging).
+const usePostgres = !!process.env.DB_HOST;
 
 const sequelize = new Sequelize(
-  isDevelopment
+  usePostgres
     ? {
-        // SQLite configuration for local development
-        dialect: "sqlite",
-        storage: "./database.sqlite",
-        logging: (msg) => logger.debug(msg),
-        define: {
-          timestamps: true,
-          underscored: true,
-          createdAt: "created_at",
-          updatedAt: "updated_at",
-        },
-      }
-    : {
-        // PostgreSQL configuration for production
+        // PostgreSQL configuration (RDS)
         database: process.env.DB_NAME!,
         username: process.env.DB_USERNAME!,
         password: process.env.DB_PASSWORD!,
@@ -42,6 +32,18 @@ const sequelize = new Sequelize(
           acquire: 30000,
           idle: 10000,
         },
+        define: {
+          timestamps: true,
+          underscored: true,
+          createdAt: "created_at",
+          updatedAt: "updated_at",
+        },
+      }
+    : {
+        // SQLite configuration for local development
+        dialect: "sqlite",
+        storage: "./database.sqlite",
+        logging: (msg) => logger.debug(msg),
         define: {
           timestamps: true,
           underscored: true,
