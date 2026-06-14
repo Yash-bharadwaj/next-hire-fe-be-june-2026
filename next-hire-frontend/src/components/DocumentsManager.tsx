@@ -1,16 +1,18 @@
 import React, { useState } from "react";
 import { format, parseISO, differenceInDays, isAfter, isBefore } from "date-fns";
-import { 
-  FileText, 
-  Upload, 
-  Eye, 
-  Download, 
-  Calendar, 
-  AlertTriangle, 
-  CheckCircle, 
+import {
+  FileText,
+  Upload,
+  Eye,
+  Download,
+  Calendar,
+  AlertTriangle,
+  CheckCircle,
   XCircle,
   Filter,
-  Plus
+  Plus,
+  ExternalLink,
+  FileQuestion
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -89,6 +91,101 @@ const getStatusBadge = (status: DocumentStatus, validTo?: string) => {
         </Badge>
       );
   }
+};
+
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"]);
+const TEXT_EXTENSIONS = new Set(["txt", "csv", "log", "md", "json"]);
+
+/** Inline document preview - PDFs, images, and text files render directly;
+ * everything else (DOC/DOCX, etc.) falls back to an "open file" prompt
+ * since browsers can't render those formats in an iframe. */
+const DocumentPreviewDialog = ({
+  doc,
+  onClose,
+}: {
+  doc: Document | null;
+  onClose: () => void;
+}) => {
+  const ext = (doc?.type || "").toLowerCase();
+  const isPdf = ext === "pdf";
+  const isImage = IMAGE_EXTENSIONS.has(ext);
+  const isText = TEXT_EXTENSIONS.has(ext);
+
+  return (
+    <Dialog open={!!doc} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl w-[90vw] h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
+        {doc && (
+          <>
+            <DialogHeader className="px-6 py-4 border-b shrink-0 pr-14">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <DialogTitle className="flex items-center gap-2 text-base font-medium">
+                    <FileText className="w-5 h-5 text-blue-600 shrink-0" />
+                    <span className="truncate">{doc.name}</span>
+                  </DialogTitle>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Uploaded {format(parseISO(doc.uploadDate), "MMM d, yyyy")}
+                    {doc.size ? ` • ${doc.size}` : ""}
+                    {doc.description ? ` • ${doc.description}` : ""}
+                  </p>
+                </div>
+                {doc.url && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={() => window.open(doc.url, "_blank")}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-1" />
+                    Open in new tab
+                  </Button>
+                )}
+              </div>
+            </DialogHeader>
+            <div className="flex-1 overflow-auto bg-gray-100">
+              {!doc.url ? (
+                <div className="flex flex-col items-center justify-center h-full text-center p-8 text-gray-500">
+                  <FileQuestion className="w-14 h-14 mb-3 text-gray-300" />
+                  <p>This document doesn&apos;t have a file attached.</p>
+                </div>
+              ) : isPdf ? (
+                <iframe
+                  src={doc.url}
+                  title={doc.name}
+                  className="w-full h-full border-0"
+                />
+              ) : isImage ? (
+                <div className="flex items-center justify-center h-full p-4">
+                  <img
+                    src={doc.url}
+                    alt={doc.name}
+                    className="max-w-full max-h-full object-contain rounded shadow-sm"
+                  />
+                </div>
+              ) : isText ? (
+                <iframe
+                  src={doc.url}
+                  title={doc.name}
+                  className="w-full h-full border-0 bg-white"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center p-8 text-gray-500">
+                  <FileQuestion className="w-14 h-14 mb-3 text-gray-300" />
+                  <p className="mb-4">
+                    Preview isn&apos;t available for {ext ? `.${ext.toUpperCase()}` : "this"} files.
+                  </p>
+                  <Button onClick={() => window.open(doc.url, "_blank")}>
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Open file
+                  </Button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 };
 
 const UploadDocumentDialog = ({ onUpload }: { onUpload?: (document: Omit<Document, 'id'>) => void }) => {
@@ -235,6 +332,7 @@ export const DocumentsManager: React.FC<DocumentsManagerProps> = ({
   title = "Documents & Files" 
 }) => {
   const [filter, setFilter] = useState<FilterStatus>('all');
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
 
   const filteredDocuments = documents.filter(doc => {
     if (filter === 'all') return true;
@@ -248,6 +346,7 @@ export const DocumentsManager: React.FC<DocumentsManagerProps> = ({
   };
 
   return (
+    <>
     <Card className="border-gray-200 shadow-sm">
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -332,7 +431,7 @@ export const DocumentsManager: React.FC<DocumentsManagerProps> = ({
                         variant="outline"
                         className="border-blue-300 text-blue-700 hover:bg-blue-50"
                         disabled={!doc.url}
-                        onClick={() => doc.url && window.open(doc.url, "_blank")}
+                        onClick={() => doc.url && setPreviewDoc(doc)}
                       >
                         <Eye className="w-4 h-4 mr-1" />
                         View
@@ -356,5 +455,7 @@ export const DocumentsManager: React.FC<DocumentsManagerProps> = ({
         </div>
       </CardContent>
     </Card>
+    <DocumentPreviewDialog doc={previewDoc} onClose={() => setPreviewDoc(null)} />
+    </>
   );
 };
