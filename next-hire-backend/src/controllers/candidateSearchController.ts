@@ -796,6 +796,37 @@ const skillOverlapScore = (jobSkills: string[], candidateSkills: string[]): numb
   return overlap / jobSkills.length;
 };
 
+// Common words in natural-language search queries ("find me a ... with
+// ... years of experience") that carry no signal about the role/skills
+// being searched for, so they're excluded from keyword matching below.
+const QUERY_STOPWORDS = new Set([
+  "find", "me", "a", "an", "the", "and", "or", "for", "with", "of", "to",
+  "in", "on", "at", "is", "are", "who", "has", "have", "i", "need", "want",
+  "someone", "person", "candidate", "candidates", "looking", "show",
+  "search", "ideal", "experience", "experienced", "years", "year", "that",
+  "this", "role", "job", "position",
+]);
+
+// Fraction of the meaningful words in a free-text search query that appear
+// in the candidate's profile text. Embedding similarity for short queries
+// ("find me a hotel manager") can stay low even for an exceptional match,
+// so this gives a concrete, explainable fallback signal for free-text
+// search when AI reranking is unavailable.
+const keywordOverlapScore = (queryText: string, profileText: string): number => {
+  const profileLower = profileText.toLowerCase();
+  const keywords = Array.from(
+    new Set(
+      queryText
+        .toLowerCase()
+        .split(/[^a-z0-9+#]+/)
+        .filter((word) => word.length > 2 && !QUERY_STOPWORDS.has(word))
+    )
+  );
+  if (keywords.length === 0) return 0;
+  const matched = keywords.filter((word) => profileLower.includes(word)).length;
+  return matched / keywords.length;
+};
+
 // Build a compact natural-language summary of a scored candidate's profile
 // for the LLM fit-scoring prompt.
 const buildCandidateProfileText = (json: any): string => {
@@ -897,6 +928,9 @@ const loadScoredCandidates = async (
           : json.skills || [];
         const overlapScore = skillOverlapScore(jobSkills, candidateSkills);
         combinedScore = 0.7 * semanticScore + 0.3 * overlapScore;
+      } else if (queryText) {
+        const overlapScore = keywordOverlapScore(queryText, buildCandidateProfileText(json));
+        combinedScore = 0.4 * semanticScore + 0.6 * overlapScore;
       }
 
       json.matchScore = Math.round(combinedScore * 100);
@@ -915,6 +949,9 @@ const loadScoredCandidates = async (
       if (ai) {
         json.matchScore = ai.score;
         json.matchReasoning = ai.reasoning;
+      } else {
+        json.matchReasoning =
+          "AI reasoning is temporarily unavailable - this score reflects keyword and profile similarity only.";
       }
     });
 
