@@ -28,6 +28,7 @@ import {
   UnsupportedFileTypeError,
   EmptyDocumentError,
   AIParsingError,
+  scoreJobFit,
 } from "../services/aiParsingService";
 import { persistEmbedding, findTopMatches, MatchResult } from "../services/embeddingService";
 import { uploadDocument } from "../services/storageService";
@@ -795,11 +796,56 @@ const skillOverlapScore = (jobSkills: string[], candidateSkills: string[]): numb
   return overlap / jobSkills.length;
 };
 
+// Build a compact natural-language summary of a scored candidate's profile
+// for the LLM fit-scoring prompt.
+const buildCandidateProfileText = (json: any): string => {
+  const skills: string[] = json.candidateSkills?.length
+    ? json.candidateSkills.map((s: any) => s.skill_name)
+    : json.skills || [];
+  const latestExperience = json.experiences?.[0];
+  const latestEducation = json.education?.[0];
+
+  return [
+    [json.first_name, json.last_name].filter(Boolean).join(" "),
+    latestExperience
+      ? [latestExperience.job_title, latestExperience.company_name].filter(Boolean).join(" at ")
+      : null,
+    json.experience_years ? `${json.experience_years} years of professional experience` : null,
+    json.bio,
+    skills.length ? `Skills: ${skills.join(", ")}` : null,
+    latestEducation
+      ? [latestEducation.degree, latestEducation.field_of_study].filter(Boolean).join(" in ")
+      : null,
+    json.location,
+  ]
+    .filter((part): part is string => !!part && String(part).trim().length > 0)
+    .join(". ");
+};
+
+// Only the top few embedding-ranked candidates are re-scored by the LLM
+// (one Gemini call each, run in parallel) - this keeps latency/cost bounded
+// while still giving the final ranking real AI judgment for the candidates
+// that matter most.
+const AI_RERANK_LIMIT = 8;
+
 // Load Candidate+User (+experience/education/skills) records for matched IDs,
-// preserving the score-sorted order from findTopMatches and attaching matchScore.
-// When `jobSkills` is provided, the score blends rescaled semantic
-// similarity with concrete skill overlap; otherwise it's semantic-only.
-const loadScoredCandidates = async (matches: MatchResult[], jobSkills?: string[]) => {
+// preserving the score-sorted order from findTopMatches and attaching
+// matchScore (+ matchReasoning when AI reranking ran).
+//
+// Scoring is two-stage:
+// 1. A fast, deterministic score blends rescaled embedding similarity with
+//    concrete skill overlap (when `jobSkills` is given) - used to pick which
+//    candidates are worth an AI call, and as the fallback if AI is
+//    unavailable.
+// 2. The top `AI_RERANK_LIMIT` candidates are re-scored by Gemini
+//    (`scoreJobFit`), which reasons over the actual job/query text and the
+//    candidate's profile - this becomes the final matchScore shown to
+//    recruiters.
+const loadScoredCandidates = async (
+  matches: MatchResult[],
+  options: { jobSkills?: string[]; queryText?: string } = {}
+) => {
+  const { jobSkills, queryText } = options;
   if (matches.length === 0) return [];
 
   const candidates = await Candidate.findAll({
@@ -837,7 +883,7 @@ const loadScoredCandidates = async (matches: MatchResult[], jobSkills?: string[]
   const candidateMap = new Map(candidates.map((c) => [c.id, c]));
   const scoreMap = new Map(matches.map((m) => [m.id, m.score]));
 
-  return matches
+  const scored = matches
     .map((m) => candidateMap.get(m.id))
     .filter((c): c is Candidate => !!c)
     .map((c) => {
@@ -857,6 +903,25 @@ const loadScoredCandidates = async (matches: MatchResult[], jobSkills?: string[]
       return json;
     })
     .sort((a, b) => b.matchScore - a.matchScore);
+
+  if (queryText) {
+    const toRerank = scored.slice(0, AI_RERANK_LIMIT);
+    const aiScores = await Promise.all(
+      toRerank.map((json) => scoreJobFit(queryText, buildCandidateProfileText(json)))
+    );
+
+    toRerank.forEach((json, i) => {
+      const ai = aiScores[i];
+      if (ai) {
+        json.matchScore = ai.score;
+        json.matchReasoning = ai.reasoning;
+      }
+    });
+
+    scored.sort((a, b) => b.matchScore - a.matchScore);
+  }
+
+  return scored;
 };
 
 const buildJobEmbeddingText = (job: Job): string =>
@@ -907,7 +972,10 @@ export const matchCandidatesForJob = asyncHandler(
 
     const { matches, skippedCount } = await findTopMatches("candidates", queryVector, 50);
     const jobSkills = [...(job.required_skills || []), ...(job.preferred_skills || [])];
-    const candidates = await loadScoredCandidates(matches, jobSkills);
+    const candidates = await loadScoredCandidates(matches, {
+      jobSkills,
+      queryText: buildJobEmbeddingText(job),
+    });
 
     res.json({
       success: true,
@@ -941,7 +1009,7 @@ export const matchCandidatesByText = asyncHandler(
     }
 
     const { matches, skippedCount } = await findTopMatches("candidates", queryVector, 50);
-    const candidates = await loadScoredCandidates(matches);
+    const candidates = await loadScoredCandidates(matches, { queryText: text.trim() });
 
     res.json({
       success: true,

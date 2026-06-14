@@ -544,3 +544,54 @@ ${truncated}
     positions_available: num(result.positions_available),
   };
 }
+
+export interface JobFitScore {
+  score: number; // 0-100
+  reasoning: string;
+}
+
+/**
+ * Use Gemini to reason about how well a candidate profile fits a job/query,
+ * returning a calibrated 0-100 score plus a one-line explanation. This is
+ * the final, reasoning-based score shown to recruiters - embedding cosine
+ * similarity is only used upstream to narrow down the candidate pool.
+ * Returns null (non-fatal) if AI scoring is unavailable, so callers can fall
+ * back to the embedding-based score.
+ */
+export async function scoreJobFit(jobText: string, candidateText: string): Promise<JobFitScore | null> {
+  if (!GEMINI_API_KEY) return null;
+
+  const prompt = `You are an expert technical recruiter. Score how well the CANDIDATE profile matches the JOB on a 0-100 scale, using these anchors:
+- 0-15: Different field entirely; no relevant skills, tools, or experience overlap.
+- 16-40: A few transferable/soft skills, but the domain and core skills don't match.
+- 41-65: Adjacent field with some overlapping skills or tools; would need notable ramp-up.
+- 66-85: Strong alignment - most required skills and relevant experience match.
+- 86-100: Exceptional match - directly relevant experience and skills at the right level.
+
+Be honest and discriminating: an unrelated profession (e.g. hospitality vs. software engineering) must score in the 0-15 range, not a "coin flip".
+
+JOB:
+"""
+${jobText.slice(0, 6000)}
+"""
+
+CANDIDATE PROFILE:
+"""
+${candidateText.slice(0, 6000)}
+"""
+
+Respond with ONLY a JSON object of this exact shape: {"score": <integer 0-100>, "reasoning": "<one concise sentence>"}`;
+
+  try {
+    const result = await callGeminiJSON(prompt, 2048);
+    const score = num(result?.score);
+    if (score === undefined) return null;
+    return {
+      score: Math.round(Math.min(100, Math.max(0, score))),
+      reasoning: str(result?.reasoning) || "",
+    };
+  } catch (error) {
+    logger.error("AI job-fit scoring failed", error);
+    return null;
+  }
+}

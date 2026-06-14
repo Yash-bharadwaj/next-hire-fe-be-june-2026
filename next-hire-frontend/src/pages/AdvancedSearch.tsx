@@ -55,6 +55,7 @@ interface SearchResultCandidate {
   email: string;
   phone: string;
   aiScore?: number;
+  aiReasoning?: string;
   skills: string[];
   education: string;
   availability: string;
@@ -86,6 +87,7 @@ const mapCandidateToResult = (candidate: CandidateProfile): SearchResultCandidat
     email: candidate.user?.email || candidate.email || "Not specified",
     phone: candidate.phone || "Not specified",
     aiScore: candidate.matchScore,
+    aiReasoning: candidate.matchReasoning,
     skills,
     education: latestEducation
       ? [latestEducation.degree, latestEducation.field_of_study].filter(Boolean).join(" in ")
@@ -578,6 +580,12 @@ const AdvancedSearch = () => {
                                 )}
                               </div>
                               <p className="text-gray-700 font-medium mb-1">{candidate.title}</p>
+                              {candidate.aiReasoning && (
+                                <div className="flex items-start gap-1.5 mb-3 text-xs text-blue-800 bg-blue-50 border border-blue-100 rounded-md px-2.5 py-1.5">
+                                  <Bot className="w-3.5 h-3.5 mt-0.5 shrink-0 text-blue-600" />
+                                  <span>{candidate.aiReasoning}</span>
+                                </div>
+                              )}
                               <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
                                 <div className="flex items-center gap-1">
                                   <Building className="w-4 h-4" />

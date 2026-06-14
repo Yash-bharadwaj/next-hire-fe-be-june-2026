@@ -54,6 +54,7 @@ export interface CandidateProfile {
   }>;
   skills?: string[];
   matchScore?: number;
+  matchReasoning?: string;
   resumes?: CandidateResume[];
 }
 
