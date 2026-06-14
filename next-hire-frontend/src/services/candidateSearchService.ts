@@ -245,7 +245,9 @@ class CandidateSearchService {
   // Rank candidates by semantic similarity to a job's requirements
   async matchCandidatesForJob(jobId: string): Promise<MatchCandidatesResponse> {
     const response = await apiClient.get<MatchCandidatesResponse["data"]>(
-      `${this.baseUrl}/match/${jobId}`
+      `${this.baseUrl}/match/${jobId}`,
+      undefined,
+      60000
     );
     return response.data as unknown as MatchCandidatesResponse;
   }
@@ -254,7 +256,8 @@ class CandidateSearchService {
   async matchCandidatesByText(text: string): Promise<MatchCandidatesResponse> {
     const response = await apiClient.post<MatchCandidatesResponse["data"]>(
       `${this.baseUrl}/match-text`,
-      { text }
+      { text },
+      60000
     );
     return response.data as unknown as MatchCandidatesResponse;
   }

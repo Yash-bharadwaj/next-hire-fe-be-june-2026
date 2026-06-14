@@ -155,11 +155,14 @@ export interface PaginatedResponse<T> {
 
 // Generic API methods
 export const apiClient = {
-  get: <T>(url: string, params?: any): Promise<AxiosResponse<ApiResponse<T>>> =>
-    api.get(url, { params }),
+  // `timeout` can be overridden for slow operations (e.g. AI-powered match
+  // reranking, which makes LLM calls per candidate and can take longer than
+  // the default).
+  get: <T>(url: string, params?: any, timeout?: number): Promise<AxiosResponse<ApiResponse<T>>> =>
+    api.get(url, { params, timeout }),
 
-  post: <T>(url: string, data?: any): Promise<AxiosResponse<ApiResponse<T>>> =>
-    api.post(url, data),
+  post: <T>(url: string, data?: any, timeout?: number): Promise<AxiosResponse<ApiResponse<T>>> =>
+    api.post(url, data, { timeout }),
 
   put: <T>(url: string, data?: any): Promise<AxiosResponse<ApiResponse<T>>> =>
     api.put(url, data),

@@ -155,6 +155,10 @@ async function callGeminiJSON(prompt: string, maxOutputTokens = 4096): Promise<a
               maxOutputTokens,
             },
           }),
+          // A slow/overloaded model can otherwise hang for tens of seconds
+          // before the underlying connection times out, which - multiplied
+          // across the model fallback chain - made callers wait minutes.
+          signal: AbortSignal.timeout(15000),
         }
       );
 
