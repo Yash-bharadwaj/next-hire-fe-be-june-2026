@@ -1,5 +1,5 @@
 import { QueryTypes } from "sequelize";
-import { sequelize, Candidate, Job } from "../models";
+import { sequelize, Candidate, Job, User } from "../models";
 import { logger } from "../utils/logger";
 
 export type EmbeddingTable = "candidates" | "jobs";
@@ -94,17 +94,27 @@ async function findTopMatchesPostgres(
 ): Promise<MatchResults> {
   const vectorLiteral = `[${queryVector.join(",")}]`;
 
+  // Candidates are only ever surfaced to recruiters if their account is an
+  // active, verified candidate (same scope as searchCandidates/
+  // loadScoredCandidates). Without this join, skippedCount includes
+  // orphaned or unverified candidate rows that were never visible in the
+  // first place, making "N candidates skipped" misleading.
+  const from =
+    table === "candidates"
+      ? `candidates t JOIN users u ON u.id = t.user_id AND u.role = 'candidate' AND u.email_verified = true`
+      : `${table} t`;
+
   const [rows, skippedRows] = await Promise.all([
     sequelize.query<{ id: string; score: string }>(
-      `SELECT id, 1 - (embedding_vector <=> :vector::vector) AS score
-       FROM ${table}
-       WHERE embedding_vector IS NOT NULL
-       ORDER BY embedding_vector <=> :vector::vector
+      `SELECT t.id, 1 - (t.embedding_vector <=> :vector::vector) AS score
+       FROM ${from}
+       WHERE t.embedding_vector IS NOT NULL
+       ORDER BY t.embedding_vector <=> :vector::vector
        LIMIT :limit`,
       { replacements: { vector: vectorLiteral, limit }, type: QueryTypes.SELECT }
     ),
     sequelize.query<{ count: string }>(
-      `SELECT COUNT(*) AS count FROM ${table} WHERE embedding_vector IS NULL`,
+      `SELECT COUNT(*) AS count FROM ${from} WHERE t.embedding_vector IS NULL`,
       { type: QueryTypes.SELECT }
     ),
   ]);
@@ -122,7 +132,18 @@ async function findTopMatchesInMemory(
 ): Promise<MatchResults> {
   const rows: Array<{ id: string; get: (key: string) => unknown }> =
     table === "candidates"
-      ? await Candidate.findAll({ attributes: ["id", "embedding"] })
+      ? await Candidate.findAll({
+          attributes: ["id", "embedding"],
+          include: [
+            {
+              model: User,
+              as: "user",
+              attributes: [],
+              where: { role: "candidate", email_verified: true },
+              required: true,
+            },
+          ],
+        })
       : await Job.findAll({ attributes: ["id", "embedding"] });
 
   const scored: MatchResult[] = [];

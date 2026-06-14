@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { GlowingEffect } from "@/components/ui/glowing-effect";
 import {
   candidateSearchService,
@@ -59,6 +60,8 @@ interface SearchResultCandidate {
   availability: string;
   avatar: string;
 }
+
+const MAX_VISIBLE_SKILLS = 6;
 
 const mapCandidateToResult = (candidate: CandidateProfile): SearchResultCandidate => {
   const latestExperience = candidate.experiences?.[0];
@@ -597,11 +600,23 @@ const AdvancedSearch = () => {
                                 </div>
                               </div>
                               <div className="flex flex-wrap gap-2 mb-3">
-                                {candidate.skills.map((skill: string) => (
+                                {candidate.skills.slice(0, MAX_VISIBLE_SKILLS).map((skill: string) => (
                                   <Badge key={skill} variant="outline" className="text-xs">
                                     {skill}
                                   </Badge>
                                 ))}
+                                {candidate.skills.length > MAX_VISIBLE_SKILLS && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="outline" className="text-xs cursor-default">
+                                        +{candidate.skills.length - MAX_VISIBLE_SKILLS}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p>{candidate.skills.slice(MAX_VISIBLE_SKILLS).join(", ")}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
                               </div>
                               <div className="flex items-center gap-4 text-sm text-gray-500">
                                 <div className="flex items-center gap-1">
