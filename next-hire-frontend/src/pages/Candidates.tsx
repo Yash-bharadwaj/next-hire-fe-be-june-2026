@@ -273,7 +273,11 @@ const Candidates = () => {
       candidates.map((c) => ({
         id: c.id,
         name: candidateSearchService.formatCandidateName(c),
-        title: c.experiences?.[0]?.job_title || c.bio || "Role not specified",
+        title:
+          c.experiences?.[0]?.job_title ||
+          (c.bio
+            ? candidateSearchService.truncateText(c.bio)
+            : "Role not specified"),
         location: c.location || "—",
         experience:
           c.experience_years !== undefined

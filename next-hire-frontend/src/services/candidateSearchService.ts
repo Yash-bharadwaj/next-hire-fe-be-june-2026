@@ -273,6 +273,14 @@ class CandidateSearchService {
     }).format(amount);
   }
 
+  // Shorten long free text (e.g. an AI-generated bio used as a title
+  // fallback) to a single line.
+  truncateText(text: string, maxLength = 60): string {
+    const singleLine = text.replace(/\s+/g, " ").trim();
+    if (singleLine.length <= maxLength) return singleLine;
+    return `${singleLine.slice(0, maxLength).trimEnd()}…`;
+  }
+
   getAvailabilityColor(status: string): string {
     const colorMap: Record<string, string> = {
       available: "bg-green-100 text-green-800",

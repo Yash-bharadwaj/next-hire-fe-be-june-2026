@@ -71,7 +71,11 @@ const mapCandidateToResult = (candidate: CandidateProfile): SearchResultCandidat
   return {
     id: candidate.id,
     name: candidateSearchService.formatCandidateName(candidate),
-    title: latestExperience?.job_title || candidate.bio || "Not specified",
+    title:
+      latestExperience?.job_title ||
+      (candidate.bio
+        ? candidateSearchService.truncateText(candidate.bio)
+        : "Not specified"),
     company: latestExperience?.company_name || "Not specified",
     location: candidate.location || "Not specified",
     experience: candidateSearchService.formatExperience(candidate.experience_years),
