@@ -924,6 +924,45 @@ const loadScoredCandidates = async (
   return scored;
 };
 
+// Verified candidates that have never been embedded (e.g. added via the
+// manual "Add Candidate" form rather than resume parsing) are invisible to
+// pgvector similarity search and always land in skipped_count. Lazily embed
+// a few of them before each AI search so the searchable pool gradually
+// covers the whole candidate database without a separate backfill job.
+const EMBEDDING_BACKFILL_LIMIT = 5;
+
+const backfillMissingCandidateEmbeddings = async (): Promise<void> => {
+  const candidates = await Candidate.findAll({
+    where: { embedding: null as any },
+    include: [
+      {
+        model: User,
+        as: "user",
+        attributes: [],
+        where: { role: "candidate", email_verified: true },
+        required: true,
+      },
+      { model: Experience, as: "experiences", required: false, order: [["start_date", "DESC"]], limit: 3 },
+      { model: Education, as: "education", required: false, order: [["start_date", "DESC"]], limit: 2 },
+      { model: CandidateSkill, as: "candidateSkills", required: false },
+    ],
+    limit: EMBEDDING_BACKFILL_LIMIT,
+  });
+
+  await Promise.all(
+    candidates.map(async (candidate) => {
+      try {
+        const text = buildCandidateProfileText(candidate.toJSON());
+        if (!text.trim()) return;
+        const vector = await getEmbedding(text);
+        if (vector) await persistEmbedding(candidate, "candidates", vector);
+      } catch (error) {
+        logger.error(`Failed to backfill embedding for candidate ${candidate.id}`, error);
+      }
+    })
+  );
+};
+
 const buildJobEmbeddingText = (job: Job): string =>
   [
     job.title,
@@ -970,6 +1009,7 @@ export const matchCandidatesForJob = asyncHandler(
       return;
     }
 
+    await backfillMissingCandidateEmbeddings();
     const { matches, skippedCount } = await findTopMatches("candidates", queryVector, 50);
     const jobSkills = [...(job.required_skills || []), ...(job.preferred_skills || [])];
     const candidates = await loadScoredCandidates(matches, {
@@ -1008,6 +1048,7 @@ export const matchCandidatesByText = asyncHandler(
       );
     }
 
+    await backfillMissingCandidateEmbeddings();
     const { matches, skippedCount } = await findTopMatches("candidates", queryVector, 50);
     const candidates = await loadScoredCandidates(matches, { queryText: text.trim() });
 

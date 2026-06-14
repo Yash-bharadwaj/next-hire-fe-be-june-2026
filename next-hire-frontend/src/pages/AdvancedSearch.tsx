@@ -512,7 +512,8 @@ const AdvancedSearch = () => {
                       </Button>
                     </div>
                     <p className="text-sm text-blue-700">
-                      Use natural language to describe your requirements. AI will translate this into precise search filters.
+                      Our AI searches your entire candidate database for the best semantic match, then explains
+                      why each result fits - or doesn't.
                     </p>
                   </div>
                 </CardContent>
