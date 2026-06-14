@@ -51,6 +51,50 @@ export interface CandidateProfile {
     years_of_experience?: number;
     is_primary: boolean;
   }>;
+  skills?: string[];
+  matchScore?: number;
+}
+
+export interface ParsedResumeData {
+  name?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  current_employer?: string;
+  current_job_title?: string;
+  total_experience_years?: number;
+  skills: string[];
+  education: Array<{ degree?: string; institution?: string; year?: string; field?: string }>;
+  experience: Array<{
+    employer?: string;
+    title?: string;
+    start_date?: string;
+    end_date?: string;
+    description?: string;
+    responsibilities?: string[];
+  }>;
+  certifications: string[];
+  summary?: string;
+}
+
+export interface ParseResumeResponse {
+  success: boolean;
+  message: string;
+  data: {
+    candidate: CandidateProfile;
+    resume_url: string;
+    parsed: ParsedResumeData;
+  };
+}
+
+export interface MatchCandidatesResponse {
+  success: boolean;
+  message?: string;
+  data: {
+    job?: { id: string; job_id: string; title: string };
+    candidates: CandidateProfile[];
+    skipped_count: number;
+  };
 }
 
 export interface CreateCandidateRequest {
@@ -168,6 +212,35 @@ class CandidateSearchService {
   async deleteCandidate(id: string): Promise<{ success: boolean; message: string }> {
     const response = await apiClient.delete(`${this.baseUrl}/${id}`);
     return response.data;
+  }
+
+  // Upload + AI-parse a resume file and create a candidate record from it
+  async parseResume(file: File): Promise<ParseResumeResponse> {
+    const formData = new FormData();
+    formData.append("resume", file);
+    const response = await apiClient.upload<ParseResumeResponse["data"]>(
+      `${this.baseUrl}/parse-resume`,
+      formData,
+      60000
+    );
+    return response.data as unknown as ParseResumeResponse;
+  }
+
+  // Rank candidates by semantic similarity to a job's requirements
+  async matchCandidatesForJob(jobId: string): Promise<MatchCandidatesResponse> {
+    const response = await apiClient.get<MatchCandidatesResponse["data"]>(
+      `${this.baseUrl}/match/${jobId}`
+    );
+    return response.data as unknown as MatchCandidatesResponse;
+  }
+
+  // Rank candidates by semantic similarity to free-form text (AI search box)
+  async matchCandidatesByText(text: string): Promise<MatchCandidatesResponse> {
+    const response = await apiClient.post<MatchCandidatesResponse["data"]>(
+      `${this.baseUrl}/match-text`,
+      { text }
+    );
+    return response.data as unknown as MatchCandidatesResponse;
   }
 
   async updateCandidate(id: string, data: Partial<Pick<CandidateProfile,

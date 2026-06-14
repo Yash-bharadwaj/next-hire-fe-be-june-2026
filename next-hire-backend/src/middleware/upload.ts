@@ -8,8 +8,9 @@ import { AuthenticatedRequest } from "./auth";
 const uploadsRoot = path.join(__dirname, "../../uploads");
 const avatarsDir = path.join(uploadsRoot, "avatars");
 const resumesDir = path.join(uploadsRoot, "resumes");
+const documentsTmpDir = path.join(uploadsRoot, "documents_tmp");
 
-[avatarsDir, resumesDir].forEach((dir) => {
+[avatarsDir, resumesDir, documentsTmpDir].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -63,6 +64,28 @@ export const resumeUpload = wrapUpload(
         cb(null, true);
       } else {
         cb(createError("Only PDF, DOC, or DOCX files are allowed", 400));
+      }
+    },
+  })
+);
+
+// Accepts PDF/DOC/DOCX/TXT for AI parsing (résumés and job descriptions).
+// .doc is allowed through here so aiParsingService can return a clear,
+// user-facing "unsupported format" error instead of a generic multer rejection.
+const ALLOWED_AI_DOCUMENT_TYPES = [
+  ...ALLOWED_DOCUMENT_TYPES,
+  "text/plain",
+];
+
+export const documentUpload = wrapUpload(
+  multer({
+    storage: makeStorage(documentsTmpDir),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    fileFilter: (_req, file, cb) => {
+      if (ALLOWED_AI_DOCUMENT_TYPES.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(createError("Only PDF, DOC, DOCX, or TXT files are allowed", 400));
       }
     },
   })

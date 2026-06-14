@@ -1,5 +1,7 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,10 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { GlowingEffect } from "@/components/ui/glowing-effect";
-import { 
-  Search, 
-  Settings, 
-  Lock, 
+import {
+  candidateSearchService,
+  CandidateProfile,
+  CandidateSearchFilters,
+} from "@/services/candidateSearchService";
+import {
+  Search,
+  Settings,
+  Lock,
   Sparkles,
   Box,
   ChevronDown,
@@ -32,10 +39,81 @@ import {
   Bot,
   Loader2,
   Users,
-  TrendingUp
+  TrendingUp,
+  X
 } from "lucide-react";
 
+interface SearchResultCandidate {
+  id: string;
+  name: string;
+  title: string;
+  company: string;
+  location: string;
+  experience: string;
+  salary: string;
+  email: string;
+  phone: string;
+  aiScore?: number;
+  skills: string[];
+  education: string;
+  availability: string;
+  avatar: string;
+}
+
+const mapCandidateToResult = (candidate: CandidateProfile): SearchResultCandidate => {
+  const latestExperience = candidate.experiences?.[0];
+  const latestEducation = candidate.education?.[0];
+  const skills = candidate.candidateSkills?.length
+    ? candidate.candidateSkills.map((skill) => skill.skill_name)
+    : candidate.skills || [];
+  const initials = `${candidate.first_name?.[0] || ""}${candidate.last_name?.[0] || ""}`.toUpperCase();
+
+  return {
+    id: candidate.id,
+    name: candidateSearchService.formatCandidateName(candidate),
+    title: latestExperience?.job_title || candidate.bio || "Not specified",
+    company: latestExperience?.company_name || "Not specified",
+    location: candidate.location || "Not specified",
+    experience: candidateSearchService.formatExperience(candidate.experience_years),
+    salary: candidateSearchService.formatSalary(candidate.expected_salary),
+    email: candidate.user?.email || candidate.email || "Not specified",
+    phone: candidate.phone || "Not specified",
+    aiScore: candidate.matchScore,
+    skills,
+    education: latestEducation
+      ? [latestEducation.degree, latestEducation.field_of_study].filter(Boolean).join(" in ")
+      : "Not specified",
+    availability: candidateSearchService.getAvailabilityLabel(candidate.availability_status),
+    avatar: initials || "?",
+  };
+};
+
+// Parse free-text "3-5 years" / "5+ years" style inputs into numeric bounds
+const parseExperienceRange = (value: string): { experience_min?: number; experience_max?: number } => {
+  const numbers = value.match(/\d+/g)?.map(Number) || [];
+  if (numbers.length >= 2) return { experience_min: numbers[0], experience_max: numbers[1] };
+  if (numbers.length === 1) return { experience_min: numbers[0] };
+  return {};
+};
+
+// Parse free-text "$100k - $150k" style inputs into numeric bounds
+const parseSalaryRange = (value: string): { salary_min?: number; salary_max?: number } => {
+  const matches = value.match(/\d+(?:\.\d+)?\s*[kK]?/g) || [];
+  const numbers = matches.map((match) => {
+    const amount = parseFloat(match);
+    return /[kK]/.test(match) ? amount * 1000 : amount;
+  });
+  if (numbers.length >= 2) return { salary_min: numbers[0], salary_max: numbers[1] };
+  if (numbers.length === 1) return { salary_min: numbers[0] };
+  return {};
+};
+
+const AVAILABILITY_VALUES = ["available", "not_available", "interviewing", "employed"] as const;
+
 const AdvancedSearch = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const jobId = searchParams.get("jobId");
+
   const [searchQuery, setSearchQuery] = useState("");
   const [location, setLocation] = useState("");
   const [experience, setExperience] = useState("");
@@ -46,14 +124,15 @@ const AdvancedSearch = () => {
   const [isAiSearchOpen, setIsAiSearchOpen] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [isAiSearching, setIsAiSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResultCandidate[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
-  const [profileCandidate, setProfileCandidate] = useState<any | null>(null);
+  const [profileCandidate, setProfileCandidate] = useState<SearchResultCandidate | null>(null);
+  const [matchedJob, setMatchedJob] = useState<{ id: string; job_id: string; title: string } | null>(null);
 
-  const handleContactCandidate = (candidate: any) => {
+  const handleContactCandidate = (candidate: SearchResultCandidate) => {
     window.location.href = `mailto:${candidate.email}`;
   };
-  
+
   // Additional criteria state
   const [education, setEducation] = useState("");
   const [company, setCompany] = useState("");
@@ -62,100 +141,106 @@ const AdvancedSearch = () => {
   const [industry, setIndustry] = useState("");
   const [certifications, setCertifications] = useState("");
 
-  // Mock candidate data
-  const mockCandidates = [
-    {
-      id: 1,
-      name: "Sarah Chen",
-      title: "Senior React Developer",
-      company: "TechCorp",
-      location: "San Francisco, CA",
-      experience: "6 years",
-      salary: "$130,000",
-      email: "sarah.chen@email.com",
-      phone: "+1 (555) 123-4567",
-      aiScore: 94,
-      skills: ["React", "TypeScript", "Node.js", "AWS"],
-      education: "MS Computer Science",
-      availability: "2 weeks",
-      avatar: "SC"
-    },
-    {
-      id: 2,
-      name: "Michael Rodriguez",
-      title: "Full Stack Engineer",
-      company: "StartupInc",
-      location: "Remote",
-      experience: "4 years",
-      salary: "$110,000",
-      email: "m.rodriguez@email.com",
-      phone: "+1 (555) 987-6543",
-      aiScore: 87,
-      skills: ["JavaScript", "Python", "React", "Django"],
-      education: "BS Computer Engineering",
-      availability: "Immediate",
-      avatar: "MR"
-    },
-    {
-      id: 3,
-      name: "Emily Watson",
-      title: "Frontend Architect",
-      company: "BigTech Solutions",
-      location: "New York, NY",
-      experience: "8 years",
-      salary: "$155,000",
-      email: "emily.watson@email.com",
-      phone: "+1 (555) 456-7890",
-      aiScore: 96,
-      skills: ["React", "Vue.js", "Angular", "GraphQL"],
-      education: "PhD Computer Science",
-      availability: "1 month",
-      avatar: "EW"
-    },
-    {
-      id: 4,
-      name: "David Kim",
-      title: "React Native Developer",
-      company: "MobileFirst",
-      location: "Austin, TX",
-      experience: "5 years",
-      salary: "$125,000",
-      email: "david.kim@email.com",
-      phone: "+1 (555) 321-9876",
-      aiScore: 89,
-      skills: ["React Native", "JavaScript", "Swift", "Kotlin"],
-      education: "BS Software Engineering",
-      availability: "3 weeks",
-      avatar: "DK"
-    }
-  ];
+  // Arrived from "Find Matching Candidates" on a job - load AI-ranked candidates for it
+  useEffect(() => {
+    if (!jobId) return;
+
+    let cancelled = false;
+    const loadJobMatches = async () => {
+      setIsSearching(true);
+      setHasSearched(true);
+      try {
+        const response = await candidateSearchService.matchCandidatesForJob(jobId);
+        if (cancelled) return;
+        setMatchedJob(response.data.job || null);
+        setSearchResults(response.data.candidates.map(mapCandidateToResult));
+        if (response.data.skipped_count > 0) {
+          toast.info(
+            `${response.data.skipped_count} candidate(s) skipped (no profile data yet to match against)`
+          );
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          toast.error(err.response?.data?.message || err.message || "Failed to load matching candidates");
+        }
+      } finally {
+        if (!cancelled) setIsSearching(false);
+      }
+    };
+
+    loadJobMatches();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId]);
+
+  const clearJobMatch = () => {
+    setMatchedJob(null);
+    setSearchResults([]);
+    setHasSearched(false);
+    setSearchParams((params) => {
+      params.delete("jobId");
+      return params;
+    });
+  };
 
   const handleSearch = async () => {
     setIsSearching(true);
     setHasSearched(true);
-    
-    // Simulate search delay
-    setTimeout(() => {
-      setSearchResults(mockCandidates);
+    setMatchedJob(null);
+
+    try {
+      const filters: CandidateSearchFilters = {};
+      if (searchQuery.trim()) filters.search = searchQuery.trim();
+      if (location.trim()) filters.location = location.trim();
+
+      const expRange = parseExperienceRange(experience);
+      if (expRange.experience_min !== undefined) filters.experience_min = expRange.experience_min;
+      if (expRange.experience_max !== undefined) filters.experience_max = expRange.experience_max;
+
+      const salaryRange = parseSalaryRange(salary);
+      if (salaryRange.salary_min !== undefined) filters.salary_min = salaryRange.salary_min;
+      if (salaryRange.salary_max !== undefined) filters.salary_max = salaryRange.salary_max;
+
+      const normalizedAvailability = availability.trim().toLowerCase().replace(/\s+/g, "_");
+      if ((AVAILABILITY_VALUES as readonly string[]).includes(normalizedAvailability)) {
+        filters.availability_status = normalizedAvailability as CandidateSearchFilters["availability_status"];
+      }
+
+      const response = await candidateSearchService.searchCandidates(filters);
+      setSearchResults(response.data.candidates.map(mapCandidateToResult));
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || "Failed to search candidates");
+      setSearchResults([]);
+    } finally {
       setIsSearching(false);
-    }, 1500);
+    }
   };
 
   const handleAiSearch = async () => {
+    if (!aiPrompt.trim()) {
+      toast.error("Describe the candidate you're looking for first");
+      return;
+    }
+
     setIsAiSearching(true);
     setHasSearched(true);
-    
-    // Simulate AI processing delay
-    setTimeout(() => {
-      // Filter candidates based on AI prompt (simplified simulation)
-      const filteredResults = mockCandidates.filter(candidate => 
-        aiPrompt.toLowerCase().includes('senior') ? 
-          candidate.experience.includes('5') || candidate.experience.includes('6') || candidate.experience.includes('8') :
-          true
-      );
-      setSearchResults(filteredResults);
+    setMatchedJob(null);
+
+    try {
+      const response = await candidateSearchService.matchCandidatesByText(aiPrompt.trim());
+      setSearchResults(response.data.candidates.map(mapCandidateToResult));
+      if (response.data.skipped_count > 0) {
+        toast.info(
+          `${response.data.skipped_count} candidate(s) skipped (no profile data yet to match against)`
+        );
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || "AI search failed");
+      setSearchResults([]);
+    } finally {
       setIsAiSearching(false);
-    }, 2500);
+    }
   };
 
   const getScoreColor = (score: number) => {
@@ -171,6 +256,23 @@ const AdvancedSearch = () => {
         <h1 className="text-2xl font-bold text-gray-900">Candidate Search</h1>
         <p className="text-gray-600">Find the perfect candidates with advanced filtering and AI-powered search</p>
       </div>
+
+      {matchedJob && (
+        <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-purple-900">
+            <Sparkles className="w-5 h-5 text-purple-600" />
+            <span className="font-medium">
+              Showing AI-ranked candidates for{" "}
+              <span className="font-semibold">{matchedJob.title}</span>{" "}
+              <span className="text-purple-700">({matchedJob.job_id})</span>
+            </span>
+          </div>
+          <Button variant="ghost" size="sm" onClick={clearJobMatch}>
+            <X className="w-4 h-4 mr-1" />
+            Clear
+          </Button>
+        </div>
+      )}
 
       <div className={`grid gap-6 transition-all duration-300 ${isFiltersOpen ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
         {/* Search Filters - Now Collapsible */}
@@ -458,10 +560,12 @@ const AdvancedSearch = () => {
                                 <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">
                                   {candidate.name}
                                 </h3>
-                                <Badge className={`${getScoreColor(candidate.aiScore)} font-semibold`}>
-                                  <Star className="w-3 h-3 mr-1" />
-                                  {candidate.aiScore}% Match
-                                </Badge>
+                                {typeof candidate.aiScore === "number" && (
+                                  <Badge className={`${getScoreColor(candidate.aiScore)} font-semibold`}>
+                                    <Star className="w-3 h-3 mr-1" />
+                                    {candidate.aiScore}% Match
+                                  </Badge>
+                                )}
                               </div>
                               <p className="text-gray-700 font-medium mb-1">{candidate.title}</p>
                               <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">

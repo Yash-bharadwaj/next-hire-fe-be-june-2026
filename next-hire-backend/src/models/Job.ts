@@ -37,6 +37,7 @@ export interface JobAttributes {
   updated_at?: Date;
   notes_history?: any;
   attachments?: any;
+  embedding?: number[] | null; // Vector embedding for semantic matching
 }
 
 export interface JobCreationAttributes
@@ -94,10 +95,19 @@ export class Job
   public readonly updated_at!: Date;
   public notes_history?: any;
   public attachments?: any;
+  public embedding?: number[] | null;
 
   // Associations
   public creator?: User;
   public assignee?: User;
+
+  // Hide the raw embedding vector from API responses - it's large and only
+  // used internally for similarity search.
+  public toJSON(): object {
+    const values = { ...this.get() } as any;
+    delete values.embedding;
+    return values;
+  }
 }
 
 Job.init(
@@ -301,6 +311,22 @@ Job.init(
       },
       set(value: any[]) {
         this.setDataValue("attachments", JSON.stringify(value || []));
+      },
+    },
+    embedding: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      get() {
+        const value = this.getDataValue("embedding") as unknown as string;
+        if (!value) return null;
+        try {
+          return JSON.parse(value);
+        } catch {
+          return null;
+        }
+      },
+      set(value: number[] | null) {
+        this.setDataValue("embedding", (value ? JSON.stringify(value) : null) as any);
       },
     },
     created_by: {

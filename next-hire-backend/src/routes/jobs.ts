@@ -2,6 +2,7 @@ import { Router } from "express";
 import { body, param, query } from "express-validator";
 import { auth } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { documentUpload } from "../middleware/upload";
 import {
   getJobs,
   getJobById,
@@ -10,6 +11,7 @@ import {
   deleteJob,
   getRecruiterJobs,
   getVendorEligibleJobs,
+  parseJobDescriptionAndCreateJob,
 } from "../controllers/jobController";
 
 const router = Router();
@@ -179,6 +181,9 @@ const jobIdValidation = [
 // Public routes (no authentication required)
 router.get("/", searchJobsValidation, validate, getJobs);
 router.get("/:id/public", jobIdValidation, validate, getJobById);
+
+// Upload + AI-parse a job description and create a draft job (recruiter-only)
+router.post("/parse", auth, documentUpload.single("job_description"), parseJobDescriptionAndCreateJob);
 
 // Protected routes (authentication required)
 router.get("/:id", auth, jobIdValidation, validate, getJobById);

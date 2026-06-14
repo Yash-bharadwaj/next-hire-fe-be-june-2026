@@ -172,8 +172,13 @@ export const apiClient = {
 
   // For multipart/form-data uploads. Unsets the default JSON Content-Type so
   // axios/the browser can set the correct multipart boundary automatically.
-  upload: <T>(url: string, formData: FormData): Promise<AxiosResponse<ApiResponse<T>>> =>
-    api.post(url, formData, { headers: { "Content-Type": undefined } }),
+  // `timeout` can be overridden for slow operations (e.g. AI document parsing).
+  upload: <T>(
+    url: string,
+    formData: FormData,
+    timeout?: number
+  ): Promise<AxiosResponse<ApiResponse<T>>> =>
+    api.post(url, formData, { headers: { "Content-Type": undefined }, timeout }),
 };
 
 // Health check

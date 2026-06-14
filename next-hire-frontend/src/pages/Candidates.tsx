@@ -38,6 +38,7 @@ import {
   Clock,
   Pencil,
   RefreshCw,
+  Upload,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -85,6 +86,10 @@ const Candidates = () => {
     availability_status: "available",
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [showParseDialog, setShowParseDialog] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [parsingResume, setParsingResume] = useState(false);
 
   const handleViewCandidate = (candidateId: string) => {
     navigate(`/dashboard/candidates/${candidateId}`);
@@ -153,6 +158,39 @@ const Candidates = () => {
       toast.error(err.response?.data?.message || err.message || "Failed to delete candidate");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleParseResume = async () => {
+    if (!resumeFile) {
+      toast.error("Please choose a resume file (PDF, DOC, DOCX, or TXT)");
+      return;
+    }
+    try {
+      setParsingResume(true);
+      const result = await candidateSearchService.parseResume(resumeFile);
+      const candidate = result.data.candidate;
+      const name = candidateSearchService.formatCandidateName(candidate);
+      toast.success(`Created candidate ${name} from resume`);
+      setShowParseDialog(false);
+      setResumeFile(null);
+      refresh();
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        const existingId = err.response?.data?.data?.existing_candidate_id;
+        toast.error(err.response.data.message || "A candidate with this email already exists", {
+          action: existingId
+            ? {
+                label: "View candidate",
+                onClick: () => navigate(`/dashboard/candidates/${existingId}`),
+              }
+            : undefined,
+        });
+      } else {
+        toast.error(err.response?.data?.message || err.message || "Failed to parse resume");
+      }
+    } finally {
+      setParsingResume(false);
     }
   };
 
@@ -446,6 +484,16 @@ const Candidates = () => {
           </Button>
 
           <Button
+            onClick={() => setShowParseDialog(true)}
+            variant="outline"
+            size="sm"
+            className="text-xs"
+          >
+            <Upload className="w-3 h-3 mr-1" />
+            Parse Resume
+          </Button>
+
+          <Button
             onClick={() => setShowAddDialog(true)}
             className="button-gradient text-white shadow-lg hover:shadow-xl transition-all duration-300 text-xs"
           >
@@ -709,6 +757,67 @@ const Candidates = () => {
             <Button onClick={handleCreateCandidate} disabled={creating}>
               {creating && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
               Save Candidate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Parse Resume Dialog */}
+      <Dialog
+        open={showParseDialog}
+        onOpenChange={(open) => {
+          if (!parsingResume) {
+            setShowParseDialog(open);
+            if (!open) setResumeFile(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Parse Resume</DialogTitle>
+            <DialogDescription>
+              Upload a resume (PDF, DOC, DOCX, or TXT). AI will extract the
+              candidate's details and create a new candidate profile
+              automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1 block">
+              Resume file
+            </label>
+            <Input
+              type="file"
+              accept=".pdf,.doc,.docx,.txt"
+              disabled={parsingResume}
+              onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+            />
+            {resumeFile && (
+              <p className="text-xs text-gray-500 mt-1 truncate">
+                Selected: {resumeFile.name}
+              </p>
+            )}
+            {parsingResume && (
+              <p className="text-xs text-gray-500 mt-2 flex items-center">
+                <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                Parsing resume with AI — this can take up to a minute…
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={parsingResume}
+              onClick={() => {
+                setShowParseDialog(false);
+                setResumeFile(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleParseResume} disabled={parsingResume || !resumeFile}>
+              {parsingResume && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+              Upload &amp; Create Candidate
             </Button>
           </DialogFooter>
         </DialogContent>

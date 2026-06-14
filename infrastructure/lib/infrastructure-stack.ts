@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as rds from 'aws-cdk-lib/aws-rds';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as apprunner from 'aws-cdk-lib/aws-apprunner';
@@ -128,6 +129,16 @@ export class InfrastructureStack extends cdk.Stack {
     );
 
     // ------------------------------------------------------------------
+    // S3 bucket for AI-parsed resume / job description documents
+    // ------------------------------------------------------------------
+    const documentsBucket = new s3.Bucket(this, 'DocumentsBucket', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    documentsBucket.grantReadWrite(appRunnerInstanceRole);
+
+    // ------------------------------------------------------------------
     // App Runner service (backend)
     //
     // Bootstrap note: App Runner refuses to create a service whose
@@ -177,6 +188,8 @@ export class InfrastructureStack extends cdk.Stack {
                   { name: 'FROM_EMAIL', value: 'exclusivesvr@gmail.com' },
                   { name: 'FROM_NAME', value: 'The Next Hire' },
                   { name: 'FRONTEND_URL', value: AMPLIFY_FRONTEND_URL },
+                  { name: 'STORAGE_PROVIDER', value: 's3' },
+                  { name: 'DOCUMENTS_BUCKET', value: documentsBucket.bucketName },
                 ],
                 runtimeEnvironmentSecrets: [
                   { name: 'DB_USERNAME', value: `${dbSecret.secretArn}:username::` },
@@ -270,6 +283,10 @@ export class InfrastructureStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'DatabaseSecretArn', {
       value: dbSecret.secretArn,
       description: 'Secrets Manager ARN for DB credentials',
+    });
+    new cdk.CfnOutput(this, 'DocumentsBucketName', {
+      value: documentsBucket.bucketName,
+      description: 'S3 bucket for AI-parsed resume / job description documents',
     });
     new cdk.CfnOutput(this, 'GitHubConnectionArn', {
       value: APP_RUNNER_GITHUB_CONNECTION_ARN,

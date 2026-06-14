@@ -1,9 +1,21 @@
 import { Response } from "express";
 import { Op } from "sequelize";
+import fs from "fs/promises";
 import { Job, User, Recruiter, Submission, Candidate } from "../models";
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import {
+  extractText,
+  getEmbedding,
+  parseJobDescription,
+  ParsedJobDescription,
+  UnsupportedFileTypeError,
+  EmptyDocumentError,
+  AIParsingError,
+} from "../services/aiParsingService";
+import { persistEmbedding } from "../services/embeddingService";
+import { uploadDocument } from "../services/storageService";
 
 // Get all jobs with filters (for candidates and public view)
 export const getJobs = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -585,3 +597,145 @@ export const getVendorEligibleJobs = asyncHandler(async (req: AuthRequest, res: 
     },
   });
 });
+
+const buildParsedJobEmbeddingText = (
+  parsed: ParsedJobDescription,
+  title: string,
+  companyName: string
+): string =>
+  [
+    title,
+    companyName,
+    parsed.location,
+    parsed.description,
+    parsed.required_skills.join(", "),
+    parsed.preferred_skills.join(", "),
+  ]
+    .filter((part): part is string => !!part && part.trim().length > 0)
+    .join(". ");
+
+// Upload + AI-parse a job description document and create a draft job from it (recruiters only)
+export const parseJobDescriptionAndCreateJob = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const userId = req.user?.userId;
+
+    if (req.user?.role !== "recruiter") {
+      throw createError("Only recruiters can parse job descriptions", 403);
+    }
+
+    if (!req.file) {
+      throw createError("A job description file (PDF, DOCX, or TXT) is required", 400);
+    }
+
+    const tempFilePath = req.file.path;
+    const cleanupTempFile = () => fs.unlink(tempFilePath).catch(() => {});
+
+    let text: string;
+    try {
+      text = await extractText(tempFilePath, req.file.originalname);
+    } catch (error) {
+      await cleanupTempFile();
+      if (error instanceof UnsupportedFileTypeError || error instanceof EmptyDocumentError) {
+        throw createError(error.message, 400);
+      }
+      throw error;
+    }
+
+    let parsed: ParsedJobDescription;
+    try {
+      parsed = await parseJobDescription(text);
+    } catch (error) {
+      await cleanupTempFile();
+      if (error instanceof AIParsingError) {
+        throw createError(error.message, 502);
+      }
+      throw error;
+    }
+
+    let companyName = parsed.company_name;
+    if (!companyName) {
+      const recruiterProfile = await Recruiter.findOne({ where: { user_id: userId } });
+      companyName = recruiterProfile?.company_name || "Unknown Company";
+    }
+
+    const title = parsed.title || "Untitled Position";
+
+    // Generate job ID like JOB-2024-001 (same scheme as createJob)
+    const year = new Date().getFullYear();
+    const count = await Job.count({
+      where: {
+        job_id: {
+          [Op.like]: `JOB-${year}-%`,
+        },
+      },
+    });
+    const job_id = `JOB-${year}-${String(count + 1).padStart(3, "0")}`;
+
+    const job = await Job.create({
+      job_id,
+      title,
+      description: parsed.description,
+      company_name: companyName,
+      location: parsed.location || "Remote",
+      city: parsed.city,
+      state: parsed.state,
+      country: parsed.country || "US",
+      job_type: parsed.job_type || "full_time",
+      salary_min: parsed.salary_min,
+      salary_max: parsed.salary_max,
+      salary_currency: parsed.salary_currency || "USD",
+      experience_min: parsed.experience_min_years,
+      experience_max: parsed.experience_max_years,
+      required_skills: parsed.required_skills,
+      preferred_skills: parsed.preferred_skills,
+      education_requirements: parsed.education_requirements,
+      status: "draft",
+      priority: "medium",
+      positions_available: parsed.positions_available || 1,
+      vendor_eligible: true,
+      remote_work_allowed: false,
+      created_by: userId!,
+      assigned_to: userId,
+    });
+
+    const uploaded = await uploadDocument(tempFilePath, req.file.filename, req.file.mimetype);
+    await job.update({
+      attachments: [
+        {
+          url: uploaded.key,
+          name: req.file.originalname,
+          by: userId,
+          at: new Date().toISOString(),
+        },
+      ],
+    });
+
+    const embedding = await getEmbedding(buildParsedJobEmbeddingText(parsed, title, companyName));
+    await persistEmbedding(job, "jobs", embedding);
+
+    const created = await Job.findByPk(job.id, {
+      include: [
+        {
+          model: User,
+          as: "creator",
+          attributes: ["id", "email"],
+          include: [
+            {
+              model: Recruiter,
+              as: "recruiterProfile",
+              attributes: ["first_name", "last_name", "company_name"],
+            },
+          ],
+        },
+      ],
+    });
+
+    logger.info(`Recruiter ${userId} created draft job ${job_id} via job description parsing`);
+
+    res.status(201).json({
+      success: true,
+      message: "Job description parsed and draft job created successfully",
+      data: { job: created, parsed },
+    });
+  }
+);

@@ -2,19 +2,33 @@ import { Response } from "express";
 import { Op, QueryTypes } from "sequelize";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import fs from "fs/promises";
 import {
   User,
   Candidate,
   Experience,
   Education,
   CandidateSkill,
+  CandidateResume,
   Submission,
   Job,
 } from "../models";
 import { sequelize } from "../config/database";
+import { likeOp } from "../utils/searchOperators";
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import {
+  extractText,
+  getEmbedding,
+  parseResume,
+  ParsedResume,
+  UnsupportedFileTypeError,
+  EmptyDocumentError,
+  AIParsingError,
+} from "../services/aiParsingService";
+import { persistEmbedding, findTopMatches, MatchResult } from "../services/embeddingService";
+import { uploadDocument } from "../services/storageService";
 
 // Search candidates (for recruiters)
 export const searchCandidates = asyncHandler(
@@ -54,15 +68,15 @@ export const searchCandidates = asyncHandler(
     // Search in name and bio
     if (search) {
       candidateWhere[Op.or] = [
-        { first_name: { [Op.iLike]: `%${search}%` } },
-        { last_name: { [Op.iLike]: `%${search}%` } },
-        { bio: { [Op.iLike]: `%${search}%` } },
+        { first_name: { [likeOp]: `%${search}%` } },
+        { last_name: { [likeOp]: `%${search}%` } },
+        { bio: { [likeOp]: `%${search}%` } },
       ];
     }
 
     // Location filter
     if (location) {
-      candidateWhere.location = { [Op.iLike]: `%${location}%` };
+      candidateWhere.location = { [likeOp]: `%${location}%` };
     }
 
     // Experience filter
@@ -501,6 +515,283 @@ export const deleteCandidate = asyncHandler(
     res.json({
       success: true,
       message: "Candidate deleted successfully",
+    });
+  }
+);
+
+const buildCandidateEmbeddingText = (parsed: ParsedResume): string =>
+  [
+    parsed.name,
+    parsed.current_job_title,
+    parsed.current_employer,
+    parsed.location,
+    parsed.summary,
+    parsed.skills.join(", "),
+    parsed.certifications.join(", "),
+  ]
+    .filter((part): part is string => !!part && part.trim().length > 0)
+    .join(". ");
+
+// Upload + AI-parse a resume and create a full candidate record from it (recruiter-only)
+export const parseResumeAndCreateCandidate = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    if (req.user?.role !== "recruiter") {
+      throw createError("Only recruiters can parse resumes", 403);
+    }
+
+    if (!req.file) {
+      throw createError("A resume file (PDF, DOCX, or TXT) is required", 400);
+    }
+
+    const tempFilePath = req.file.path;
+    const cleanupTempFile = () => fs.unlink(tempFilePath).catch(() => {});
+
+    let text: string;
+    try {
+      text = await extractText(tempFilePath, req.file.originalname);
+    } catch (error) {
+      await cleanupTempFile();
+      if (error instanceof UnsupportedFileTypeError || error instanceof EmptyDocumentError) {
+        throw createError(error.message, 400);
+      }
+      throw error;
+    }
+
+    let parsed: ParsedResume;
+    try {
+      parsed = await parseResume(text);
+    } catch (error) {
+      await cleanupTempFile();
+      if (error instanceof AIParsingError) {
+        throw createError(error.message, 502);
+      }
+      throw error;
+    }
+
+    if (!parsed.email) {
+      await cleanupTempFile();
+      throw createError(
+        "Could not find an email address in this resume. Please add this candidate manually.",
+        400
+      );
+    }
+
+    const email = parsed.email.toLowerCase();
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      await cleanupTempFile();
+      const existingCandidate = await Candidate.findOne({ where: { user_id: existingUser.id } });
+      res.status(409).json({
+        success: false,
+        message: `A candidate with email ${email} already exists.`,
+        data: { existing_candidate_id: existingCandidate?.id || null },
+      });
+      return;
+    }
+
+    const nameParts = (parsed.name || email.split("@")[0]).trim().split(/\s+/).filter(Boolean);
+    const first_name = nameParts[0] || "New";
+    const last_name = nameParts.slice(1).join(" ") || "Candidate";
+
+    // Recruiter-added candidates are activated immediately, same as createCandidate.
+    const tempPassword = crypto.randomBytes(9).toString("base64");
+    const hashedPassword = await bcrypt.hash(tempPassword, 12);
+
+    const user = await User.create({
+      email,
+      password: hashedPassword,
+      role: "candidate",
+      status: "active",
+      email_verified: true,
+      email_verified_at: new Date(),
+    });
+
+    const experienceYears =
+      parsed.total_experience_years !== undefined
+        ? Math.max(0, Math.min(50, Math.round(parsed.total_experience_years)))
+        : undefined;
+
+    const candidate = await Candidate.create({
+      user_id: user.id,
+      created_by: req.user?.userId,
+      first_name,
+      last_name,
+      phone: parsed.phone,
+      location: parsed.location,
+      experience_years: experienceYears,
+      skills: parsed.skills,
+      bio: parsed.summary,
+      availability_status: "available",
+    });
+
+    const uploaded = await uploadDocument(tempFilePath, req.file.filename, req.file.mimetype);
+    await CandidateResume.create({
+      candidate_id: candidate.id,
+      file_url: uploaded.key,
+      file_name: req.file.originalname,
+      is_primary: true,
+    });
+    await candidate.update({ resume_url: uploaded.key });
+
+    const embedding = await getEmbedding(buildCandidateEmbeddingText(parsed));
+    await persistEmbedding(candidate, "candidates", embedding);
+
+    const created = await Candidate.findByPk(candidate.id, {
+      include: [
+        { model: User, as: "user", attributes: ["id", "email", "status", "created_at"] },
+      ],
+    });
+
+    logger.info(`Recruiter ${req.user?.userId} created candidate ${email} via resume parsing`);
+
+    res.status(201).json({
+      success: true,
+      message: "Resume parsed and candidate created successfully",
+      data: {
+        candidate: created,
+        resume_url: uploaded.url,
+        parsed,
+      },
+    });
+  }
+);
+
+// Load Candidate+User (+experience/education/skills) records for matched IDs,
+// preserving the score-sorted order from findTopMatches and attaching matchScore.
+const loadScoredCandidates = async (matches: MatchResult[]) => {
+  if (matches.length === 0) return [];
+
+  const candidates = await Candidate.findAll({
+    where: { id: { [Op.in]: matches.map((m) => m.id) } },
+    include: [
+      {
+        model: User,
+        as: "user",
+        where: { role: "candidate", email_verified: true },
+        attributes: ["id", "email", "status", "created_at"],
+      },
+      {
+        model: Experience,
+        as: "experiences",
+        required: false,
+        order: [["start_date", "DESC"]],
+        limit: 3,
+      },
+      {
+        model: Education,
+        as: "education",
+        required: false,
+        order: [["start_date", "DESC"]],
+        limit: 2,
+      },
+      {
+        model: CandidateSkill,
+        as: "candidateSkills",
+        required: false,
+        order: [["is_primary", "DESC"]],
+      },
+    ],
+  });
+
+  const candidateMap = new Map(candidates.map((c) => [c.id, c]));
+  const scoreMap = new Map(matches.map((m) => [m.id, m.score]));
+
+  return matches
+    .map((m) => candidateMap.get(m.id))
+    .filter((c): c is Candidate => !!c)
+    .map((c) => {
+      const json = c.toJSON() as any;
+      json.matchScore = Math.round((scoreMap.get(c.id) || 0) * 100);
+      return json;
+    });
+};
+
+const buildJobEmbeddingText = (job: Job): string =>
+  [
+    job.title,
+    job.company_name,
+    job.location,
+    job.description,
+    (job.required_skills || []).join(", "),
+    (job.preferred_skills || []).join(", "),
+  ]
+    .filter((part): part is string => !!part && part.trim().length > 0)
+    .join(". ");
+
+// Rank candidates by semantic similarity to a job (recruiter-only)
+export const matchCandidatesForJob = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    if (req.user?.role !== "recruiter") {
+      throw createError("Only recruiters can match candidates", 403);
+    }
+
+    const { jobId } = req.params;
+    const job = await Job.findByPk(jobId);
+    if (!job) {
+      throw createError("Job not found", 404);
+    }
+
+    let queryVector = job.embedding ?? null;
+    if (!queryVector) {
+      queryVector = await getEmbedding(buildJobEmbeddingText(job));
+      if (queryVector) {
+        await persistEmbedding(job, "jobs", queryVector);
+      }
+    }
+
+    if (!queryVector) {
+      res.json({
+        success: true,
+        message: "AI matching is temporarily unavailable for this job.",
+        data: {
+          job: { id: job.id, job_id: job.job_id, title: job.title },
+          candidates: [],
+          skipped_count: 0,
+        },
+      });
+      return;
+    }
+
+    const { matches, skippedCount } = await findTopMatches("candidates", queryVector, 50);
+    const candidates = await loadScoredCandidates(matches);
+
+    res.json({
+      success: true,
+      data: {
+        job: { id: job.id, job_id: job.job_id, title: job.title },
+        candidates,
+        skipped_count: skippedCount,
+      },
+    });
+  }
+);
+
+// Rank candidates by semantic similarity to free-form text (AI-prompt search box, recruiter-only)
+export const matchCandidatesByText = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    if (req.user?.role !== "recruiter") {
+      throw createError("Only recruiters can match candidates", 403);
+    }
+
+    const { text } = req.body;
+    if (!text || typeof text !== "string" || !text.trim()) {
+      throw createError("Search text is required", 400);
+    }
+
+    const queryVector = await getEmbedding(text.trim());
+    if (!queryVector) {
+      throw createError(
+        "AI matching is temporarily unavailable. Please try again later.",
+        502
+      );
+    }
+
+    const { matches, skippedCount } = await findTopMatches("candidates", queryVector, 50);
+    const candidates = await loadScoredCandidates(matches);
+
+    res.json({
+      success: true,
+      data: { candidates, skipped_count: skippedCount },
     });
   }
 );

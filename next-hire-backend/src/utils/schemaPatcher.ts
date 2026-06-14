@@ -1,6 +1,7 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../models";
 import { logger } from "./logger";
+import { EMBEDDING_DIMENSIONS } from "../services/aiParsingService";
 
 /**
  * Lightweight, idempotent schema guards for environments that already have data.
@@ -223,6 +224,66 @@ export const ensureCandidateSkillsSchema = async () => {
     }
   } catch (error) {
     logger.error("ensureCandidateSkillsSchema failed", error);
+    throw error;
+  }
+};
+
+/**
+ * On Postgres, enable pgvector and add a shadow `embedding_vector` column +
+ * HNSW cosine index on candidates/jobs for fast similarity search. The
+ * portable `embedding` TEXT (JSON) column is created by sequelize.sync and
+ * is the source of truth on SQLite; this is purely additive and idempotent.
+ * No-op on SQLite (dev), where matching falls back to in-memory cosine similarity.
+ */
+export const ensurePgVectorSupport = async () => {
+  if (sequelize.getDialect() !== "postgres") return;
+
+  try {
+    await sequelize.query("CREATE EXTENSION IF NOT EXISTS vector");
+
+    for (const table of ["candidates", "jobs"]) {
+      await sequelize.query(
+        `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS embedding_vector vector(${EMBEDDING_DIMENSIONS})`
+      );
+      await sequelize.query(
+        `CREATE INDEX IF NOT EXISTS ${table}_embedding_idx ON ${table} USING hnsw (embedding_vector vector_cosine_ops)`
+      );
+    }
+
+    logger.info("pgvector extension, embedding_vector columns, and HNSW indexes are ready");
+  } catch (error) {
+    logger.error("ensurePgVectorSupport failed", error);
+  }
+};
+
+/**
+ * Ensure candidates.embedding / jobs.embedding (JSON-encoded number[] vector)
+ * exist. Portable across SQLite/Postgres - the Postgres-only shadow
+ * `embedding_vector` column is handled separately by ensurePgVectorSupport.
+ */
+export const ensureEmbeddingColumns = async () => {
+  const queryInterface = sequelize.getQueryInterface();
+
+  try {
+    const tables: string[] = await queryInterface.showAllTables();
+
+    for (const table of ["candidates", "jobs"]) {
+      if (!tables.includes(table)) {
+        logger.warn(`Skipping ensureEmbeddingColumns: "${table}" table not found yet.`);
+        continue;
+      }
+
+      const tableDefinition = await queryInterface.describeTable(table);
+      if (tableDefinition.embedding) continue;
+
+      logger.info(`Adding ${table}.embedding column (vector embedding for semantic matching)`);
+      await queryInterface.addColumn(table, "embedding", {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      });
+    }
+  } catch (error) {
+    logger.error("ensureEmbeddingColumns failed", error);
     throw error;
   }
 };

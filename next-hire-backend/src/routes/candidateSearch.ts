@@ -2,6 +2,7 @@ import { Router } from "express";
 import { query, param, body } from "express-validator";
 import { auth } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { documentUpload } from "../middleware/upload";
 import {
   searchCandidates,
   getCandidateDetails,
@@ -9,6 +10,9 @@ import {
   updateCandidateByRecruiter,
   createCandidate,
   deleteCandidate,
+  parseResumeAndCreateCandidate,
+  matchCandidatesForJob,
+  matchCandidatesByText,
 } from "../controllers/candidateSearchController";
 
 const router = Router();
@@ -91,6 +95,25 @@ router.get("/search", searchValidation, validate, searchCandidates);
 
 // Get candidate statistics (recruiters only)
 router.get("/stats", getCandidateStats);
+
+// Upload + AI-parse a resume and create a candidate from it (recruiters only)
+router.post("/parse-resume", documentUpload.single("resume"), parseResumeAndCreateCandidate);
+
+// Rank candidates by similarity to a job's requirements (recruiters only)
+router.get(
+  "/match/:jobId",
+  [param("jobId").isUUID().withMessage("Valid job ID is required")],
+  validate,
+  matchCandidatesForJob
+);
+
+// Rank candidates by similarity to free-form text (AI search box, recruiters only)
+router.post(
+  "/match-text",
+  [body("text").trim().notEmpty().withMessage("Search text is required")],
+  validate,
+  matchCandidatesByText
+);
 
 // Create a new candidate profile (recruiters only)
 router.post("/", createCandidateValidation, validate, createCandidate);

@@ -21,6 +21,7 @@ export interface CandidateAttributes {
   preferred_job_types?: string[]; // Array of job types
   preferred_locations?: string[]; // Array of locations
   bio?: string;
+  embedding?: number[] | null; // Vector embedding for semantic matching
   created_at?: Date;
   updated_at?: Date;
 }
@@ -53,6 +54,7 @@ export class Candidate
   public preferred_job_types?: string[];
   public preferred_locations?: string[];
   public bio?: string;
+  public embedding?: number[] | null;
 
   // Timestamps
   public readonly created_at!: Date;
@@ -60,6 +62,14 @@ export class Candidate
 
   // Associations
   public user?: User;
+
+  // Hide the raw embedding vector from API responses - it's large and only
+  // used internally for similarity search.
+  public toJSON(): object {
+    const values = { ...this.get() } as any;
+    delete values.embedding;
+    return values;
+  }
 }
 
 Candidate.init(
@@ -191,6 +201,22 @@ Candidate.init(
     bio: {
       type: DataTypes.TEXT,
       allowNull: true,
+    },
+    embedding: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      get() {
+        const value = this.getDataValue("embedding") as unknown as string;
+        if (!value) return null;
+        try {
+          return JSON.parse(value);
+        } catch {
+          return null;
+        }
+      },
+      set(value: number[] | null) {
+        this.setDataValue("embedding", (value ? JSON.stringify(value) : null) as any);
+      },
     },
   },
   {

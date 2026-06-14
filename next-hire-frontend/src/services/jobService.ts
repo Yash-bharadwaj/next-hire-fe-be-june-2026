@@ -121,6 +121,35 @@ export interface SingleJobResponse {
   message?: string;
 }
 
+export interface ParsedJobDescriptionData {
+  title?: string;
+  company_name?: string;
+  location?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  job_type?: JobType;
+  salary_min?: number;
+  salary_max?: number;
+  salary_currency?: string;
+  experience_min_years?: number;
+  experience_max_years?: number;
+  required_skills: string[];
+  preferred_skills: string[];
+  education_requirements?: string;
+  description: string;
+  positions_available?: number;
+}
+
+export interface ParseJobDescriptionResponse {
+  success: boolean;
+  message: string;
+  data: {
+    job: Job;
+    parsed: ParsedJobDescriptionData;
+  };
+}
+
 class JobService {
   private baseUrl = "/jobs";
 
@@ -160,6 +189,18 @@ class JobService {
   async deleteJob(id: string): Promise<{ success: boolean; message: string }> {
     const response = await apiClient.delete(`${this.baseUrl}/${id}`);
     return response.data;
+  }
+
+  // Upload + AI-parse a job description file and create a draft job from it
+  async parseJobDescription(file: File): Promise<ParseJobDescriptionResponse> {
+    const formData = new FormData();
+    formData.append("job_description", file);
+    const response = await apiClient.upload<ParseJobDescriptionResponse["data"]>(
+      `${this.baseUrl}/parse`,
+      formData,
+      60000
+    );
+    return response.data as unknown as ParseJobDescriptionResponse;
   }
 
   async getRecruiterJobs(filters: JobSearchFilters = {}): Promise<JobsResponse> {

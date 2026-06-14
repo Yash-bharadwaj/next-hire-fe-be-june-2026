@@ -18,6 +18,8 @@ import {
   ensureCandidateSkillsSchema,
   ensureSubmissionsSchema,
   ensureUserProfileImageColumn,
+  ensureEmbeddingColumns,
+  ensurePgVectorSupport,
 } from "./utils/schemaPatcher";
 
 // Routes
@@ -130,6 +132,7 @@ const startServer = async () => {
     await ensureCandidateSkillsSchema();
     await ensureSubmissionsSchema();
     await ensureUserProfileImageColumn();
+    await ensureEmbeddingColumns();
     applyAssociations();
     // Test database connection
     await sequelize.authenticate();
@@ -142,6 +145,9 @@ const startServer = async () => {
       // IMPORTANT: Do NOT use force: true as it drops all tables and data!
       await sequelize.sync({ alter: true });
       logger.info("Database synchronized successfully.");
+
+      // No-op on SQLite; on Postgres enables pgvector + similarity indexes.
+      await ensurePgVectorSupport();
     } catch (syncError) {
       logger.error("Database sync failed:", syncError);
       logger.warn(

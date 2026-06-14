@@ -18,6 +18,14 @@ import {
 } from "@/components/ui/select";
 import { DataGrid } from "@/components/ui/data-grid";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -37,6 +45,8 @@ import {
   Search,
   RefreshCw,
   Loader2,
+  Upload,
+  Sparkles,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useJobs, useJobManagement } from "@/hooks/useJobs";
@@ -69,6 +79,9 @@ const Jobs = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [exporting, setExporting] = useState(false);
+  const [showParseDialog, setShowParseDialog] = useState(false);
+  const [jdFile, setJdFile] = useState<File | null>(null);
+  const [parsingJD, setParsingJD] = useState(false);
 
   // Initialize from module-level cache so last-known values show instantly on remount
   const [baseStats, setBaseStats] = useState({ ..._jobsStatsCache });
@@ -239,6 +252,31 @@ const Jobs = () => {
 
   const handleViewJob = (jobId: string) => {
     navigate(`/dashboard/jobs/${jobId}`);
+  };
+
+  const handleFindMatches = (jobId: string) => {
+    navigate(`/dashboard/search?jobId=${jobId}`);
+  };
+
+  const handleParseJobDescription = async () => {
+    if (!jdFile) {
+      toast.error("Please choose a job description file (PDF, DOC, DOCX, or TXT)");
+      return;
+    }
+    try {
+      setParsingJD(true);
+      const result = await jobService.parseJobDescription(jdFile);
+      const job = result.data.job;
+      toast.success(`Created draft job "${job.title}". Review and publish when ready.`);
+      setShowParseDialog(false);
+      setJdFile(null);
+      refresh();
+      navigate(`/dashboard/jobs/${job.id}/edit`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || "Failed to parse job description");
+    } finally {
+      setParsingJD(false);
+    }
   };
 
   const handleExport = async () => {
@@ -445,7 +483,7 @@ const Jobs = () => {
     {
       field: "actions",
       headerName: "Actions",
-      width: 120,
+      width: 150,
       sortable: false,
       filterable: false,
       renderCell: (_: any, row: any) => (
@@ -467,6 +505,24 @@ const Jobs = () => {
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">
                 View
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-purple-600 hover:text-purple-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleFindMatches(row.id);
+                  }}
+                >
+                  <Sparkles className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                Find Matching Candidates
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -545,6 +601,14 @@ const Jobs = () => {
           </h1>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            onClick={() => setShowParseDialog(true)}
+            variant="outline"
+            className="flex items-center space-x-2"
+          >
+            <Upload className="h-4 w-4" />
+            <span>Parse Job Description</span>
+          </Button>
           <Button
             onClick={() => navigate("/dashboard/jobs/new")}
             className="flex items-center space-x-2"
@@ -634,6 +698,67 @@ const Jobs = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Parse Job Description Dialog */}
+      <Dialog
+        open={showParseDialog}
+        onOpenChange={(open) => {
+          if (!parsingJD) {
+            setShowParseDialog(open);
+            if (!open) setJdFile(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Parse Job Description</DialogTitle>
+            <DialogDescription>
+              Upload a job description (PDF, DOC, DOCX, or TXT). AI will
+              extract the role details and create a draft job for you to
+              review and publish.
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1 block">
+              Job description file
+            </label>
+            <Input
+              type="file"
+              accept=".pdf,.doc,.docx,.txt"
+              disabled={parsingJD}
+              onChange={(e) => setJdFile(e.target.files?.[0] || null)}
+            />
+            {jdFile && (
+              <p className="text-xs text-gray-500 mt-1 truncate">
+                Selected: {jdFile.name}
+              </p>
+            )}
+            {parsingJD && (
+              <p className="text-xs text-gray-500 mt-2 flex items-center">
+                <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                Parsing job description with AI — this can take up to a minute…
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={parsingJD}
+              onClick={() => {
+                setShowParseDialog(false);
+                setJdFile(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleParseJobDescription} disabled={parsingJD || !jdFile}>
+              {parsingJD && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+              Upload &amp; Create Draft Job
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
