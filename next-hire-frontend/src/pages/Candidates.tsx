@@ -39,6 +39,9 @@ import {
   Pencil,
   RefreshCw,
   Upload,
+  UploadCloud,
+  Sparkles,
+  CheckCircle2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -49,6 +52,19 @@ import { useAuth } from "@/contexts/AuthContext";
 import { candidateSearchService } from "@/services/candidateSearchService";
 import { downloadCsv } from "@/utils/csv";
 import { toast } from "sonner";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
+
+// Animated step messages shown while the AI parses a resume. Purely
+// presentational - the backend does this in one request, so progress is
+// simulated to keep the user informed during the (sometimes 30-60s) wait.
+const RESUME_PARSE_STEPS = [
+  { label: "Uploading resume...", icon: UploadCloud },
+  { label: "Reading document content...", icon: FileText },
+  { label: "AI is analyzing skills & experience...", icon: Sparkles },
+  { label: "Extracting work history & education...", icon: Briefcase },
+  { label: "Finalizing candidate profile...", icon: CheckCircle2 },
+] as const;
 
 const Candidates = () => {
   const navigate = useNavigate();
@@ -90,6 +106,33 @@ const Candidates = () => {
   const [showParseDialog, setShowParseDialog] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [parsingResume, setParsingResume] = useState(false);
+  const [parseStepIndex, setParseStepIndex] = useState(0);
+  const [parseProgress, setParseProgress] = useState(0);
+  const [isDraggingResume, setIsDraggingResume] = useState(false);
+  const resumeInputRef = useRef<HTMLInputElement>(null);
+
+  // Cycle through animated status messages + a progress bar while the AI
+  // parses the resume, so the wait feels active instead of a static message.
+  useEffect(() => {
+    if (!parsingResume) {
+      setParseStepIndex(0);
+      setParseProgress(0);
+      return;
+    }
+    setParseProgress(8);
+    const stepTimer = setInterval(() => {
+      setParseStepIndex((prev) =>
+        Math.min(prev + 1, RESUME_PARSE_STEPS.length - 1)
+      );
+    }, 3000);
+    const progressTimer = setInterval(() => {
+      setParseProgress((prev) => (prev < 92 ? prev + 2 : prev));
+    }, 400);
+    return () => {
+      clearInterval(stepTimer);
+      clearInterval(progressTimer);
+    };
+  }, [parsingResume]);
 
   const handleViewCandidate = (candidateId: string) => {
     navigate(`/dashboard/candidates/${candidateId}`);
@@ -171,6 +214,13 @@ const Candidates = () => {
       const result = await candidateSearchService.parseResume(resumeFile);
       const candidate = result.data.candidate;
       const name = candidateSearchService.formatCandidateName(candidate);
+
+      // Briefly show the "done" state so the progress UI doesn't jump
+      // straight from mid-progress to a closed dialog.
+      setParseStepIndex(RESUME_PARSE_STEPS.length - 1);
+      setParseProgress(100);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       toast.success(`Created candidate ${name} from resume`);
       setShowParseDialog(false);
       setResumeFile(null);
@@ -789,22 +839,87 @@ const Candidates = () => {
             <label className="text-sm font-medium text-gray-700 mb-1 block">
               Resume file
             </label>
-            <Input
+            <input
+              ref={resumeInputRef}
               type="file"
               accept=".pdf,.doc,.docx,.txt"
               disabled={parsingResume}
+              className="hidden"
               onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
             />
-            {resumeFile && (
-              <p className="text-xs text-gray-500 mt-1 truncate">
-                Selected: {resumeFile.name}
-              </p>
-            )}
+            <div
+              role="button"
+              tabIndex={0}
+              aria-disabled={parsingResume}
+              onClick={() => !parsingResume && resumeInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (!parsingResume && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  resumeInputRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (!parsingResume) setIsDraggingResume(true);
+              }}
+              onDragLeave={() => setIsDraggingResume(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDraggingResume(false);
+                if (parsingResume) return;
+                const file = e.dataTransfer.files?.[0];
+                if (file) setResumeFile(file);
+              }}
+              className={cn(
+                "flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors cursor-pointer",
+                isDraggingResume
+                  ? "border-primary bg-primary/5"
+                  : "border-gray-300 hover:border-primary hover:bg-gray-50",
+                parsingResume && "cursor-not-allowed opacity-60 hover:border-gray-300 hover:bg-transparent"
+              )}
+            >
+              {resumeFile ? (
+                <>
+                  <FileText className="h-8 w-8 text-primary" />
+                  <p className="text-sm font-medium text-gray-800 truncate max-w-full">
+                    {resumeFile.name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {(resumeFile.size / 1024).toFixed(0)} KB
+                    {!parsingResume && " · Click to change file"}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <UploadCloud className="h-8 w-8 text-gray-400" />
+                  <p className="text-sm font-medium text-gray-700">
+                    Click to choose a file, or drag and drop
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    PDF, DOC, DOCX, or TXT — up to 10MB
+                  </p>
+                  <Button type="button" variant="secondary" size="sm" className="mt-2 pointer-events-none">
+                    <Upload className="h-3.5 w-3.5 mr-1.5" />
+                    Browse files
+                  </Button>
+                </>
+              )}
+            </div>
+
             {parsingResume && (
-              <p className="text-xs text-gray-500 mt-2 flex items-center">
-                <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                Parsing resume with AI — this can take up to a minute…
-              </p>
+              <div className="mt-3 rounded-lg border bg-gray-50 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  {(() => {
+                    const StepIcon = RESUME_PARSE_STEPS[parseStepIndex].icon;
+                    return <StepIcon className="h-4 w-4 text-primary animate-pulse" />;
+                  })()}
+                  {RESUME_PARSE_STEPS[parseStepIndex].label}
+                </div>
+                <Progress value={parseProgress} className="h-2" />
+                <p className="text-xs text-gray-500">
+                  AI is reading the resume — this usually takes 20–60 seconds.
+                </p>
+              </div>
             )}
           </div>
           <DialogFooter>
