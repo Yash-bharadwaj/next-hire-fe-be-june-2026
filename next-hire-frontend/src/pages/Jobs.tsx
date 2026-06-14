@@ -8,7 +8,6 @@ import React, {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -41,11 +40,13 @@ import {
   Clock,
   FileText,
   CheckCircle,
+  CheckCircle2,
   AlertCircle,
   Search,
   RefreshCw,
   Loader2,
   Upload,
+  UploadCloud,
   Sparkles,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -53,11 +54,24 @@ import { useJobs, useJobManagement } from "@/hooks/useJobs";
 import { useAuth } from "@/contexts/AuthContext";
 import { jobService } from "@/services/jobService";
 import { toast } from "sonner";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 
 // Module-level cache — survives component remount so cards never flash 0
 const _jobsStatsCache = {
   myJobs: 0, activeJobs: 0, onHoldJobs: 0, totalSubmissions: 0, highPriorityJobs: 0,
 };
+
+// Animated step messages shown while the AI parses a job description.
+// Purely presentational - the backend does this in one request, so
+// progress is simulated to keep the user informed during the wait.
+const JD_PARSE_STEPS = [
+  { label: "Uploading job description...", icon: UploadCloud },
+  { label: "Reading document content...", icon: FileText },
+  { label: "AI is analyzing role requirements...", icon: Sparkles },
+  { label: "Extracting skills & qualifications...", icon: Briefcase },
+  { label: "Finalizing job posting...", icon: CheckCircle2 },
+] as const;
 
 const Jobs = () => {
   const navigate = useNavigate();
@@ -82,9 +96,34 @@ const Jobs = () => {
   const [showParseDialog, setShowParseDialog] = useState(false);
   const [jdFile, setJdFile] = useState<File | null>(null);
   const [parsingJD, setParsingJD] = useState(false);
+  const [parseStepIndex, setParseStepIndex] = useState(0);
+  const [parseProgress, setParseProgress] = useState(0);
+  const [isDraggingJD, setIsDraggingJD] = useState(false);
+  const jdInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize from module-level cache so last-known values show instantly on remount
   const [baseStats, setBaseStats] = useState({ ..._jobsStatsCache });
+
+  // Cycle through animated status messages + a progress bar while the AI
+  // parses the job description, so the wait feels active instead of static.
+  useEffect(() => {
+    if (!parsingJD) {
+      setParseStepIndex(0);
+      setParseProgress(0);
+      return;
+    }
+    setParseProgress(8);
+    const stepTimer = setInterval(() => {
+      setParseStepIndex((prev) => Math.min(prev + 1, JD_PARSE_STEPS.length - 1));
+    }, 3000);
+    const progressTimer = setInterval(() => {
+      setParseProgress((prev) => (prev < 92 ? prev + 2 : prev));
+    }, 400);
+    return () => {
+      clearInterval(stepTimer);
+      clearInterval(progressTimer);
+    };
+  }, [parsingJD]);
 
   useEffect(() => {
     if (statusFilter === "all" && priorityFilter === "all") {
@@ -267,6 +306,13 @@ const Jobs = () => {
       setParsingJD(true);
       const result = await jobService.parseJobDescription(jdFile);
       const job = result.data.job;
+
+      // Briefly show the "done" state so the progress UI doesn't jump
+      // straight from mid-progress to a closed dialog.
+      setParseStepIndex(JD_PARSE_STEPS.length - 1);
+      setParseProgress(100);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       toast.success(`Created draft job "${job.title}". Review and publish when ready.`);
       setShowParseDialog(false);
       setJdFile(null);
@@ -722,22 +768,87 @@ const Jobs = () => {
             <label className="text-sm font-medium text-gray-700 mb-1 block">
               Job description file
             </label>
-            <Input
+            <input
+              ref={jdInputRef}
               type="file"
               accept=".pdf,.doc,.docx,.txt"
               disabled={parsingJD}
+              className="hidden"
               onChange={(e) => setJdFile(e.target.files?.[0] || null)}
             />
-            {jdFile && (
-              <p className="text-xs text-gray-500 mt-1 truncate">
-                Selected: {jdFile.name}
-              </p>
-            )}
+            <div
+              role="button"
+              tabIndex={0}
+              aria-disabled={parsingJD}
+              onClick={() => !parsingJD && jdInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (!parsingJD && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  jdInputRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (!parsingJD) setIsDraggingJD(true);
+              }}
+              onDragLeave={() => setIsDraggingJD(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDraggingJD(false);
+                if (parsingJD) return;
+                const file = e.dataTransfer.files?.[0];
+                if (file) setJdFile(file);
+              }}
+              className={cn(
+                "flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors cursor-pointer",
+                isDraggingJD
+                  ? "border-primary bg-primary/5"
+                  : "border-gray-300 hover:border-primary hover:bg-gray-50",
+                parsingJD && "cursor-not-allowed opacity-60 hover:border-gray-300 hover:bg-transparent"
+              )}
+            >
+              {jdFile ? (
+                <>
+                  <FileText className="h-8 w-8 text-primary" />
+                  <p className="text-sm font-medium text-gray-800 truncate max-w-full">
+                    {jdFile.name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {(jdFile.size / 1024).toFixed(0)} KB
+                    {!parsingJD && " · Click to change file"}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <UploadCloud className="h-8 w-8 text-gray-400" />
+                  <p className="text-sm font-medium text-gray-700">
+                    Click to choose a file, or drag and drop
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    PDF, DOC, DOCX, or TXT — up to 10MB
+                  </p>
+                  <Button type="button" variant="secondary" size="sm" className="mt-2 pointer-events-none">
+                    <Upload className="h-3.5 w-3.5 mr-1.5" />
+                    Browse files
+                  </Button>
+                </>
+              )}
+            </div>
+
             {parsingJD && (
-              <p className="text-xs text-gray-500 mt-2 flex items-center">
-                <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                Parsing job description with AI — this can take up to a minute…
-              </p>
+              <div className="mt-3 rounded-lg border bg-gray-50 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  {(() => {
+                    const StepIcon = JD_PARSE_STEPS[parseStepIndex].icon;
+                    return <StepIcon className="h-4 w-4 text-primary animate-pulse" />;
+                  })()}
+                  {JD_PARSE_STEPS[parseStepIndex].label}
+                </div>
+                <Progress value={parseProgress} className="h-2" />
+                <p className="text-xs text-gray-500">
+                  AI is reading the job description — this usually takes 20–60 seconds.
+                </p>
+              </div>
             )}
           </div>
           <DialogFooter>
