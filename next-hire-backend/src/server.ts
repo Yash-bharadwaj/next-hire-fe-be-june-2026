@@ -44,6 +44,15 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const API_VERSION = process.env.API_VERSION || "v1";
 
+// Trust the App Runner load balancer's X-Forwarded-For header so req.ip is
+// the real client IP. Without this, every request appears to come from the
+// load balancer's address, so express-rate-limit pools ALL users into a
+// single shared bucket - exhausting it quickly and causing spurious
+// "Too many requests" errors (e.g. on login) for unrelated users.
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW || "15") * 60 * 1000, // 15 minutes
