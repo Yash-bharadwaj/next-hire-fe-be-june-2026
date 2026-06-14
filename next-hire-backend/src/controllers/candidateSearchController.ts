@@ -580,11 +580,25 @@ export const parseResumeAndCreateCandidate = asyncHandler(
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       await cleanupTempFile();
-      const existingCandidate = await Candidate.findOne({ where: { user_id: existingUser.id } });
+
+      if (existingUser.role === "candidate") {
+        const existingCandidate = await Candidate.findOne({ where: { user_id: existingUser.id } });
+        res.status(409).json({
+          success: false,
+          message: `A candidate with email ${email} already exists.`,
+          data: { existing_candidate_id: existingCandidate?.id || null },
+        });
+        return;
+      }
+
+      // The email belongs to a non-candidate account (recruiter/vendor/admin).
+      // Since emails are unique across all users, a new candidate profile
+      // can't be created for it - and it won't show up in the Candidates
+      // table either, since there's no Candidate record for this user.
       res.status(409).json({
         success: false,
-        message: `A candidate with email ${email} already exists.`,
-        data: { existing_candidate_id: existingCandidate?.id || null },
+        message: `The email ${email} is already registered to an existing ${existingUser.role} account, so it can't be used for a new candidate profile. Please upload a resume with a different email address.`,
+        data: { existing_candidate_id: null },
       });
       return;
     }
