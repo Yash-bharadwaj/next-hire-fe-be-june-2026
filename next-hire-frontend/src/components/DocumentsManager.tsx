@@ -24,15 +24,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 
 export interface Document {
-  id: number;
+  id: number | string;
   name: string;
   type: string;
   uploadDate: string;
   uploadedBy: string;
-  size: string;
-  validFrom: string;
-  validTo: string;
+  size?: string;
+  validFrom?: string;
+  validTo?: string;
   description?: string;
+  /** Direct URL to view/download the file. Omit if the file isn't accessible (e.g. a locally-added placeholder). */
+  url?: string;
 }
 
 interface DocumentsManagerProps {
@@ -44,11 +46,14 @@ interface DocumentsManagerProps {
 type DocumentStatus = 'active' | 'expiring' | 'expired';
 type FilterStatus = 'all' | DocumentStatus;
 
-const getDocumentStatus = (validTo: string): DocumentStatus => {
+const getDocumentStatus = (validTo?: string): DocumentStatus => {
+  // No expiry date (e.g. a résumé) - treat as currently valid.
+  if (!validTo) return 'active';
+
   const today = new Date();
   const expiryDate = parseISO(validTo);
   const daysUntilExpiry = differenceInDays(expiryDate, today);
-  
+
   if (isBefore(expiryDate, today)) {
     return 'expired';
   } else if (daysUntilExpiry <= 30) {
@@ -58,9 +63,9 @@ const getDocumentStatus = (validTo: string): DocumentStatus => {
   }
 };
 
-const getStatusBadge = (status: DocumentStatus, validTo: string) => {
-  const daysUntilExpiry = differenceInDays(parseISO(validTo), new Date());
-  
+const getStatusBadge = (status: DocumentStatus, validTo?: string) => {
+  const daysUntilExpiry = validTo ? differenceInDays(parseISO(validTo), new Date()) : null;
+
   switch (status) {
     case 'active':
       return (
@@ -73,7 +78,7 @@ const getStatusBadge = (status: DocumentStatus, validTo: string) => {
       return (
         <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
           <AlertTriangle className="w-3 h-3 mr-1" />
-          Expires in {daysUntilExpiry} days
+          Expires in {daysUntilExpiry ?? 0} days
         </Badge>
       );
     case 'expired':
@@ -311,19 +316,34 @@ export const DocumentsManager: React.FC<DocumentsManagerProps> = ({
                           {getStatusBadge(status, doc.validTo)}
                         </div>
                         <p className="text-xs text-gray-500">
-                          Uploaded {format(parseISO(doc.uploadDate), "MMM d, yyyy")} • {doc.size}
+                          Uploaded {format(parseISO(doc.uploadDate), "MMM d, yyyy")}
+                          {doc.size && ` • ${doc.size}`}
                         </p>
-                        <div className="flex items-center gap-4 text-xs text-gray-600 mt-1">
-                          <span>Valid: {format(parseISO(doc.validFrom), "MMM d, yyyy")} - {format(parseISO(doc.validTo), "MMM d, yyyy")}</span>
-                        </div>
+                        {doc.validFrom && doc.validTo && (
+                          <div className="flex items-center gap-4 text-xs text-gray-600 mt-1">
+                            <span>Valid: {format(parseISO(doc.validFrom), "MMM d, yyyy")} - {format(parseISO(doc.validTo), "MMM d, yyyy")}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                        disabled={!doc.url}
+                        onClick={() => doc.url && window.open(doc.url, "_blank")}
+                      >
                         <Eye className="w-4 h-4 mr-1" />
                         View
                       </Button>
-                      <Button size="sm" variant="outline" className="border-gray-300 text-gray-700 hover:bg-gray-50">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                        disabled={!doc.url}
+                        onClick={() => doc.url && window.open(doc.url, "_blank")}
+                      >
                         <Download className="w-4 h-4 mr-1" />
                         Download
                       </Button>

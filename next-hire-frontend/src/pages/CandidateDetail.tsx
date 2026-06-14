@@ -64,6 +64,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DocumentsManager, Document } from "@/components/DocumentsManager";
 import CandidateDetailPersonalizationSettings from "@/components/CandidateDetailPersonalizationSettings";
 import { candidateSearchService } from "@/services/candidateSearchService";
+import { API_BASE_URL } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
@@ -177,53 +178,10 @@ const CandidateDetail = () => {
   const [todosSort, setTodosSort] = useState("dueDate");
   const [todosSearch, setTodosSearch] = useState("");
 
-  // Mock documents with expiration tracking (will be replaced by backend data)
-  const [candidateDocuments, setCandidateDocuments] = useState<Document[]>([
-    {
-      id: 1,
-      name: "Resume.pdf",
-      type: "PDF",
-      uploadDate: "2024-01-05T10:00:00Z",
-      uploadedBy: "Jack Collins",
-      size: "245 KB",
-      validFrom: "2024-01-05T00:00:00Z",
-      validTo: "2025-01-05T00:00:00Z",
-      description: "Latest updated resume",
-    },
-    {
-      id: 2,
-      name: "Cover_Letter.pdf",
-      type: "PDF",
-      uploadDate: "2024-01-05T10:15:00Z",
-      uploadedBy: "Jack Collins",
-      size: "98 KB",
-      validFrom: "2024-01-05T00:00:00Z",
-      validTo: "2024-12-31T00:00:00Z",
-      description: "Cover letter for current applications",
-    },
-    {
-      id: 3,
-      name: "AWS_Certificate.pdf",
-      type: "PDF",
-      uploadDate: "2023-06-15T00:00:00Z",
-      uploadedBy: "Jack Collins",
-      size: "156 KB",
-      validFrom: "2023-06-15T00:00:00Z",
-      validTo: "2024-06-15T00:00:00Z",
-      description: "AWS Certified Developer certificate",
-    },
-    {
-      id: 4,
-      name: "Background_Check.pdf",
-      type: "PDF",
-      uploadDate: "2024-01-10T00:00:00Z",
-      uploadedBy: "HR Team",
-      size: "89 KB",
-      validFrom: "2024-01-10T00:00:00Z",
-      validTo: "2024-02-28T00:00:00Z",
-      description: "Background verification document",
-    },
-  ]);
+  // Documents tab: derived from the candidate's uploaded resumes (real data,
+  // loaded alongside the candidate below). Locally-added uploads (via
+  // handleDocumentUpload) are appended on top of that.
+  const [candidateDocuments, setCandidateDocuments] = useState<Document[]>([]);
 
   // Fetch candidate data from API
   useEffect(() => {
@@ -234,7 +192,21 @@ const CandidateDetail = () => {
         setLoading(true);
         setError(null);
         const response = await candidateSearchService.getCandidateDetails(id);
-        setCandidate(response.data.candidate);
+        const candidateData = response.data.candidate;
+        setCandidate(candidateData);
+
+        const candidateName = candidateSearchService.formatCandidateName(candidateData);
+        setCandidateDocuments(
+          (candidateData.resumes || []).map((resume) => ({
+            id: resume.id,
+            name: resume.file_name,
+            type: (resume.file_name.split(".").pop() || "FILE").toUpperCase(),
+            uploadDate: resume.created_at || new Date().toISOString(),
+            uploadedBy: candidateName,
+            url: `${API_BASE_URL}${resume.file_url}`,
+            description: resume.is_primary ? "Primary resume" : undefined,
+          }))
+        );
 
         const apiSubmissions = response.data.submissions || [];
         setSubmissions(apiSubmissions);

@@ -8,7 +8,7 @@ export interface EducationAttributes {
   institution_name: string;
   degree: string;
   field_of_study?: string;
-  start_date: Date;
+  start_date?: Date; // unknown for many resumes - never fabricated
   end_date?: Date; // null if currently studying
   is_current: boolean;
   grade?: string; // GPA, percentage, etc.
@@ -29,7 +29,7 @@ export class Education
   public institution_name!: string;
   public degree!: string;
   public field_of_study?: string;
-  public start_date!: Date;
+  public start_date?: Date;
   public end_date?: Date;
   public is_current!: boolean;
   public grade?: string;
@@ -73,7 +73,7 @@ Education.init(
     },
     start_date: {
       type: DataTypes.DATE,
-      allowNull: false,
+      allowNull: true,
     },
     end_date: {
       type: DataTypes.DATE,

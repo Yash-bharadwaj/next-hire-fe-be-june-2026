@@ -185,20 +185,33 @@ async function callGeminiJSON(prompt: string, maxOutputTokens = 4096): Promise<a
   );
 }
 
+export type SkillCategory = "technical" | "soft" | "language" | "certification" | "other";
+
+export interface ParsedResumeSkill {
+  name: string;
+  category: SkillCategory;
+}
+
 export interface ParsedResumeEducation {
   degree?: string;
   institution?: string;
-  year?: string;
   field?: string;
+  start_date?: string;
+  end_date?: string;
+  is_current?: boolean;
+  grade?: string;
 }
 
 export interface ParsedResumeExperience {
   employer?: string;
   title?: string;
+  location?: string;
   start_date?: string;
   end_date?: string;
+  is_current?: boolean;
   description?: string;
   responsibilities?: string[];
+  technologies?: string[];
 }
 
 export interface ParsedResume {
@@ -206,10 +219,12 @@ export interface ParsedResume {
   email?: string;
   phone?: string;
   location?: string;
+  linkedin_url?: string;
+  portfolio_url?: string;
   current_employer?: string;
   current_job_title?: string;
   total_experience_years?: number;
-  skills: string[];
+  skills: ParsedResumeSkill[];
   education: ParsedResumeEducation[];
   experience: ParsedResumeExperience[];
   certifications: string[];
@@ -225,6 +240,162 @@ const strArray = (value: any): string[] =>
 const num = (value: any): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
+const VALID_SKILL_CATEGORIES: SkillCategory[] = ["technical", "soft", "language", "certification", "other"];
+
+const normalizeSkillCategory = (value: any): SkillCategory =>
+  VALID_SKILL_CATEGORIES.includes(value) ? value : "technical";
+
+/**
+ * Normalize the AI's "skills" array: accepts either plain strings or
+ * { name, category } objects, trims, and de-duplicates case-insensitively.
+ */
+const skillArray = (value: any): ParsedResumeSkill[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: ParsedResumeSkill[] = [];
+  for (const item of value) {
+    let name: string | undefined;
+    let category: any;
+    if (typeof item === "string") {
+      name = item;
+    } else if (item && typeof item === "object") {
+      name = str(item.name);
+      category = item.category;
+    }
+    name = name?.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ name, category: normalizeSkillCategory(category) });
+  }
+  return result;
+};
+
+/** Drop education entries that have neither a degree nor an institution. */
+const educationArray = (value: any): ParsedResumeEducation[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item): ParsedResumeEducation | null => {
+      if (!item || typeof item !== "object") return null;
+      const degree = str(item.degree);
+      const institution = str(item.institution);
+      if (!degree && !institution) return null;
+      return {
+        degree,
+        institution,
+        field: str(item.field),
+        start_date: str(item.start_date),
+        end_date: str(item.end_date),
+        is_current: typeof item.is_current === "boolean" ? item.is_current : undefined,
+        grade: str(item.grade),
+      };
+    })
+    .filter((e): e is ParsedResumeEducation => e !== null);
+};
+
+/** Drop experience entries that have neither an employer nor a title. */
+const experienceArray = (value: any): ParsedResumeExperience[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item): ParsedResumeExperience | null => {
+      if (!item || typeof item !== "object") return null;
+      const employer = str(item.employer);
+      const title = str(item.title);
+      if (!employer && !title) return null;
+      return {
+        employer,
+        title,
+        location: str(item.location),
+        start_date: str(item.start_date),
+        end_date: str(item.end_date),
+        is_current: typeof item.is_current === "boolean" ? item.is_current : undefined,
+        description: str(item.description),
+        responsibilities: strArray(item.responsibilities),
+        technologies: strArray(item.technologies),
+      };
+    })
+    .filter((e): e is ParsedResumeExperience => e !== null);
+};
+
+const PRESENT_KEYWORDS = new Set([
+  "present", "current", "currently", "ongoing", "now", "till date", "to date", "n/a", "na", "tbd",
+]);
+
+const MONTH_NAMES: Record<string, number> = {
+  jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+  may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
+  sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11,
+};
+
+/**
+ * Parse resume date strings ("2020-05", "May 2020", "2020", "05/2020", ...)
+ * into a Date. Returns undefined for "Present"/empty/unrecognized formats so
+ * callers never fabricate a date.
+ */
+export function parseFlexibleDate(value?: string | null): Date | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || PRESENT_KEYWORDS.has(trimmed.toLowerCase())) return undefined;
+
+  // Dates are constructed via Date.UTC at midnight so the calendar date is
+  // preserved regardless of the server's local timezone (matches how
+  // ISO date-only strings, e.g. from manual-entry date pickers, are parsed).
+  let match = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (match) {
+    const [, y, m, d] = match;
+    return new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  }
+
+  match = trimmed.match(/^(\d{4})[-/](\d{1,2})$/);
+  if (match) {
+    const [, y, m] = match;
+    return new Date(Date.UTC(Number(y), Number(m) - 1, 1));
+  }
+
+  match = trimmed.match(/^(\d{1,2})[-/](\d{4})$/);
+  if (match) {
+    const [, m, y] = match;
+    return new Date(Date.UTC(Number(y), Number(m) - 1, 1));
+  }
+
+  match = trimmed.match(/^([A-Za-z]+)\.?\s+(\d{4})$/);
+  if (match) {
+    const monthIndex = MONTH_NAMES[match[1].toLowerCase()];
+    if (monthIndex !== undefined) {
+      return new Date(Date.UTC(Number(match[2]), monthIndex, 1));
+    }
+  }
+
+  match = trimmed.match(/^(\d{4})$/);
+  if (match) {
+    return new Date(Date.UTC(Number(match[1]), 0, 1));
+  }
+
+  return undefined;
+}
+
+/**
+ * Normalize a candidate-supplied URL (e.g. "linkedin.com/in/foo") into a full
+ * https:// URL. Returns undefined if the value isn't a plausible URL, so
+ * callers never persist a fabricated/garbage link.
+ */
+export function normalizeUrl(value?: string | null): string | undefined {
+  if (!value) return undefined;
+  let trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (!/^https?:\/\//i.test(trimmed)) {
+    trimmed = `https://${trimmed}`;
+  }
+  try {
+    const url = new URL(trimmed);
+    if (!url.hostname.includes(".")) return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Parse résumé text into structured candidate data using Gemini.
  */
@@ -238,20 +409,26 @@ export async function parseResume(text: string): Promise<ParsedResume> {
   "email": string | null,
   "phone": string | null,
   "location": string | null,
+  "linkedin_url": string | null,
+  "portfolio_url": string | null,
   "current_employer": string | null,
   "current_job_title": string | null,
   "total_experience_years": number | null,
-  "skills": string[],
-  "education": [{ "degree": string, "institution": string, "year": string, "field": string }],
-  "experience": [{ "employer": string, "title": string, "start_date": string, "end_date": string, "description": string, "responsibilities": string[] }],
+  "skills": [{ "name": string, "category": "technical" | "soft" | "language" | "certification" | "other" }],
+  "education": [{ "degree": string, "institution": string, "field": string, "start_date": string, "end_date": string, "is_current": boolean, "grade": string }],
+  "experience": [{ "employer": string, "title": string, "location": string, "start_date": string, "end_date": string, "is_current": boolean, "description": string, "responsibilities": string[], "technologies": string[] }],
   "certifications": string[],
   "summary": string | null
 }
 
 Rules:
 - Extract "email" and "phone" exactly as written if present, otherwise null.
+- "linkedin_url" is the candidate's LinkedIn profile URL if present. "portfolio_url" is a personal website, portfolio, or GitHub/GitLab profile URL if present (prefer a personal site over GitHub if both exist). Use null if not present in the text - never guess a URL from the candidate's name.
 - "total_experience_years" is the candidate's total professional experience in years as a number (estimate from the work history dates if not stated explicitly).
-- "skills" is a flat, deduplicated array of technical and professional skills with normalized capitalization (e.g. "JavaScript", "Project Management").
+- "skills" is a deduplicated array of distinct skills and competencies, each tagged with the best-fitting "category": "technical" for programming languages, frameworks, tools, and platforms; "soft" for interpersonal/management skills; "language" for spoken/written languages (e.g. Spanish, Mandarin); "certification" for professional certifications/licenses; "other" if none fit. Normalize capitalization (e.g. "JavaScript", "Project Management").
+- "certifications" is a flat array of certification/license names, kept separate from "skills".
+- For "education" and "experience" entries, "start_date" and "end_date" should be in "YYYY-MM" or "YYYY" format when known, otherwise null. Set "is_current" to true only when the text explicitly says so (e.g. "Present", "Current").
+- "responsibilities" and "technologies" describe a single experience entry: key duties/achievements and technologies/tools used in that role.
 - "summary" is a concise 2-3 sentence professional summary written in third person.
 - Use null for any field that cannot be determined, and an empty array for array fields with no data. Never invent information that is not present in the text.
 
@@ -260,19 +437,21 @@ Resume text:
 ${truncated}
 """`;
 
-  const result = await callGeminiJSON(prompt);
+  const result = await callGeminiJSON(prompt, 8192);
 
   return {
     name: str(result.name),
     email: str(result.email),
     phone: str(result.phone),
     location: str(result.location),
+    linkedin_url: normalizeUrl(str(result.linkedin_url)),
+    portfolio_url: normalizeUrl(str(result.portfolio_url)),
     current_employer: str(result.current_employer),
     current_job_title: str(result.current_job_title),
     total_experience_years: num(result.total_experience_years),
-    skills: strArray(result.skills),
-    education: Array.isArray(result.education) ? result.education : [],
-    experience: Array.isArray(result.experience) ? result.experience : [],
+    skills: skillArray(result.skills),
+    education: educationArray(result.education),
+    experience: experienceArray(result.experience),
     certifications: strArray(result.certifications),
     summary: str(result.summary),
   };

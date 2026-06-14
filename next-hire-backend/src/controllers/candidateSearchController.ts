@@ -22,7 +22,9 @@ import {
   extractText,
   getEmbedding,
   parseResume,
+  parseFlexibleDate,
   ParsedResume,
+  SkillCategory,
   UnsupportedFileTypeError,
   EmptyDocumentError,
   AIParsingError,
@@ -226,6 +228,11 @@ export const getCandidateDetails = asyncHandler(
             ["is_primary", "DESC"],
             ["category", "ASC"],
           ],
+        },
+        {
+          model: CandidateResume,
+          as: "resumes",
+          order: [["created_at", "DESC"]],
         },
       ],
     });
@@ -519,18 +526,31 @@ export const deleteCandidate = asyncHandler(
   }
 );
 
-const buildCandidateEmbeddingText = (parsed: ParsedResume): string =>
-  [
+const buildCandidateEmbeddingText = (parsed: ParsedResume): string => {
+  const experienceText = parsed.experience
+    .map((exp) => [exp.title, exp.employer].filter(Boolean).join(" at "))
+    .filter((s) => s.length > 0)
+    .join(", ");
+
+  const educationText = parsed.education
+    .map((edu) => [edu.degree, edu.field, edu.institution].filter(Boolean).join(" "))
+    .filter((s) => s.length > 0)
+    .join(", ");
+
+  return [
     parsed.name,
     parsed.current_job_title,
     parsed.current_employer,
     parsed.location,
     parsed.summary,
-    parsed.skills.join(", "),
+    parsed.skills.map((s) => s.name).join(", "),
     parsed.certifications.join(", "),
+    experienceText,
+    educationText,
   ]
     .filter((part): part is string => !!part && part.trim().length > 0)
     .join(". ");
+};
 
 // Upload + AI-parse a resume and create a full candidate record from it (recruiter-only)
 export const parseResumeAndCreateCandidate = asyncHandler(
@@ -633,8 +653,10 @@ export const parseResumeAndCreateCandidate = asyncHandler(
       phone: parsed.phone,
       location: parsed.location,
       experience_years: experienceYears,
-      skills: parsed.skills,
+      skills: parsed.skills.map((s) => s.name),
       bio: parsed.summary,
+      linkedin_url: parsed.linkedin_url,
+      portfolio_url: parsed.portfolio_url,
       availability_status: "available",
     });
 
@@ -647,12 +669,87 @@ export const parseResumeAndCreateCandidate = asyncHandler(
     });
     await candidate.update({ resume_url: uploaded.key });
 
+    // Work history: only persist entries that have both an employer/title and
+    // a parseable start date - Experience requires all three, and we never
+    // fabricate a placeholder for a missing one. Entries that don't qualify
+    // remain visible in `parsed.experience` for manual entry/review.
+    let sawCurrentRole = false;
+    for (const exp of parsed.experience) {
+      if (!exp.employer || !exp.title) continue;
+      const startDate = parseFlexibleDate(exp.start_date);
+      if (!startDate) continue;
+
+      const isCurrent = !!exp.is_current && !sawCurrentRole;
+      if (isCurrent) sawCurrentRole = true;
+
+      await Experience.create({
+        candidate_id: candidate.id,
+        job_title: exp.title,
+        company_name: exp.employer,
+        location: exp.location,
+        start_date: startDate,
+        end_date: isCurrent ? undefined : parseFlexibleDate(exp.end_date),
+        is_current: isCurrent,
+        description: exp.description,
+        achievements: exp.responsibilities || [],
+        technologies: exp.technologies || [],
+      });
+    }
+
+    // Education: only persist entries with both a degree and an institution
+    // (the model's required fields). Dates are optional and left blank when
+    // the resume doesn't state them.
+    let sawCurrentEducation = false;
+    for (const edu of parsed.education) {
+      if (!edu.degree || !edu.institution) continue;
+
+      const isCurrent = !!edu.is_current && !sawCurrentEducation;
+      if (isCurrent) sawCurrentEducation = true;
+
+      await Education.create({
+        candidate_id: candidate.id,
+        institution_name: edu.institution,
+        degree: edu.degree,
+        field_of_study: edu.field,
+        start_date: parseFlexibleDate(edu.start_date),
+        end_date: isCurrent ? undefined : parseFlexibleDate(edu.end_date),
+        is_current: isCurrent,
+        grade: edu.grade,
+      });
+    }
+
+    // Structured skills, including certifications tagged as "certification",
+    // de-duplicated case-insensitively to satisfy the unique
+    // (candidate_id, skill_name) constraint.
+    const skillMap = new Map<string, { name: string; category: SkillCategory }>();
+    for (const skill of parsed.skills) {
+      skillMap.set(skill.name.toLowerCase(), skill);
+    }
+    for (const cert of parsed.certifications) {
+      const key = cert.toLowerCase();
+      if (!skillMap.has(key)) skillMap.set(key, { name: cert, category: "certification" });
+    }
+    if (skillMap.size > 0) {
+      await CandidateSkill.bulkCreate(
+        Array.from(skillMap.values()).map(({ name, category }) => ({
+          candidate_id: candidate.id,
+          skill_name: name,
+          category,
+          proficiency_level: "intermediate" as const,
+          is_primary: false,
+        }))
+      );
+    }
+
     const embedding = await getEmbedding(buildCandidateEmbeddingText(parsed));
     await persistEmbedding(candidate, "candidates", embedding);
 
     const created = await Candidate.findByPk(candidate.id, {
       include: [
         { model: User, as: "user", attributes: ["id", "email", "status", "created_at"] },
+        { model: Experience, as: "experiences", order: [["start_date", "DESC"]] },
+        { model: Education, as: "education", order: [["start_date", "DESC"]] },
+        { model: CandidateSkill, as: "candidateSkills" },
       ],
     });
 

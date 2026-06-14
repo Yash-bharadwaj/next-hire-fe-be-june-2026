@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api";
+import { CandidateResume } from "./candidateService";
 
 export interface CandidateProfile {
   id: string;
@@ -53,6 +54,7 @@ export interface CandidateProfile {
   }>;
   skills?: string[];
   matchScore?: number;
+  resumes?: CandidateResume[];
 }
 
 export interface ParsedResumeData {
@@ -60,18 +62,31 @@ export interface ParsedResumeData {
   email?: string;
   phone?: string;
   location?: string;
+  linkedin_url?: string;
+  portfolio_url?: string;
   current_employer?: string;
   current_job_title?: string;
   total_experience_years?: number;
-  skills: string[];
-  education: Array<{ degree?: string; institution?: string; year?: string; field?: string }>;
+  skills: Array<{ name: string; category: "technical" | "soft" | "language" | "certification" | "other" }>;
+  education: Array<{
+    degree?: string;
+    institution?: string;
+    field?: string;
+    start_date?: string;
+    end_date?: string;
+    is_current?: boolean;
+    grade?: string;
+  }>;
   experience: Array<{
     employer?: string;
     title?: string;
+    location?: string;
     start_date?: string;
     end_date?: string;
+    is_current?: boolean;
     description?: string;
     responsibilities?: string[];
+    technologies?: string[];
   }>;
   certifications: string[];
   summary?: string;
