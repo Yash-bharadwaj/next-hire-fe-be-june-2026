@@ -250,10 +250,13 @@ const AdvancedSearch = () => {
     }
   };
 
+  // Match scores are calibrated so that unrelated profiles score near 0%
+  // and only genuinely close profiles reach the upper end - thresholds are
+  // tuned to that scale (see SEMANTIC_SIMILARITY_FLOOR/CEIL on the backend).
   const getScoreColor = (score: number) => {
-    if (score >= 90) return "text-green-600 bg-green-100";
-    if (score >= 80) return "text-blue-600 bg-blue-100";
-    if (score >= 70) return "text-yellow-600 bg-yellow-100";
+    if (score >= 70) return "text-green-600 bg-green-100";
+    if (score >= 45) return "text-blue-600 bg-blue-100";
+    if (score >= 20) return "text-yellow-600 bg-yellow-100";
     return "text-red-600 bg-red-100";
   };
 

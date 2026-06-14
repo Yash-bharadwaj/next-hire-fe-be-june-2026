@@ -767,9 +767,39 @@ export const parseResumeAndCreateCandidate = asyncHandler(
   }
 );
 
+// Gemini's text embeddings have a high "noise floor": two completely
+// unrelated profiles (e.g. a hotel GM vs. a Full Stack AI Engineer role)
+// still land around cosine similarity ~0.45-0.55, while genuinely close
+// profiles land around ~0.8-0.9. Showing the raw cosine value as a "% match"
+// makes unrelated candidates look like a coin-flip match. Rescale the
+// observed range onto 0-100% so the floor reads as ~0% and only profiles
+// that are actually semantically close score highly.
+const SEMANTIC_SIMILARITY_FLOOR = 0.5;
+const SEMANTIC_SIMILARITY_CEIL = 0.9;
+
+const rescaleSemanticScore = (cosineSimilarity: number): number => {
+  const clamped = Math.min(
+    Math.max(cosineSimilarity, SEMANTIC_SIMILARITY_FLOOR),
+    SEMANTIC_SIMILARITY_CEIL
+  );
+  return (clamped - SEMANTIC_SIMILARITY_FLOOR) / (SEMANTIC_SIMILARITY_CEIL - SEMANTIC_SIMILARITY_FLOOR);
+};
+
+// Fraction of the job's required+preferred skills the candidate actually
+// lists (case-insensitive exact match). Grounds the score in concrete,
+// explainable overlap rather than relying purely on embedding similarity.
+const skillOverlapScore = (jobSkills: string[], candidateSkills: string[]): number => {
+  if (!jobSkills.length) return 0;
+  const candidateSet = new Set(candidateSkills.map((s) => s.trim().toLowerCase()));
+  const overlap = jobSkills.filter((skill) => candidateSet.has(skill.trim().toLowerCase())).length;
+  return overlap / jobSkills.length;
+};
+
 // Load Candidate+User (+experience/education/skills) records for matched IDs,
 // preserving the score-sorted order from findTopMatches and attaching matchScore.
-const loadScoredCandidates = async (matches: MatchResult[]) => {
+// When `jobSkills` is provided, the score blends rescaled semantic
+// similarity with concrete skill overlap; otherwise it's semantic-only.
+const loadScoredCandidates = async (matches: MatchResult[], jobSkills?: string[]) => {
   if (matches.length === 0) return [];
 
   const candidates = await Candidate.findAll({
@@ -812,9 +842,21 @@ const loadScoredCandidates = async (matches: MatchResult[]) => {
     .filter((c): c is Candidate => !!c)
     .map((c) => {
       const json = c.toJSON() as any;
-      json.matchScore = Math.round((scoreMap.get(c.id) || 0) * 100);
+      const semanticScore = rescaleSemanticScore(scoreMap.get(c.id) || 0);
+
+      let combinedScore = semanticScore;
+      if (jobSkills && jobSkills.length > 0) {
+        const candidateSkills: string[] = json.candidateSkills?.length
+          ? json.candidateSkills.map((s: any) => s.skill_name)
+          : json.skills || [];
+        const overlapScore = skillOverlapScore(jobSkills, candidateSkills);
+        combinedScore = 0.7 * semanticScore + 0.3 * overlapScore;
+      }
+
+      json.matchScore = Math.round(combinedScore * 100);
       return json;
-    });
+    })
+    .sort((a, b) => b.matchScore - a.matchScore);
 };
 
 const buildJobEmbeddingText = (job: Job): string =>
@@ -864,7 +906,8 @@ export const matchCandidatesForJob = asyncHandler(
     }
 
     const { matches, skippedCount } = await findTopMatches("candidates", queryVector, 50);
-    const candidates = await loadScoredCandidates(matches);
+    const jobSkills = [...(job.required_skills || []), ...(job.preferred_skills || [])];
+    const candidates = await loadScoredCandidates(matches, jobSkills);
 
     res.json({
       success: true,
