@@ -608,12 +608,20 @@ const AdvancedSearch = () => {
                                 {candidate.skills.length > MAX_VISIBLE_SKILLS && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Badge variant="outline" className="text-xs cursor-default">
-                                        +{candidate.skills.length - MAX_VISIBLE_SKILLS}
-                                      </Badge>
+                                      <span className="inline-flex cursor-pointer">
+                                        <Badge variant="outline" className="text-xs">
+                                          +{candidate.skills.length - MAX_VISIBLE_SKILLS}
+                                        </Badge>
+                                      </span>
                                     </TooltipTrigger>
                                     <TooltipContent className="max-w-xs">
-                                      <p>{candidate.skills.slice(MAX_VISIBLE_SKILLS).join(", ")}</p>
+                                      <div className="flex flex-wrap gap-1">
+                                        {candidate.skills.slice(MAX_VISIBLE_SKILLS).map((skill: string) => (
+                                          <Badge key={skill} variant="secondary" className="text-xs">
+                                            {skill}
+                                          </Badge>
+                                        ))}
+                                      </div>
                                     </TooltipContent>
                                   </Tooltip>
                                 )}
