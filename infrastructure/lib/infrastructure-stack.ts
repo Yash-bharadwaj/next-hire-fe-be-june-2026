@@ -106,6 +106,15 @@ export class InfrastructureStack extends cdk.Stack {
       secretStringValue: cdk.SecretValue.unsafePlainText(process.env.RESEND_API_KEY || 'placeholder'),
     });
 
+    // Created out-of-band via the CLI:
+    // `aws secretsmanager create-secret --name nexthire/gemini-api-key --secret-string '<key>'`
+    // (kept out of the CFN template so the key never ends up in cdk.out).
+    const geminiApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      'GeminiApiKeySecret',
+      'nexthire/gemini-api-key'
+    );
+
     // ------------------------------------------------------------------
     // App Runner instance role - lets the running container read secrets
     // ------------------------------------------------------------------
@@ -116,6 +125,7 @@ export class InfrastructureStack extends cdk.Stack {
     jwtSecret.grantRead(appRunnerInstanceRole);
     jwtRefreshSecret.grantRead(appRunnerInstanceRole);
     resendApiKeySecret.grantRead(appRunnerInstanceRole);
+    geminiApiKeySecret.grantRead(appRunnerInstanceRole);
 
     // Allow the backend to send OTP / password-reset emails via SES using
     // its instance role - no SMTP credentials to manage.
@@ -197,6 +207,7 @@ export class InfrastructureStack extends cdk.Stack {
                   { name: 'JWT_SECRET', value: `${jwtSecret.secretArn}:value::` },
                   { name: 'JWT_REFRESH_SECRET', value: `${jwtRefreshSecret.secretArn}:value::` },
                   { name: 'RESEND_API_KEY', value: resendApiKeySecret.secretArn },
+                  { name: 'GEMINI_API_KEY', value: geminiApiKeySecret.secretArn },
                 ],
               },
             },
