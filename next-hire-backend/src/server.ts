@@ -21,6 +21,7 @@ import {
   ensureEmbeddingColumns,
   ensurePgVectorSupport,
   ensureNewSubmissionStatuses,
+  ensureHumanReadableIds,
 } from "./utils/schemaPatcher";
 
 // Routes
@@ -163,6 +164,9 @@ const startServer = async () => {
 
       // No-op on SQLite; on Postgres enables pgvector + similarity indexes.
       await ensurePgVectorSupport();
+
+      // Backfill human-readable IDs for any rows created before the hooks.
+      await ensureHumanReadableIds();
     } catch (syncError) {
       logger.error("Database sync failed:", syncError);
       logger.warn(

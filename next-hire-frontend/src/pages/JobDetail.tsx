@@ -595,7 +595,7 @@ const JobDetail = () => {
           name: `${sub.candidate?.first_name || ""} ${sub.candidate?.last_name || ""}`.trim() || "Unknown Candidate",
           experience: `${sub.candidate?.years_of_experience || 0} years`,
           location: sub.candidate?.location || sub.job?.location || "Unknown",
-          score: sub.ai_score || Math.floor(Math.random() * 100),
+          score: sub.ai_score ?? null,
           stage: mapSubmissionStatusToStage(sub.status),
           notes: sub.notes || sub.cover_letter?.substring(0, 100),
           submission: sub, // Keep reference to original submission
@@ -1530,7 +1530,7 @@ const JobDetail = () => {
                               {candidate.name}
                             </h4>
                             <Badge variant="outline" className="text-xs px-1.5 py-0 flex-shrink-0">
-                              {candidate.score}%
+                              {candidate.score != null ? `${candidate.score}%` : "—"}
                             </Badge>
                           </div>
                           <p className="text-xs text-gray-500 mb-1">{candidate.experience}</p>
@@ -1551,7 +1551,7 @@ const JobDetail = () => {
                                   name: `${sub.candidate?.first_name || ""} ${sub.candidate?.last_name || ""}`.trim() || "Unknown",
                                   experience: `${sub.candidate?.experience_years || 0} years`,
                                   location: sub.candidate?.location || "Unknown",
-                                  score: sub.ai_score || 0,
+                                  score: sub.ai_score ?? null,
                                   stage: mapSubmissionStatusToStage(sub.status),
                                   notes: sub.notes,
                                   submission: sub,

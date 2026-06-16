@@ -496,6 +496,100 @@ export const ensureSubmissionsSchema = async () => {
   }
 };
 
+export const ensureHumanReadableIds = async () => {
+  const year = new Date().getFullYear();
+  const pad = (n: number, len: number) => String(n).padStart(len, "0");
+
+  const getCounter = (maxVal: string | undefined, splitIdx: number, defaultVal = 1): number => {
+    if (!maxVal) return defaultVal;
+    const parts = maxVal.split("-");
+    const n = parseInt(parts[splitIdx] || "0");
+    return isNaN(n) ? defaultVal : n + 1;
+  };
+
+  try {
+    // ── Candidates ──────────────────────────────────────────────────────
+    const [candidateRows]: any = await sequelize.query(
+      `SELECT id FROM candidates WHERE candidate_id IS NULL ORDER BY created_at ASC`
+    );
+    if (candidateRows.length > 0) {
+      const [maxRows]: any = await sequelize.query(
+        `SELECT candidate_id FROM candidates WHERE candidate_id LIKE :pattern ORDER BY candidate_id DESC LIMIT 1`,
+        { replacements: { pattern: `CAND-${year}-%` } }
+      );
+      let counter = getCounter(maxRows[0]?.candidate_id, 2);
+      for (const row of candidateRows) {
+        const newId = `CAND-${year}-${pad(counter++, 4)}`;
+        await sequelize.query(
+          `UPDATE candidates SET candidate_id = :newId WHERE id = :rowId`,
+          { replacements: { newId, rowId: row.id } }
+        );
+      }
+      logger.info(`Backfilled ${candidateRows.length} candidate_id(s)`);
+    }
+
+    // ── Jobs ─────────────────────────────────────────────────────────────
+    const [jobRows]: any = await sequelize.query(
+      `SELECT id FROM jobs WHERE job_id IS NULL ORDER BY created_at ASC`
+    );
+    if (jobRows.length > 0) {
+      const [maxRows]: any = await sequelize.query(
+        `SELECT job_id FROM jobs WHERE job_id LIKE :pattern ORDER BY job_id DESC LIMIT 1`,
+        { replacements: { pattern: `JOB-${year}-%` } }
+      );
+      let counter = getCounter(maxRows[0]?.job_id, 2);
+      for (const row of jobRows) {
+        const newId = `JOB-${year}-${pad(counter++, 3)}`;
+        await sequelize.query(
+          `UPDATE jobs SET job_id = :newId WHERE id = :rowId`,
+          { replacements: { newId, rowId: row.id } }
+        );
+      }
+      logger.info(`Backfilled ${jobRows.length} job_id(s)`);
+    }
+
+    // ── Submissions ──────────────────────────────────────────────────────
+    const [subRows]: any = await sequelize.query(
+      `SELECT id FROM submissions WHERE submission_id IS NULL ORDER BY created_at ASC`
+    );
+    if (subRows.length > 0) {
+      const [maxRows]: any = await sequelize.query(
+        `SELECT submission_id FROM submissions WHERE submission_id LIKE 'SUB-%' ORDER BY submission_id DESC LIMIT 1`
+      );
+      let counter = getCounter(maxRows[0]?.submission_id, 1);
+      for (const row of subRows) {
+        const newId = `SUB-${pad(counter++, 4)}`;
+        await sequelize.query(
+          `UPDATE submissions SET submission_id = :newId WHERE id = :rowId`,
+          { replacements: { newId, rowId: row.id } }
+        );
+      }
+      logger.info(`Backfilled ${subRows.length} submission_id(s)`);
+    }
+
+    // ── Interviews ───────────────────────────────────────────────────────
+    const [intRows]: any = await sequelize.query(
+      `SELECT id FROM interviews WHERE interview_id IS NULL ORDER BY created_at ASC`
+    );
+    if (intRows.length > 0) {
+      const [maxRows]: any = await sequelize.query(
+        `SELECT interview_id FROM interviews WHERE interview_id LIKE 'INT-%' ORDER BY interview_id DESC LIMIT 1`
+      );
+      let counter = getCounter(maxRows[0]?.interview_id, 1);
+      for (const row of intRows) {
+        const newId = `INT-${pad(counter++, 4)}`;
+        await sequelize.query(
+          `UPDATE interviews SET interview_id = :newId WHERE id = :rowId`,
+          { replacements: { newId, rowId: row.id } }
+        );
+      }
+      logger.info(`Backfilled ${intRows.length} interview_id(s)`);
+    }
+  } catch (error: any) {
+    logger.warn("ensureHumanReadableIds: skipping —", error.message);
+  }
+};
+
 export const ensureNewSubmissionStatuses = async () => {
   const newStatuses = [
     "new_candidate",

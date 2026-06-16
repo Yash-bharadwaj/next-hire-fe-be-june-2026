@@ -525,27 +525,21 @@ const CandidateDetail = () => {
     );
   }
 
-  // Mock interview history
-  const interviews = [
-    {
-      id: 1,
-      jobTitle: "Senior React Developer",
-      company: "TechCorp",
-      date: "2024-01-18",
-      type: "Technical",
-      status: "Completed",
-      feedback: "Strong technical skills, good problem-solving approach",
-    },
-    {
-      id: 2,
-      jobTitle: "Frontend Lead",
-      company: "StartupXYZ",
-      date: "2024-01-12",
-      type: "HR Screen",
-      status: "Completed",
-      feedback: "Great cultural fit, enthusiastic about the role",
-    },
-  ];
+  const interviewStages = new Set([
+    "first_round", "technical_round", "final_round",
+    "interview_scheduled", "interviewed",
+  ]);
+  const interviews = submissions
+    .filter((s: any) => interviewStages.has(s.status))
+    .map((s: any) => ({
+      id: s.id,
+      jobTitle: s.job?.title || "—",
+      company: s.job?.company_name || "—",
+      date: s.updated_at ? new Date(s.updated_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—",
+      type: s.status === "technical_round" ? "Technical" : s.status === "first_round" ? "First Round" : s.status === "final_round" ? "Final Round" : "Interview",
+      status: s.status === "hired" ? "Hired" : s.status === "rejected" ? "Rejected" : "In Progress",
+      feedback: s.notes || "",
+    }));
 
   return (
     <div className="space-y-6">
@@ -556,7 +550,7 @@ const CandidateDetail = () => {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">
               <div className="text-sm text-gray-500 font-medium">
-                Candidate ID: #{candidate.id}
+                Candidate ID: #{candidate.candidate_id || candidate.id}
               </div>
             </div>
 
@@ -981,38 +975,49 @@ const CandidateDetail = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {interviews.map((interview) => (
-                      <div
-                        key={interview.id}
-                        className="border border-green-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-gray-800">
-                              {interview.jobTitle}
-                            </h4>
-                            <p className="text-sm text-gray-600">
-                              {interview.company} • {interview.type}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Date: {interview.date}
-                            </p>
-                            <p className="text-sm text-gray-700 mt-2">
-                              {interview.feedback}
-                            </p>
-                          </div>
-                          <Badge
-                            className={`${
-                              interview.status === "Completed"
-                                ? "bg-green-100 text-green-800 border-green-200"
-                                : "bg-yellow-100 text-yellow-800 border-yellow-200"
-                            } border font-medium`}
-                          >
-                            {interview.status}
-                          </Badge>
-                        </div>
+                    {interviews.length === 0 ? (
+                      <div className="text-center py-10 text-gray-400">
+                        <Video className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                        <p>No interview history yet</p>
                       </div>
-                    ))}
+                    ) : (
+                      interviews.map((interview) => (
+                        <div
+                          key={interview.id}
+                          className="border border-green-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-gray-800">
+                                {interview.jobTitle}
+                              </h4>
+                              <p className="text-sm text-gray-600">
+                                {interview.company} • {interview.type}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                Date: {interview.date}
+                              </p>
+                              {interview.feedback && (
+                                <p className="text-sm text-gray-700 mt-2">
+                                  {interview.feedback}
+                                </p>
+                              )}
+                            </div>
+                            <Badge
+                              className={`${
+                                interview.status === "Hired"
+                                  ? "bg-green-100 text-green-800 border-green-200"
+                                  : interview.status === "Rejected"
+                                  ? "bg-red-100 text-red-800 border-red-200"
+                                  : "bg-yellow-100 text-yellow-800 border-yellow-200"
+                              } border font-medium`}
+                            >
+                              {interview.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
