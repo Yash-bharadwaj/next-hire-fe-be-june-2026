@@ -62,6 +62,7 @@ export interface Placement {
   };
   candidate?: {
     id: string;
+    candidate_id?: string;
     first_name: string;
     last_name: string;
     email: string;
@@ -71,9 +72,11 @@ export interface Placement {
   };
   submission?: {
     id: string;
+    submission_id?: string;
     status: string;
     submitted_at: string;
     ai_score?: number;
+    notes?: string;
   };
   recruiter?: {
     id: string;
