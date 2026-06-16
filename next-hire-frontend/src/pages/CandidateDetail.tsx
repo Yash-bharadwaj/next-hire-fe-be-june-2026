@@ -359,7 +359,7 @@ const CandidateDetail = () => {
     setSubmitJobId("");
     setIsSubmitJobOpen(true);
     try {
-      const res = await recruiterService.getJobs({ status: "open", limit: 100 });
+      const res = await recruiterService.getJobs({ status: "active", limit: 100 });
       setAvailableJobs(res.data?.jobs || []);
     } catch {
       setAvailableJobs([]);
