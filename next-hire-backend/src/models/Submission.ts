@@ -92,7 +92,7 @@ Submission.init(
     },
     submission_id: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       unique: true,
     },
     job_id: {

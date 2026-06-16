@@ -66,7 +66,7 @@ Interview.init(
     },
     interview_id: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       unique: true,
     },
     submission_id: {

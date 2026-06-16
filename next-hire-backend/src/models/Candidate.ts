@@ -83,7 +83,7 @@ Candidate.init(
     },
     candidate_id: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       unique: true,
     },
     user_id: {

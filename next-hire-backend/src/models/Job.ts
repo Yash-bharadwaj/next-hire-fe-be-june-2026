@@ -123,7 +123,7 @@ Job.init(
     },
     job_id: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       unique: true,
     },
     title: {
