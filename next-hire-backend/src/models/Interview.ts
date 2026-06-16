@@ -1,10 +1,11 @@
-import { DataTypes, Model, Optional } from "sequelize";
+import { DataTypes, Model, Optional, Op } from "sequelize";
 import { sequelize } from "../config/database";
 import { User } from "./User";
 import { Submission } from "./Submission";
 
 export interface InterviewAttributes {
   id: string;
+  interview_id: string; // Human readable ID like INT-0001
   submission_id: string;
   interviewer_id: string;
   interview_type: "phone" | "video" | "in_person" | "technical" | "behavioral";
@@ -24,7 +25,7 @@ export interface InterviewAttributes {
 export interface InterviewCreationAttributes
   extends Optional<
     InterviewAttributes,
-    "id" | "status" | "duration_minutes" | "created_at" | "updated_at"
+    "id" | "interview_id" | "status" | "duration_minutes" | "created_at" | "updated_at"
   > {}
 
 export class Interview
@@ -32,6 +33,7 @@ export class Interview
   implements InterviewAttributes
 {
   public id!: string;
+  public interview_id!: string;
   public submission_id!: string;
   public interviewer_id!: string;
   public interview_type!: "phone" | "video" | "in_person" | "technical" | "behavioral";
@@ -61,6 +63,11 @@ Interview.init(
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
+    },
+    interview_id: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
     },
     submission_id: {
       type: DataTypes.UUID,
@@ -138,7 +145,31 @@ Interview.init(
     sequelize,
     modelName: "Interview",
     tableName: "interviews",
+    hooks: {
+      beforeCreate: async (interview: Interview) => {
+        if (!interview.interview_id) {
+          const lastInterview = await Interview.findOne({
+            where: {
+              interview_id: {
+                [Op.like]: `INT-%`,
+              },
+            },
+            order: [["created_at", "DESC"]],
+          });
+          let num = 1;
+          if (lastInterview) {
+            const parts = lastInterview.interview_id.split("-");
+            num = parseInt(parts[parts.length - 1] || "0") + 1;
+          }
+          interview.interview_id = `INT-${String(num).padStart(4, "0")}`;
+        }
+      },
+    },
     indexes: [
+      {
+        unique: true,
+        fields: ["interview_id"],
+      },
       {
         fields: ["submission_id"],
       },

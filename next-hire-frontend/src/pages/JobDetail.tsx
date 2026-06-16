@@ -100,6 +100,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useJob } from "@/hooks/useJobs";
 import { jobService } from "@/services/jobService";
 import { recruiterService } from "@/services/recruiterService";
+import { candidateSearchService } from "@/services/candidateSearchService";
+import { Slider } from "@/components/ui/slider";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 
 // Local type definitions
 interface Document {
@@ -175,6 +179,13 @@ const JobDetail = () => {
     }
   }, [job, editedJob]);
 
+  // Sync notes and attachments from job data
+  useEffect(() => {
+    if (job) {
+      setJobNotes((job as any).notes_history || []);
+    }
+  }, [job]);
+
   // Search functionality state
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchJobId, setSearchJobId] = useState("");
@@ -190,6 +201,14 @@ const JobDetail = () => {
 
   const handleSave = async () => {
     if (!editedJob || !id) return;
+
+    // Validate deadline
+    if (editedJob.endDate && editedJob.applicationDeadline) {
+      if (new Date(editedJob.applicationDeadline) < new Date(editedJob.endDate)) {
+        toast({ title: "Validation Error", description: "Application Deadline must be on or after the End Date", variant: "destructive" });
+        return;
+      }
+    }
 
     try {
       setIsUpdating(true);
@@ -294,8 +313,25 @@ const JobDetail = () => {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
 
-  // Job notes will be loaded from backend in the future
-  const [jobNotes, setJobNotes] = useState([]);
+  // ── Manual Search state ────────────────────────────────────────────────
+  const [showManualSearch, setShowManualSearch] = useState(false);
+  const [matchResults, setMatchResults] = useState<any[]>([]);
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [matchError, setMatchError] = useState<string | null>(null);
+  const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set());
+  const [matchScoreRange, setMatchScoreRange] = useState<[number, number]>([0, 100]);
+  const [matchLocationFilter, setMatchLocationFilter] = useState("");
+  const [matchResumeUpdated, setMatchResumeUpdated] = useState("");
+  const [sourcingLoading, setSourcingLoading] = useState(false);
+
+  // ── Notes state ────────────────────────────────────────────────────────
+  const [jobNotes, setJobNotes] = useState<any[]>([]);
+  const [addingNote, setAddingNote] = useState(false);
+  const [newNoteText, setNewNoteText] = useState("");
+  const [showAddNote, setShowAddNote] = useState(false);
+
+  // ── Attachments state ──────────────────────────────────────────────────
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
 
   // Notes filter and sort state
   const [notesFilter, setNotesFilter] = useState("all");
@@ -573,6 +609,164 @@ const JobDetail = () => {
     }
   }, [id, user?.role]);
 
+  // ── Manual Search handlers ─────────────────────────────────────────────
+  const handleOpenManualSearch = async () => {
+    setShowManualSearch(true);
+    if (matchResults.length > 0) return; // already loaded
+    setMatchLoading(true);
+    setMatchError(null);
+    try {
+      const res = await candidateSearchService.matchCandidatesForJob(job!.id);
+      setMatchResults(res.data?.candidates || []);
+    } catch (err: any) {
+      setMatchError(err?.response?.data?.message || err?.message || "Failed to load candidates");
+    } finally {
+      setMatchLoading(false);
+    }
+  };
+
+  const filteredMatchResults = matchResults.filter((c) => {
+    const score = c.matchScore ?? 0;
+    if (score < matchScoreRange[0] || score > matchScoreRange[1]) return false;
+    if (matchLocationFilter && !c.location?.toLowerCase().includes(matchLocationFilter.toLowerCase())) return false;
+    if (matchResumeUpdated) {
+      const updatedAt = new Date(c.updated_at || c.created_at);
+      const filterDate = new Date(matchResumeUpdated);
+      if (updatedAt < filterDate) return false;
+    }
+    return true;
+  });
+
+  const handleToggleCandidate = (candidateId: string) => {
+    setSelectedCandidates((prev) => {
+      const next = new Set(prev);
+      next.has(candidateId) ? next.delete(candidateId) : next.add(candidateId);
+      return next;
+    });
+  };
+
+  const handleAddToSourcingFunnel = async () => {
+    if (selectedCandidates.size === 0) return;
+    setSourcingLoading(true);
+    try {
+      const res = await recruiterService.sourceCandidates(job!.id, Array.from(selectedCandidates));
+      toast({ title: "Success", description: (res as any).message || "Candidates added to sourcing funnel" });
+      setSelectedCandidates(new Set());
+      setShowManualSearch(false);
+      // Refresh submission stats
+      const statsRes = await recruiterService.getJobSubmissions(job!.id, { limit: 100 });
+      const subs = statsRes.data?.submissions || [];
+      setSubmissions(subs as any);
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.response?.data?.message || "Failed to add candidates", variant: "destructive" });
+    } finally {
+      setSourcingLoading(false);
+    }
+  };
+
+  // ── Notes handlers ────────────────────────────────────────────────────
+  const handleAddNote = async () => {
+    if (!newNoteText.trim() || !id) return;
+    setAddingNote(true);
+    try {
+      const res = await recruiterService.addJobNote(id, newNoteText.trim());
+      const updated = (res as any)?.data?.notes_history || [...jobNotes, { note: newNoteText.trim(), by: user?.id, at: new Date().toISOString() }];
+      setJobNotes(updated);
+      setNewNoteText("");
+      setShowAddNote(false);
+      toast({ title: "Note added" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.response?.data?.message || "Failed to add note", variant: "destructive" });
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
+  // ── Attachment handler ─────────────────────────────────────────────────
+  const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !id) return;
+    setUploadingAttachment(true);
+    try {
+      await recruiterService.uploadJobAttachment(id, file);
+      toast({ title: "Attachment uploaded" });
+      refresh(); // reload job to get updated attachments
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.response?.data?.message || "Failed to upload attachment", variant: "destructive" });
+    } finally {
+      setUploadingAttachment(false);
+      e.target.value = "";
+    }
+  };
+
+  // ── Deadline validation ───────────────────────────────────────────────
+  const deadlineError = (() => {
+    if (!isEditMode || !editedJob) return null;
+    const end = editedJob.endDate ? new Date(editedJob.endDate) : null;
+    const deadline = editedJob.applicationDeadline ? new Date(editedJob.applicationDeadline) : null;
+    if (end && deadline && deadline < end) return "Application Deadline must be on or after the End Date";
+    return null;
+  })();
+
+  // ── Timeline events (dynamic) ─────────────────────────────────────────
+  const timelineEvents = (() => {
+    if (!job) return [];
+    const events: Array<{ label: string; detail: string; date: Date; color: string; icon: string }> = [];
+
+    events.push({
+      label: "Job Posted",
+      detail: `${job.title} position created with status: ${job.status}`,
+      date: new Date(job.created_at),
+      color: "from-green-500 to-green-600",
+      icon: "calendar",
+    });
+
+    if (submissions.length > 0) {
+      const firstSourcing = [...submissions].sort((a: any, b: any) => new Date(a.submitted_at || a.created_at).getTime() - new Date(b.submitted_at || b.created_at).getTime())[0];
+      if (firstSourcing) {
+        events.push({
+          label: "First Candidate Sourced",
+          detail: `${firstSourcing.candidate?.first_name || "Candidate"} ${firstSourcing.candidate?.last_name || ""} added to pipeline`,
+          date: new Date(firstSourcing.submitted_at || firstSourcing.created_at),
+          color: "from-blue-500 to-blue-600",
+          icon: "users",
+        });
+      }
+      const interviewed = (submissions as any[]).filter((s: any) => s.status === "interview_scheduled" || s.status === "interviewed");
+      if (interviewed.length > 0) {
+        events.push({
+          label: `${interviewed.length} Interview(s) Scheduled`,
+          detail: `Candidates moved to interview stage`,
+          date: new Date(interviewed[0].updated_at || interviewed[0].created_at),
+          color: "from-purple-500 to-purple-600",
+          icon: "video",
+        });
+      }
+      const hired = (submissions as any[]).filter((s: any) => s.status === "hired");
+      if (hired.length > 0) {
+        events.push({
+          label: `${hired.length} Candidate(s) Hired`,
+          detail: `Successfully placed for ${job.title}`,
+          date: new Date(hired[0].updated_at || hired[0].created_at),
+          color: "from-yellow-500 to-orange-500",
+          icon: "target",
+        });
+      }
+    }
+
+    (jobNotes as any[]).forEach((note: any) => {
+      events.push({
+        label: "Note Added",
+        detail: note.note?.substring(0, 100) + (note.note?.length > 100 ? "…" : ""),
+        date: new Date(note.at),
+        color: "from-orange-400 to-orange-500",
+        icon: "message",
+      });
+    });
+
+    return events.sort((a, b) => a.date.getTime() - b.date.getTime());
+  })();
+
   // Calculate statistics from backend data
   const totalCandidates = submissionStats.total || job?.submission_count || 0;
   const sourcingFunnelCandidates = submissionStats.active || 0;
@@ -619,8 +813,8 @@ const JobDetail = () => {
           {/* Job ID and Search Row */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">
-              <div className="text-sm text-gray-500 font-medium">
-                Job ID: #{currentJob.id}
+              <div className="text-sm text-gray-500 font-medium font-mono">
+                {job.job_id || `#${currentJob.id?.slice(0, 8)}`}
               </div>
             </div>
 
@@ -710,7 +904,10 @@ const JobDetail = () => {
                         Edit Job
                       </DropdownMenuItem>
                       <DropdownMenuSeparator className="bg-gray-200" />
-                      <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                      <DropdownMenuItem
+                        onClick={handleOpenManualSearch}
+                        className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                      >
                         <Search className="w-4 h-4 mr-2" />
                         Manual Search
                       </DropdownMenuItem>
@@ -1178,19 +1375,50 @@ const JobDetail = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                      <div>
-                        <p className="text-sm text-gray-600">Industry</p>
-                        <p className="font-semibold text-gray-800">
-                          {(job as any).industry || "Technology"}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600">Experience</p>
-                        <p className="font-semibold text-gray-800">
-                          {job.experience_min || 0}-{job.experience_max || 0}{" "}
-                          years
-                        </p>
-                      </div>
+                      {isEditMode ? (
+                        <div className="space-y-2">
+                          <div>
+                            <label className="text-xs font-medium text-gray-600 block mb-1">End Date</label>
+                            <Input
+                              type="date"
+                              value={editedJob?.endDate ? editedJob.endDate.split("T")[0] : ""}
+                              onChange={(e) => handleFieldChange("endDate", e.target.value)}
+                              className="border-blue-300 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-gray-600 block mb-1">Application Deadline</label>
+                            <Input
+                              type="date"
+                              value={editedJob?.applicationDeadline ? editedJob.applicationDeadline.split("T")[0] : ""}
+                              onChange={(e) => handleFieldChange("applicationDeadline", e.target.value)}
+                              className={`text-sm ${deadlineError ? "border-red-400" : "border-blue-300"}`}
+                            />
+                            {deadlineError && <p className="text-xs text-red-600 mt-1">{deadlineError}</p>}
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <p className="text-sm text-gray-600">End Date</p>
+                            <p className="font-semibold text-gray-800">
+                              {job.end_date ? new Date(job.end_date).toLocaleDateString() : "Not set"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600">Application Deadline</p>
+                            <p className="font-semibold text-gray-800">
+                              {job.application_deadline ? new Date(job.application_deadline).toLocaleDateString() : "Not set"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600">Experience</p>
+                            <p className="font-semibold text-gray-800">
+                              {job.experience_min || 0}-{job.experience_max || 0} years
+                            </p>
+                          </div>
+                        </>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
@@ -1260,92 +1488,67 @@ const JobDetail = () => {
                     <CardTitle className="text-xl bg-gradient-to-r from-orange-700 to-orange-600 bg-clip-text text-transparent">
                       Job Notes & Comments
                     </CardTitle>
-                    <Button size="sm" className="button-gradient">
-                      <Plus className="w-4 h-4 mr-1" />
-                      Add Note
-                    </Button>
+                    {user?.role === "recruiter" && (
+                      <Button size="sm" className="button-gradient" onClick={() => setShowAddNote(true)}>
+                        <Plus className="w-4 h-4 mr-1" />
+                        Add Note
+                      </Button>
+                    )}
                   </div>
 
-                  {/* Notes Filters and Search */}
-                  <div className="flex items-center gap-4 pt-4 border-t">
-                    <div className="relative flex-1 max-w-sm">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <Input
-                        placeholder="Search notes..."
-                        value={notesSearch}
-                        onChange={(e) => setNotesSearch(e.target.value)}
-                        className="pl-10 border-orange-200 focus:border-orange-400"
+                  {/* Add Note inline form */}
+                  {showAddNote && (
+                    <div className="mt-4 pt-4 border-t space-y-3">
+                      <Textarea
+                        placeholder="Write your note..."
+                        value={newNoteText}
+                        onChange={(e) => setNewNoteText(e.target.value)}
+                        className="min-h-[80px] border-orange-300 focus:border-orange-500"
+                        autoFocus
                       />
+                      <div className="flex gap-2 justify-end">
+                        <Button size="sm" variant="outline" onClick={() => { setShowAddNote(false); setNewNoteText(""); }}>
+                          Cancel
+                        </Button>
+                        <Button size="sm" className="button-gradient" onClick={handleAddNote} disabled={addingNote || !newNoteText.trim()}>
+                          {addingNote ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Save className="w-4 h-4 mr-1" />}
+                          Save Note
+                        </Button>
+                      </div>
                     </div>
-                    <Select value={notesFilter} onValueChange={setNotesFilter}>
-                      <SelectTrigger className="w-40 border-orange-200">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Categories</SelectItem>
-                        <SelectItem value="technical">Technical</SelectItem>
-                        <SelectItem value="client">Client</SelectItem>
-                        <SelectItem value="planning">Planning</SelectItem>
-                        <SelectItem value="general">General</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select value={notesSort} onValueChange={setNotesSort}>
-                      <SelectTrigger className="w-32 border-orange-200">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="newest">Newest</SelectItem>
-                        <SelectItem value="oldest">Oldest</SelectItem>
-                        <SelectItem value="author">By Author</SelectItem>
-                        <SelectItem value="priority">By Priority</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {getFilteredAndSortedJobNotes().map((note) => (
+                    {[...(jobNotes as any[])].reverse().map((note: any, idx: number) => (
                       <div
-                        key={note.id}
-                        className="border border-green-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                        key={idx}
+                        className="border border-orange-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                              {note.author
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")}
+                            <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                              <User className="w-4 h-4" />
                             </div>
                             <div>
-                              <p className="font-medium text-gray-800">
-                                {note.author}
+                              <p className="font-medium text-gray-800 text-sm">
+                                {note.by === user?.id ? "You" : "Recruiter"}
                               </p>
                               <p className="text-xs text-gray-500">
-                                {note.date}
+                                {note.at ? new Date(note.at).toLocaleString() : ""}
                               </p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Badge
-                              className={`text-xs ${
-                                note.priority === "high"
-                                  ? "bg-red-100 text-red-800 border-red-200"
-                                  : note.priority === "medium"
-                                  ? "bg-yellow-100 text-yellow-800 border-yellow-200"
-                                  : "bg-green-100 text-green-800 border-green-200"
-                              }`}
-                            >
-                              {note.priority}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {note.category}
-                            </Badge>
-                          </div>
                         </div>
-                        <p className="text-gray-700">{note.content}</p>
+                        <p className="text-gray-700 text-sm whitespace-pre-wrap">{note.note}</p>
                       </div>
                     ))}
+                    {jobNotes.length === 0 && (
+                      <div className="text-center py-8 text-gray-500">
+                        <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                        <p>No notes yet. Add the first note above.</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1358,17 +1561,28 @@ const JobDetail = () => {
                     <CardTitle className="text-xl bg-gradient-to-r from-blue-700 to-blue-600 bg-clip-text text-transparent">
                       Job Attachments
                     </CardTitle>
-                    <Button size="sm" className="button-gradient">
-                      <Upload className="w-4 h-4 mr-1" />
-                      Upload Document
-                    </Button>
+                    {user?.role === "recruiter" && (
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept=".pdf,.doc,.docx,.txt"
+                          onChange={handleAttachmentUpload}
+                          disabled={uploadingAttachment}
+                        />
+                        <Button size="sm" className="button-gradient pointer-events-none" disabled={uploadingAttachment}>
+                          {uploadingAttachment ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Upload className="w-4 h-4 mr-1" />}
+                          Upload Document
+                        </Button>
+                      </label>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {jobDocuments.map((doc) => (
+                    {((job as any)?.attachments || []).map((att: any, idx: number) => (
                       <div
-                        key={doc.id}
+                        key={idx}
                         className="flex items-center justify-between p-4 border border-blue-200 rounded-lg hover:shadow-md transition-shadow"
                       >
                         <div className="flex items-center gap-3">
@@ -1376,34 +1590,23 @@ const JobDetail = () => {
                             <FileText className="w-5 h-5 text-white" />
                           </div>
                           <div>
-                            <h4 className="font-medium text-gray-800">
-                              {doc.name}
-                            </h4>
+                            <h4 className="font-medium text-gray-800">{att.name || att.url}</h4>
                             <p className="text-sm text-gray-600">
-                              {doc.size} • Uploaded by {doc.uploadedBy} •{" "}
-                              {new Date(doc.uploadDate).toLocaleDateString()}
+                              Uploaded {att.at ? new Date(att.at).toLocaleDateString() : ""}
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                          >
-                            <Download className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-red-300 text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                          onClick={() => window.open(att.url, "_blank")}
+                        >
+                          <Download className="w-4 h-4" />
+                        </Button>
                       </div>
                     ))}
-                    {jobDocuments.length === 0 && (
+                    {(((job as any)?.attachments) || []).length === 0 && (
                       <div className="text-center py-8 text-gray-500">
                         <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                         <p>No documents uploaded yet</p>
@@ -1419,93 +1622,67 @@ const JobDetail = () => {
                 <h3 className="text-xl font-semibold bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
                   Job Timeline
                 </h3>
+                <Badge variant="outline" className="text-xs text-gray-500">
+                  {timelineEvents.length} event{timelineEvents.length !== 1 ? "s" : ""}
+                </Badge>
               </div>
 
-              <div className="relative">
-                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gradient-to-b from-green-500 to-blue-500"></div>
-
-                <div className="space-y-6">
-                  <div className="flex items-start gap-4">
-                    <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-md">
-                      <CalendarDays className="w-4 h-4 text-white" />
-                    </div>
-                    <Card className="card-gradient border-green-200/50 shadow-lg flex-1">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-semibold text-gray-800">
-                            Job Posted
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {new Date(job.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <p className="text-gray-600 text-sm">
-                          {job.title} position posted and made {job.status}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  <div className="flex items-start gap-4">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-md">
-                      <Users className="w-4 h-4 text-white" />
-                    </div>
-                    <Card className="card-gradient border-blue-200/50 shadow-lg flex-1">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-semibold text-gray-800">
-                            First Candidates Added
-                          </p>
-                          <p className="text-xs text-gray-500">1 week ago</p>
-                        </div>
-                        <p className="text-gray-600 text-sm">
-                          Initial batch of 5 candidates sourced and added to
-                          pipeline
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  <div className="flex items-start gap-4">
-                    <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center shadow-md">
-                      <Phone className="w-4 h-4 text-white" />
-                    </div>
-                    <Card className="card-gradient border-purple-200/50 shadow-lg flex-1">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-semibold text-gray-800">
-                            Client Screening Call
-                          </p>
-                          <p className="text-xs text-gray-500">3 days ago</p>
-                        </div>
-                        <p className="text-gray-600 text-sm">
-                          Completed screening calls with top 3 candidates
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  <div className="flex items-start gap-4">
-                    <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-full flex items-center justify-center shadow-md">
-                      <Target className="w-4 h-4 text-white" />
-                    </div>
-                    <Card className="card-gradient border-yellow-200/50 shadow-lg flex-1">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-semibold text-gray-800">
-                            Offer Extended
-                          </p>
-                          <p className="text-xs text-gray-500">Today</p>
-                        </div>
-                        <p className="text-gray-600 text-sm">
-                          Offer extended to James Wilson, awaiting candidate
-                          response
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
+              {timelineEvents.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                  <Activity className="w-14 h-14 mb-4 text-gray-200" />
+                  <p className="text-sm text-center max-w-xs">
+                    No events yet. Timeline will populate as candidates are sourced,
+                    interviewed, and notes are added.
+                  </p>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-0">
+                  {timelineEvents.map((evt, idx) => {
+                    const isLast = idx === timelineEvents.length - 1;
+                    return (
+                      <div key={idx} className="flex gap-4">
+                        {/* ── Left column: icon + connector ── */}
+                        <div className="flex flex-col items-center flex-shrink-0" style={{ width: 40 }}>
+                          {/* Icon circle */}
+                          <div
+                            className={`w-10 h-10 rounded-full bg-gradient-to-br ${evt.color} flex items-center justify-center shadow-md ring-4 ring-white z-10 flex-shrink-0`}
+                          >
+                            {evt.icon === "calendar" && <CalendarDays className="w-4 h-4 text-white" />}
+                            {evt.icon === "users"    && <Users className="w-4 h-4 text-white" />}
+                            {evt.icon === "video"    && <Video className="w-4 h-4 text-white" />}
+                            {evt.icon === "target"   && <Target className="w-4 h-4 text-white" />}
+                            {evt.icon === "message"  && <MessageSquare className="w-4 h-4 text-white" />}
+                          </div>
+                          {/* Connector line — hidden on last item */}
+                          {!isLast && (
+                            <div className="w-0.5 flex-1 mt-1 mb-0 bg-gradient-to-b from-gray-300 to-gray-200 min-h-[32px]" />
+                          )}
+                        </div>
+
+                        {/* ── Right column: card ── */}
+                        <div className={`flex-1 min-w-0 ${isLast ? "pb-0" : "pb-6"}`}>
+                          <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4 hover:shadow-md transition-shadow">
+                            <div className="flex flex-wrap items-start justify-between gap-2 mb-1">
+                              <p className="font-semibold text-gray-800 text-sm leading-tight">
+                                {evt.label}
+                              </p>
+                              <div className="flex flex-col items-end flex-shrink-0">
+                                <span className="text-xs text-gray-500 font-medium">
+                                  {evt.date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                </span>
+                                <span className="text-xs text-gray-400">
+                                  {evt.date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                </span>
+                              </div>
+                            </div>
+                            <p className="text-gray-500 text-sm leading-relaxed">{evt.detail}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="stats" className="space-y-6 mt-0">
@@ -1705,23 +1882,189 @@ const JobDetail = () => {
       </Card>
 
       {/* Personalization Settings Dialog */}
-      <Dialog
-        open={isPersonalizationOpen}
-        onOpenChange={setIsPersonalizationOpen}
-      >
+      <Dialog open={isPersonalizationOpen} onOpenChange={setIsPersonalizationOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Personalization Settings</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-gray-600">
-              Customize your job detail view preferences.
-            </p>
+            <p className="text-gray-600">Customize your job detail view preferences.</p>
             <div className="flex gap-2">
-              <Button onClick={() => setIsPersonalizationOpen(false)}>
-                Close
+              <Button onClick={() => setIsPersonalizationOpen(false)}>Close</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Manual Search Dialog ────────────────────────────────────────────── */}
+      <Dialog open={showManualSearch} onOpenChange={(open) => { setShowManualSearch(open); if (!open) setSelectedCandidates(new Set()); }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b">
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Search className="w-5 h-5 text-green-600" />
+              Manual Search — Candidates for{" "}
+              <span className="text-green-700 font-bold">{job?.title}</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Filters */}
+          <div className="px-6 py-4 border-b bg-gray-50/60">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Match Score Slider */}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-2">
+                  Match Score: {matchScoreRange[0]}% – {matchScoreRange[1]}%
+                </label>
+                <Slider
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={matchScoreRange}
+                  onValueChange={(v) => setMatchScoreRange(v as [number, number])}
+                  className="w-full"
+                />
+              </div>
+              {/* Location */}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-2">Location</label>
+                <Input
+                  placeholder="Filter by location..."
+                  value={matchLocationFilter}
+                  onChange={(e) => setMatchLocationFilter(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              {/* Resume Updated */}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-2">Resume Updated After</label>
+                <Input
+                  type="date"
+                  value={matchResumeUpdated}
+                  onChange={(e) => setMatchResumeUpdated(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-3">
+              <span className="text-xs text-gray-500">
+                {filteredMatchResults.length} candidate{filteredMatchResults.length !== 1 ? "s" : ""} shown
+                {selectedCandidates.size > 0 && (
+                  <span className="ml-2 text-green-700 font-semibold">• {selectedCandidates.size} selected</span>
+                )}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setMatchScoreRange([0, 100]);
+                  setMatchLocationFilter("");
+                  setMatchResumeUpdated("");
+                }}
+                className="text-xs h-7"
+              >
+                Clear Filters
               </Button>
             </div>
+          </div>
+
+          {/* Results */}
+          <ScrollArea className="flex-1 px-6">
+            {matchLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-green-600 mr-3" />
+                <span className="text-gray-600">AI is ranking candidates by match…</span>
+              </div>
+            ) : matchError ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <AlertCircle className="w-10 h-10 text-red-400 mb-3" />
+                <p className="text-gray-600">{matchError}</p>
+                <Button size="sm" variant="outline" className="mt-3" onClick={handleOpenManualSearch}>Retry</Button>
+              </div>
+            ) : filteredMatchResults.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <Users className="w-10 h-10 text-gray-300 mb-3" />
+                <p className="text-gray-500">No candidates match the current filters.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 py-4">
+                {filteredMatchResults.map((c: any) => (
+                  <div
+                    key={c.id}
+                    onClick={() => handleToggleCandidate(c.id)}
+                    className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-all ${
+                      selectedCandidates.has(c.id)
+                        ? "border-green-400 bg-green-50 shadow-sm"
+                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    <Checkbox
+                      checked={selectedCandidates.has(c.id)}
+                      onCheckedChange={() => handleToggleCandidate(c.id)}
+                      className="mt-1 flex-shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-gray-800 text-sm">
+                            {c.first_name} {c.last_name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {c.location || "—"} • {c.experience_years != null ? `${c.experience_years} yrs exp` : "—"}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <Badge
+                            className={`text-xs font-bold ${
+                              (c.matchScore ?? 0) >= 75
+                                ? "bg-green-100 text-green-800 border-green-200"
+                                : (c.matchScore ?? 0) >= 50
+                                ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                                : "bg-gray-100 text-gray-700 border-gray-200"
+                            }`}
+                          >
+                            {Math.round(c.matchScore ?? 0)}% match
+                          </Badge>
+                          <span className="text-xs text-gray-400">
+                            Updated {c.updated_at ? new Date(c.updated_at).toLocaleDateString() : "—"}
+                          </span>
+                        </div>
+                      </div>
+                      {c.matchReasoning && (
+                        <p className="text-xs text-gray-600 mt-1 line-clamp-2">{c.matchReasoning}</p>
+                      )}
+                      {c.skills && c.skills.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {c.skills.slice(0, 5).map((skill: string, i: number) => (
+                            <Badge key={i} variant="secondary" className="text-xs py-0">{skill}</Badge>
+                          ))}
+                          {c.skills.length > 5 && <Badge variant="secondary" className="text-xs py-0">+{c.skills.length - 5}</Badge>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+
+          {/* Footer */}
+          <div className="px-6 py-4 border-t bg-gray-50/60 flex items-center justify-between">
+            <Button variant="outline" onClick={() => setShowManualSearch(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="button-gradient"
+              disabled={selectedCandidates.size === 0 || sourcingLoading}
+              onClick={handleAddToSourcingFunnel}
+            >
+              {sourcingLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <UserPlus className="w-4 h-4 mr-2" />
+              )}
+              Add {selectedCandidates.size > 0 ? `${selectedCandidates.size} ` : ""}to Sourcing Funnel
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

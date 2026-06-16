@@ -41,8 +41,9 @@ const updateStatusValidation = [
   param("id").isUUID().withMessage("Valid submission ID is required"),
   body("status")
     .isIn([
+      "sourcing",
       "submitted",
-      "under_review", 
+      "under_review",
       "shortlisted",
       "interview_scheduled",
       "interviewed",
@@ -77,8 +78,9 @@ const paginationValidation = [
   query("status")
     .optional()
     .isIn([
+      "sourcing",
       "submitted",
-      "under_review", 
+      "under_review",
       "shortlisted",
       "interview_scheduled",
       "interviewed",

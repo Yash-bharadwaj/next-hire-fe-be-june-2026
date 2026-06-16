@@ -3,6 +3,7 @@ import { apiClient } from "@/lib/api";
 // Types for candidate profile
 export interface CandidateProfile {
   id: string;
+  candidate_id?: string;
   user_id: string;
   first_name?: string;
   last_name?: string;

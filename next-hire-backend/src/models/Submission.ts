@@ -1,4 +1,4 @@
-import { DataTypes, Model, Optional } from "sequelize";
+import { DataTypes, Model, Optional, Op } from "sequelize";
 import { sequelize } from "../config/database";
 import { User } from "./User";
 import { Job } from "./Job";
@@ -6,10 +6,12 @@ import { Candidate } from "./Candidate";
 
 export interface SubmissionAttributes {
   id: string;
+  submission_id: string; // Human readable ID like SUB-0001
   job_id: string;
   candidate_id: string;
   submitted_by: string; // User ID who submitted (candidate or vendor)
   status:
+    | "sourcing"
     | "submitted"
     | "under_review"
     | "shortlisted"
@@ -36,7 +38,7 @@ export interface SubmissionAttributes {
 export interface SubmissionCreationAttributes
   extends Optional<
     SubmissionAttributes,
-    "id" | "status" | "submitted_at" | "created_at" | "updated_at"
+    "id" | "submission_id" | "status" | "submitted_at" | "created_at" | "updated_at"
   > {}
 
 export class Submission
@@ -44,10 +46,12 @@ export class Submission
   implements SubmissionAttributes
 {
   public id!: string;
+  public submission_id!: string;
   public job_id!: string;
   public candidate_id!: string;
   public submitted_by!: string;
   public status!:
+    | "sourcing"
     | "submitted"
     | "under_review"
     | "shortlisted"
@@ -86,6 +90,11 @@ Submission.init(
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
+    submission_id: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+    },
     job_id: {
       type: DataTypes.UUID,
       allowNull: false,
@@ -114,6 +123,7 @@ Submission.init(
     },
     status: {
       type: DataTypes.ENUM(
+        "sourcing",
         "submitted",
         "under_review",
         "shortlisted",
@@ -210,7 +220,31 @@ Submission.init(
     sequelize,
     modelName: "Submission",
     tableName: "submissions",
+    hooks: {
+      beforeCreate: async (submission: Submission) => {
+        if (!submission.submission_id) {
+          const lastSubmission = await Submission.findOne({
+            where: {
+              submission_id: {
+                [Op.like]: `SUB-%`,
+              },
+            },
+            order: [["created_at", "DESC"]],
+          });
+          let num = 1;
+          if (lastSubmission) {
+            const parts = lastSubmission.submission_id.split("-");
+            num = parseInt(parts[parts.length - 1] || "0") + 1;
+          }
+          submission.submission_id = `SUB-${String(num).padStart(4, "0")}`;
+        }
+      },
+    },
     indexes: [
+      {
+        unique: true,
+        fields: ["submission_id"],
+      },
       {
         unique: true,
         fields: ["job_id", "candidate_id"], // Prevent duplicate submissions

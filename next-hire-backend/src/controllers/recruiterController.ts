@@ -482,11 +482,10 @@ export const addJobNote = asyncHandler(
   }
 );
 
-// Add attachment to a job
+// Add attachment to a job (URL-based or file upload)
 export const addJobAttachment = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { jobId } = req.params;
-    const { url, name } = req.body;
     const userId = req.user?.userId;
 
     const job = await Job.findByPk(jobId);
@@ -498,10 +497,26 @@ export const addJobAttachment = asyncHandler(
       throw createError("You do not have permission to update this job", 403);
     }
 
+    let attachmentUrl: string;
+    let attachmentName: string;
+
+    if ((req as any).file) {
+      // File upload path: serve from /uploads/documents_tmp
+      const file = (req as any).file;
+      const serverBase = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
+      attachmentUrl = `${serverBase}/uploads/documents_tmp/${file.filename}`;
+      attachmentName = req.body.name || file.originalname;
+    } else {
+      const { url, name } = req.body;
+      if (!url) throw createError("url or file is required", 400);
+      attachmentUrl = url;
+      attachmentName = name || url;
+    }
+
     const attachments = (job as any).attachments || [];
     attachments.push({
-      url,
-      name: name || url,
+      url: attachmentUrl,
+      name: attachmentName,
       by: userId,
       at: new Date().toISOString(),
     });
@@ -512,6 +527,62 @@ export const addJobAttachment = asyncHandler(
       success: true,
       message: "Attachment added successfully",
       data: { attachments },
+    });
+  }
+);
+
+// Source candidates into a job's sourcing funnel (recruiter-initiated)
+export const sourceCandidates = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { jobId } = req.params;
+    const { candidate_ids } = req.body as { candidate_ids: string[] };
+    const userId = req.user?.userId;
+
+    if (!candidate_ids || !Array.isArray(candidate_ids) || candidate_ids.length === 0) {
+      throw createError("candidate_ids array is required", 400);
+    }
+
+    const job = await Job.findByPk(jobId);
+    if (!job) throw createError("Job not found", 404);
+
+    if (job.created_by !== userId && job.assigned_to !== userId) {
+      throw createError("You do not have permission to source candidates for this job", 403);
+    }
+
+    const results: any[] = [];
+    const skipped: string[] = [];
+
+    for (const candidateId of candidate_ids) {
+      const candidate = await Candidate.findByPk(candidateId);
+      if (!candidate) {
+        skipped.push(candidateId);
+        continue;
+      }
+
+      const existing = await Submission.findOne({
+        where: { job_id: jobId, candidate_id: candidateId },
+      });
+
+      if (existing) {
+        skipped.push(candidateId);
+        continue;
+      }
+
+      const submission = await Submission.create({
+        job_id: jobId,
+        candidate_id: candidateId,
+        submitted_by: userId!,
+        status: "sourcing",
+        submitted_at: new Date(),
+      });
+
+      results.push(submission);
+    }
+
+    res.json({
+      success: true,
+      message: `${results.length} candidate(s) added to sourcing funnel`,
+      data: { added: results, skipped },
     });
   }
 );

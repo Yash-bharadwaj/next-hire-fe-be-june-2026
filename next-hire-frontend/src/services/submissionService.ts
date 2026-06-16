@@ -1,7 +1,8 @@
 import { apiClient } from "@/lib/api";
 import { Job } from "./jobService";
 
-export type SubmissionStatus = 
+export type SubmissionStatus =
+  | "sourcing"
   | "submitted"
   | "under_review"
   | "shortlisted"
@@ -13,6 +14,7 @@ export type SubmissionStatus =
 
 export interface Submission {
   id: string;
+  submission_id?: string;
   job_id: string;
   candidate_id: string;
   submitted_by: string;
@@ -39,6 +41,7 @@ export interface Submission {
   job?: Partial<Job>;
   candidate?: {
     id: string;
+    candidate_id?: string;
     first_name: string;
     last_name: string;
     email: string;

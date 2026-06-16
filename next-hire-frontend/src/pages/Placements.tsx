@@ -511,32 +511,20 @@ const Placements = () => {
   // Base columns
   const baseColumns = [
     {
-      field: 'id',
+      field: 'placement_id',
       headerName: 'ID',
-      width: 110,
-      renderCell: (value: string, row: any) => {
-        const truncated = value && value.length > 10 ? value.slice(0, 10) + "…" : value;
-        return (
-          <TooltipProvider delayDuration={100}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/dashboard/placements/${row.id}`);
-                  }}
-                  className="text-blue-600 hover:text-blue-800 hover:underline font-medium font-poppins text-xs truncate max-w-[100px] block"
-                >
-                  {truncated}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="font-mono text-xs">
-                {value}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        );
-      }
+      width: 120,
+      renderCell: (value: string, row: any) => (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/dashboard/placements/${row.id}`);
+          }}
+          className="text-blue-600 hover:text-blue-800 hover:underline font-medium font-mono text-xs whitespace-nowrap"
+        >
+          {value}
+        </button>
+      ),
     },
     {
       field: 'candidateName',
@@ -803,6 +791,7 @@ const Placements = () => {
               <DataGrid
                 rows={placements.map(p => ({
                   id: p.id,
+                  placement_id: p.placement_id || p.id,
                   candidateName: `${p.candidate?.first_name || ''} ${p.candidate?.last_name || ''}`.trim() || 'Unknown',
                   jobTitle: p.job?.title || 'Unknown',
                   companyName: p.job?.company_name || p.company?.name || 'Unknown',

@@ -1,9 +1,10 @@
-import { DataTypes, Model, Optional } from "sequelize";
+import { DataTypes, Model, Optional, Op } from "sequelize";
 import { sequelize } from "../config/database";
 import { User } from "./User";
 
 export interface CandidateAttributes {
   id: string;
+  candidate_id: string; // Human readable ID like CAND-2026-0001
   user_id: string;
   created_by?: string | null;
   first_name?: string;
@@ -29,7 +30,7 @@ export interface CandidateAttributes {
 export interface CandidateCreationAttributes
   extends Optional<
     CandidateAttributes,
-    "id" | "availability_status" | "created_at" | "updated_at" | "created_by"
+    "id" | "candidate_id" | "availability_status" | "created_at" | "updated_at" | "created_by"
   > {}
 
 export class Candidate
@@ -37,6 +38,7 @@ export class Candidate
   implements CandidateAttributes
 {
   public id!: string;
+  public candidate_id!: string;
   public user_id!: string;
   public created_by?: string | null;
   public first_name?: string;
@@ -78,6 +80,11 @@ Candidate.init(
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
+    },
+    candidate_id: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
     },
     user_id: {
       type: DataTypes.UUID,
@@ -223,7 +230,32 @@ Candidate.init(
     sequelize,
     modelName: "Candidate",
     tableName: "candidates",
+    hooks: {
+      beforeCreate: async (candidate: Candidate) => {
+        if (!candidate.candidate_id) {
+          const year = new Date().getFullYear();
+          const lastCandidate = await Candidate.findOne({
+            where: {
+              candidate_id: {
+                [Op.like]: `CAND-${year}-%`,
+              },
+            },
+            order: [["created_at", "DESC"]],
+          });
+          let num = 1;
+          if (lastCandidate) {
+            const parts = lastCandidate.candidate_id.split("-");
+            num = parseInt(parts[parts.length - 1] || "0") + 1;
+          }
+          candidate.candidate_id = `CAND-${year}-${String(num).padStart(4, "0")}`;
+        }
+      },
+    },
     indexes: [
+      {
+        unique: true,
+        fields: ["candidate_id"],
+      },
       {
         unique: true,
         fields: ["user_id"],

@@ -19,9 +19,11 @@ import {
   createTask,
   listTasks,
   updateTaskStatus,
+  sourceCandidates,
 } from "../controllers/recruiterController";
 import { authenticate, recruiterOnly } from "../middleware/auth";
 import { validate } from "../middleware/validation";
+import { documentUpload } from "../middleware/upload";
 
 const router = Router();
 
@@ -310,10 +312,19 @@ router.post(
 );
 router.post(
   "/jobs/:jobId/attachments",
+  documentUpload.single("file"),
   jobDetailsValidation,
-  attachmentValidation,
   validate,
   addJobAttachment
+);
+
+// Source candidates into a job's sourcing funnel
+router.post(
+  "/jobs/:jobId/source-candidates",
+  jobDetailsValidation,
+  [body("candidate_ids").isArray({ min: 1 }).withMessage("candidate_ids must be a non-empty array")],
+  validate,
+  sourceCandidates
 );
 
 // Submission management

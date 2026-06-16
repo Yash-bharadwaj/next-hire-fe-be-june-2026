@@ -109,7 +109,8 @@ export interface CreateJobRequest {
 export interface UpdateJobRequest extends Partial<CreateJobRequest> {}
 
 // Submission types
-export type SubmissionStatus = 
+export type SubmissionStatus =
+  | "sourcing"
   | "submitted"
   | "under_review"
   | "shortlisted"
@@ -432,11 +433,40 @@ class RecruiterService {
   }
 
   /**
-   * Add attachment to job
+   * Add attachment to job (URL-based)
    */
   async addJobAttachment(jobId: string, data: { url: string; name?: string }): Promise<ApiResponse> {
     try {
       const response = await apiClient.post<ApiResponse>(`/recruiter/jobs/${jobId}/attachments`, data);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Upload a file as a job attachment
+   */
+  async uploadJobAttachment(jobId: string, file: File): Promise<ApiResponse> {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("name", file.name);
+      const response = await apiClient.upload<ApiResponse>(`/recruiter/jobs/${jobId}/attachments`, formData);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Source candidates into a job's sourcing funnel
+   */
+  async sourceCandidates(jobId: string, candidateIds: string[]): Promise<ApiResponse> {
+    try {
+      const response = await apiClient.post<ApiResponse>(`/recruiter/jobs/${jobId}/source-candidates`, {
+        candidate_ids: candidateIds,
+      });
       return response.data;
     } catch (error: any) {
       throw this.handleError(error);
