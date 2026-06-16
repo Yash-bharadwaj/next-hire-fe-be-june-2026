@@ -4,7 +4,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetDescription,
   SheetFooter,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -182,23 +181,17 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
         className="w-full sm:max-w-xl flex flex-col p-0"
       >
         {/* Fixed header */}
-        <SheetHeader className="px-6 py-5 border-b">
+        <SheetHeader className="px-6 py-4 border-b">
           <SheetTitle>
             {mode === "create" ? "New Business Partner" : "Edit Business Partner"}
           </SheetTitle>
-          <SheetDescription>
-            {mode === "create"
-              ? "Add a new lead, client, or vendor to your business partners."
-              : "Update this business partner's information."}
-          </SheetDescription>
         </SheetHeader>
 
         {/* Scrollable form body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
 
           {/* Basic info */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Basic Info</h3>
+          <div className="space-y-3">
             <div>
               <Label className="mb-1 block">Company Name *</Label>
               <Input
@@ -207,7 +200,7 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
                 placeholder="Acme Corporation"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="mb-1 block">Primary Email</Label>
                 <Input
@@ -245,9 +238,9 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
           </div>
 
           {/* Partner type */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Partner Type</h3>
-            <div className="flex gap-6">
+          <div className="space-y-1.5">
+            <Label className="block">Partner Type</Label>
+            <div className="flex gap-6 pt-0.5">
               {(["lead", "client", "vendor"] as const).map((type) => (
                 <div key={type} className="flex items-center gap-2">
                   <Checkbox
@@ -266,8 +259,7 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
           </div>
 
           {/* Address */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Address</h3>
+          <div className="space-y-3">
             <div>
               <Label className="mb-1 block">Address Line 1</Label>
               <Input value={formData.address1} onChange={(e) => update("address1", e.target.value)} />
@@ -276,7 +268,7 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
               <Label className="mb-1 block">Address Line 2</Label>
               <Input value={formData.address2} onChange={(e) => update("address2", e.target.value)} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="mb-1 block">Country</Label>
                 <CountrySelect
@@ -319,9 +311,8 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
           </div>
 
           {/* Company details */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Company Details</h3>
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="mb-1 block">Industry</Label>
                 <Input value={formData.industry} onChange={(e) => update("industry", e.target.value)} />
@@ -361,9 +352,8 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
           </div>
 
           {/* Classification */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Classification</h3>
-            <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label className="mb-1 block">Source</Label>
                 <Select
@@ -433,7 +423,7 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
         </div>
 
         {/* Fixed footer */}
-        <SheetFooter className="px-6 py-4 border-t">
+        <SheetFooter className="px-6 py-3 border-t">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
