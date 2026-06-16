@@ -20,6 +20,7 @@ import {
   ensureUserProfileImageColumn,
   ensureEmbeddingColumns,
   ensurePgVectorSupport,
+  ensureNewSubmissionStatuses,
 } from "./utils/schemaPatcher";
 
 // Routes
@@ -142,6 +143,7 @@ const startServer = async () => {
     await ensureSubmissionsSchema();
     await ensureUserProfileImageColumn();
     await ensureEmbeddingColumns();
+    await ensureNewSubmissionStatuses();
     applyAssociations();
     // Test database connection
     await sequelize.authenticate();

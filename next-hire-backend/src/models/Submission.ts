@@ -11,15 +11,20 @@ export interface SubmissionAttributes {
   candidate_id: string;
   submitted_by: string; // User ID who submitted (candidate or vendor)
   status:
+    | "new_candidate"
+    | "initial_scanning"
+    | "first_round"
+    | "technical_round"
+    | "final_round"
+    | "hired"
+    | "rejected"
     | "sourcing"
     | "submitted"
     | "under_review"
     | "shortlisted"
     | "interview_scheduled"
     | "interviewed"
-    | "offered"
-    | "hired"
-    | "rejected";
+    | "offered";
   ai_score?: number; // AI matching score 0-100
   notes?: string; // Internal notes from recruiters
   cover_letter?: string;
@@ -51,15 +56,20 @@ export class Submission
   public candidate_id!: string;
   public submitted_by!: string;
   public status!:
+    | "new_candidate"
+    | "initial_scanning"
+    | "first_round"
+    | "technical_round"
+    | "final_round"
+    | "hired"
+    | "rejected"
     | "sourcing"
     | "submitted"
     | "under_review"
     | "shortlisted"
     | "interview_scheduled"
     | "interviewed"
-    | "offered"
-    | "hired"
-    | "rejected";
+    | "offered";
   public ai_score?: number;
   public notes?: string;
   public cover_letter?: string;
@@ -123,18 +133,23 @@ Submission.init(
     },
     status: {
       type: DataTypes.ENUM(
+        "new_candidate",
+        "initial_scanning",
+        "first_round",
+        "technical_round",
+        "final_round",
+        "hired",
+        "rejected",
         "sourcing",
         "submitted",
         "under_review",
         "shortlisted",
         "interview_scheduled",
         "interviewed",
-        "offered",
-        "hired",
-        "rejected"
+        "offered"
       ),
       allowNull: false,
-      defaultValue: "submitted",
+      defaultValue: "new_candidate",
     },
     ai_score: {
       type: DataTypes.INTEGER,

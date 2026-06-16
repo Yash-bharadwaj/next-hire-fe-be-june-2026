@@ -180,14 +180,20 @@ const getJobSubmissionsValidation = [
   query("status")
     .optional()
     .isIn([
+      "new_candidate",
+      "initial_scanning",
+      "first_round",
+      "technical_round",
+      "final_round",
+      "hired",
+      "rejected",
+      "sourcing",
       "submitted",
       "under_review",
       "shortlisted",
       "interview_scheduled",
       "interviewed",
       "offered",
-      "hired",
-      "rejected",
     ])
     .withMessage("Invalid status"),
   query("sort_by")
@@ -223,14 +229,20 @@ const updateSubmissionStatusValidation = [
   param("submissionId").isUUID().withMessage("Valid submission ID is required"),
   body("status")
     .isIn([
+      "new_candidate",
+      "initial_scanning",
+      "first_round",
+      "technical_round",
+      "final_round",
+      "hired",
+      "rejected",
+      "sourcing",
       "submitted",
       "under_review",
       "shortlisted",
       "interview_scheduled",
       "interviewed",
       "offered",
-      "hired",
-      "rejected",
     ])
     .withMessage("Valid status is required"),
   body("notes")

@@ -2,15 +2,20 @@ import { apiClient } from "@/lib/api";
 import { Job } from "./jobService";
 
 export type SubmissionStatus =
+  | "new_candidate"
+  | "initial_scanning"
+  | "first_round"
+  | "technical_round"
+  | "final_round"
+  | "hired"
+  | "rejected"
   | "sourcing"
   | "submitted"
   | "under_review"
   | "shortlisted"
   | "interview_scheduled"
   | "interviewed"
-  | "offered"
-  | "hired"
-  | "rejected";
+  | "offered";
 
 export interface Submission {
   id: string;

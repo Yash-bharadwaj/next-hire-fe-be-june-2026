@@ -376,15 +376,13 @@ const JobDetail = () => {
   };
 
   const kanbanColumns = [
-    { id: "sourced", title: "New Candidates", color: "bg-gray-50" },
-    { id: "screening", title: "Initial Scanning", color: "bg-blue-50" },
-    { id: "submitted", title: "First Round", color: "bg-purple-50" },
-    {
-      id: "interview",
-      title: "Technical Manager Round",
-      color: "bg-yellow-50",
-    },
-    { id: "offer", title: "Final Round", color: "bg-green-50" },
+    { id: "new_candidate",   title: "New Candidates",          color: "bg-gray-50",   border: "border-gray-300" },
+    { id: "initial_scanning", title: "Initial Scanning",       color: "bg-blue-50",   border: "border-blue-300" },
+    { id: "first_round",    title: "First Round",              color: "bg-purple-50", border: "border-purple-300" },
+    { id: "technical_round", title: "Technical Manager Round", color: "bg-yellow-50", border: "border-yellow-300" },
+    { id: "final_round",    title: "Final Round",              color: "bg-orange-50", border: "border-orange-300" },
+    { id: "hired",          title: "Hired",                    color: "bg-green-50",  border: "border-green-400" },
+    { id: "rejected",       title: "Rejected",                 color: "bg-red-50",    border: "border-red-300" },
   ];
 
   const handleAddCandidate = (stageId: string) => {
@@ -535,19 +533,27 @@ const JobDetail = () => {
     active: 0,
   });
 
-  // Map submission status to kanban stage
+  // Map submission status to kanban column id
   const mapSubmissionStatusToStage = (status: string): string => {
     const statusMap: Record<string, string> = {
-      "submitted": "submitted",
-      "under_review": "screening",
-      "shortlisted": "screening",
-      "interview_scheduled": "submitted",
-      "interviewed": "submitted",
-      "offered": "offer",
-      "hired": "offer",
-      "rejected": "sourced", // Rejected candidates stay in sourced for visibility
+      // New statuses map directly
+      new_candidate:    "new_candidate",
+      initial_scanning: "initial_scanning",
+      first_round:      "first_round",
+      technical_round:  "technical_round",
+      final_round:      "final_round",
+      hired:            "hired",
+      rejected:         "rejected",
+      // Legacy status backward compat
+      sourcing:              "new_candidate",
+      submitted:             "first_round",
+      under_review:          "initial_scanning",
+      shortlisted:           "first_round",
+      interview_scheduled:   "technical_round",
+      interviewed:           "final_round",
+      offered:               "final_round",
     };
-    return statusMap[status] || "sourced";
+    return statusMap[status] || "new_candidate";
   };
 
   useEffect(() => {
@@ -600,8 +606,8 @@ const JobDetail = () => {
           total: allSubmissions.length,
           hired: allSubmissions.filter((s: any) => s.status === "hired").length,
           rejected: allSubmissions.filter((s: any) => s.status === "rejected").length,
-          active: allSubmissions.filter((s: any) => 
-            ["submitted", "under_review", "shortlisted", "interview_scheduled", "interviewed", "offered"].includes(s.status)
+          active: allSubmissions.filter((s: any) =>
+            !["hired", "rejected"].includes(s.status)
           ).length,
         };
         
@@ -740,12 +746,14 @@ const JobDetail = () => {
           icon: "users",
         });
       }
-      const interviewed = (submissions as any[]).filter((s: any) => s.status === "interview_scheduled" || s.status === "interviewed");
-      if (interviewed.length > 0) {
+      const inInterview = (submissions as any[]).filter((s: any) =>
+        ["first_round", "technical_round", "final_round", "interview_scheduled", "interviewed"].includes(s.status)
+      );
+      if (inInterview.length > 0) {
         events.push({
-          label: `${interviewed.length} Interview(s) Scheduled`,
-          detail: `Candidates moved to interview stage`,
-          date: new Date(interviewed[0].updated_at || interviewed[0].created_at),
+          label: `${inInterview.length} Candidate(s) in Interview Rounds`,
+          detail: `Candidates progressed to interview stages`,
+          date: new Date(inInterview[0].updated_at || inInterview[0].created_at),
           color: "from-purple-500 to-purple-600",
           icon: "video",
         });
@@ -1494,52 +1502,81 @@ const JobDetail = () => {
             </TabsContent>
 
             <TabsContent value="sourcing-funnel" className="space-y-4 mt-0">
-              {/* Premium Kanban Sourcing Funnel */}
+              {/* Kanban Sourcing Funnel */}
               <div className="flex gap-4 overflow-x-auto pb-4">
                 {kanbanColumns.map((column) => (
                   <Card
                     key={column.id}
-                    className={`min-w-[300px] ${column.color} border-2`}
+                    className={`min-w-[270px] max-w-[270px] ${column.color} border-2 ${column.border}`}
                   >
-                    <CardHeader className="pb-3">
+                    <CardHeader className="pb-2 pt-3 px-3">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm font-semibold">
+                        <CardTitle className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                           {column.title}
                         </CardTitle>
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="secondary" className="text-xs px-2 py-0.5">
                           {getStageCount(column.id)}
                         </Badge>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-2">
-                      {getCandidatesByStage(column.id).map((candidate) => (
+                    <CardContent className="space-y-2 px-3 pb-3">
+                      {getCandidatesByStage(column.id).map((candidate: any) => (
                         <div
                           key={candidate.id}
-                          className="p-3 bg-white rounded-lg border shadow-sm"
+                          className="p-3 bg-white rounded-lg border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
                         >
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-medium text-sm">
+                          <div className="flex items-start justify-between gap-1 mb-1">
+                            <h4 className="font-semibold text-sm text-gray-800 leading-tight">
                               {candidate.name}
                             </h4>
-                            <Badge variant="outline" className="text-xs">
-                              Score: {candidate.score}
+                            <Badge variant="outline" className="text-xs px-1.5 py-0 flex-shrink-0">
+                              {candidate.score}%
                             </Badge>
                           </div>
-                          <p className="text-xs text-gray-600 mb-1">
-                            {candidate.experience}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {candidate.location}
-                          </p>
-                          {candidate.notes && (
-                            <p className="text-xs text-gray-600 mt-2 italic">
-                              {candidate.notes}
-                            </p>
-                          )}
+                          <p className="text-xs text-gray-500 mb-1">{candidate.experience}</p>
+                          <p className="text-xs text-gray-400 mb-2">{candidate.location}</p>
+                          {/* Move to stage dropdown */}
+                          <Select
+                            value={candidate.submission?.status || column.id}
+                            onValueChange={async (newStatus) => {
+                              if (!candidate.submission?.id) return;
+                              try {
+                                await recruiterService.updateSubmissionStatus(candidate.submission.id, { status: newStatus as any });
+                                // Refresh kanban
+                                const statsRes = await recruiterService.getJobSubmissions(id!, { limit: 100 });
+                                const subs = statsRes.data?.submissions || [];
+                                setSubmissions(subs as any);
+                                const mapped = subs.map((sub: any, i: number) => ({
+                                  id: sub.id || `sub-${i}`,
+                                  name: `${sub.candidate?.first_name || ""} ${sub.candidate?.last_name || ""}`.trim() || "Unknown",
+                                  experience: `${sub.candidate?.experience_years || 0} years`,
+                                  location: sub.candidate?.location || "Unknown",
+                                  score: sub.ai_score || 0,
+                                  stage: mapSubmissionStatusToStage(sub.status),
+                                  notes: sub.notes,
+                                  submission: sub,
+                                }));
+                                setCandidates(mapped);
+                              } catch (e: any) {
+                                toast({ title: "Error", description: e?.message || "Failed to update status", variant: "destructive" });
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-7 text-xs border-gray-200 bg-gray-50">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white">
+                              {kanbanColumns.map((col) => (
+                                <SelectItem key={col.id} value={col.id} className="text-xs">
+                                  {col.title}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       ))}
                       {getCandidatesByStage(column.id).length === 0 && (
-                        <div className="text-center py-4 text-gray-500 text-sm">
+                        <div className="text-center py-6 text-gray-400 text-xs">
                           No candidates in this stage
                         </div>
                       )}
@@ -1848,21 +1885,41 @@ const JobDetail = () => {
                             <TableCell className="text-gray-700">-</TableCell>
                           </TableRow>
                         )}
-                        {/* Additional timeline data would come from backend submissions/interviews API */}
-                        <TableRow className="border-green-100/50 hover:bg-green-50/30">
-                          <TableCell
-                            colSpan={6}
-                            className="text-center text-gray-500 py-8"
-                          >
-                            <div className="flex flex-col items-center gap-2">
-                              <Activity className="h-8 w-8 text-gray-400" />
-                              <p>
-                                Additional timeline data will be loaded from
-                                submissions and interviews
-                              </p>
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                        {kanbanColumns.map((col) => {
+                          const colSubs = (submissions as any[]).filter(
+                            (s: any) => mapSubmissionStatusToStage(s.status) === col.id
+                          );
+                          if (colSubs.length === 0) return null;
+                          const oldest = colSubs.reduce((a: any, b: any) =>
+                            new Date(a.updated_at || a.created_at) < new Date(b.updated_at || b.created_at) ? a : b
+                          );
+                          const newest = colSubs.reduce((a: any, b: any) =>
+                            new Date(a.updated_at || a.created_at) > new Date(b.updated_at || b.created_at) ? a : b
+                          );
+                          const elapsed = (
+                            (new Date(newest.updated_at || newest.created_at).getTime() -
+                              new Date(oldest.updated_at || oldest.created_at).getTime()) /
+                            (1000 * 60 * 60)
+                          ).toFixed(1);
+                          return (
+                            <TableRow key={col.id} className="border-green-100/50 hover:bg-green-50/30">
+                              <TableCell>
+                                <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">
+                                  {col.title} ({colSubs.length})
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-gray-700 text-xs">
+                                {new Date(oldest.updated_at || oldest.created_at).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-gray-700 text-xs">
+                                {new Date(newest.updated_at || newest.created_at).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-gray-700 font-medium text-xs">{elapsed}h</TableCell>
+                              <TableCell className="text-gray-700 text-xs">-</TableCell>
+                              <TableCell className="text-gray-700 text-xs">-</TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>

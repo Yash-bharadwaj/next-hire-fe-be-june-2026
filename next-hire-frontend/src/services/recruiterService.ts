@@ -114,15 +114,20 @@ export interface UpdateJobRequest extends Partial<CreateJobRequest> {}
 
 // Submission types
 export type SubmissionStatus =
+  | "new_candidate"
+  | "initial_scanning"
+  | "first_round"
+  | "technical_round"
+  | "final_round"
+  | "hired"
+  | "rejected"
   | "sourcing"
   | "submitted"
   | "under_review"
   | "shortlisted"
   | "interview_scheduled"
   | "interviewed"
-  | "offered"
-  | "hired"
-  | "rejected";
+  | "offered";
 
 export interface Submission {
   id: string;
@@ -568,14 +573,20 @@ class RecruiterService {
 
   formatSubmissionStatus(status: SubmissionStatus): string {
     const statusMap: Record<SubmissionStatus, string> = {
+      new_candidate: "New Candidate",
+      initial_scanning: "Initial Scanning",
+      first_round: "First Round",
+      technical_round: "Technical Manager Round",
+      final_round: "Final Round",
+      hired: "Hired",
+      rejected: "Rejected",
+      sourcing: "Sourcing",
       submitted: "Submitted",
       under_review: "Under Review",
       shortlisted: "Shortlisted",
       interview_scheduled: "Interview Scheduled",
       interviewed: "Interviewed",
       offered: "Offered",
-      hired: "Hired",
-      rejected: "Rejected",
     };
     return statusMap[status] || status;
   }
@@ -592,14 +603,20 @@ class RecruiterService {
 
   getSubmissionStatusColor(status: SubmissionStatus): string {
     const colorMap: Record<SubmissionStatus, string> = {
+      new_candidate: "bg-gray-100 text-gray-800",
+      initial_scanning: "bg-blue-100 text-blue-800",
+      first_round: "bg-purple-100 text-purple-800",
+      technical_round: "bg-yellow-100 text-yellow-800",
+      final_round: "bg-orange-100 text-orange-800",
+      hired: "bg-emerald-100 text-emerald-800",
+      rejected: "bg-red-100 text-red-800",
+      sourcing: "bg-gray-100 text-gray-800",
       submitted: "bg-blue-100 text-blue-800",
       under_review: "bg-yellow-100 text-yellow-800",
       shortlisted: "bg-purple-100 text-purple-800",
       interview_scheduled: "bg-indigo-100 text-indigo-800",
       interviewed: "bg-cyan-100 text-cyan-800",
       offered: "bg-green-100 text-green-800",
-      hired: "bg-emerald-100 text-emerald-800",
-      rejected: "bg-red-100 text-red-800",
     };
     return colorMap[status] || "bg-gray-100 text-gray-800";
   }

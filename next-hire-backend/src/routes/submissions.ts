@@ -41,6 +41,13 @@ const updateStatusValidation = [
   param("id").isUUID().withMessage("Valid submission ID is required"),
   body("status")
     .isIn([
+      "new_candidate",
+      "initial_scanning",
+      "first_round",
+      "technical_round",
+      "final_round",
+      "hired",
+      "rejected",
       "sourcing",
       "submitted",
       "under_review",
@@ -48,8 +55,6 @@ const updateStatusValidation = [
       "interview_scheduled",
       "interviewed",
       "offered",
-      "hired",
-      "rejected"
     ])
     .withMessage("Invalid status"),
   body("notes")
@@ -78,6 +83,13 @@ const paginationValidation = [
   query("status")
     .optional()
     .isIn([
+      "new_candidate",
+      "initial_scanning",
+      "first_round",
+      "technical_round",
+      "final_round",
+      "hired",
+      "rejected",
       "sourcing",
       "submitted",
       "under_review",
@@ -85,8 +97,6 @@ const paginationValidation = [
       "interview_scheduled",
       "interviewed",
       "offered",
-      "hired",
-      "rejected"
     ])
     .withMessage("Invalid status filter"),
 ];

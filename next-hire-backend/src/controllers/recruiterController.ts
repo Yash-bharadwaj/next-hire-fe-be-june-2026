@@ -576,7 +576,7 @@ export const sourceCandidates = asyncHandler(
         job_id: jobId,
         candidate_id: candidateId,
         submitted_by: userId!,
-        status: "sourcing",
+        status: "new_candidate",
         submitted_at: new Date(),
       });
 

@@ -496,3 +496,31 @@ export const ensureSubmissionsSchema = async () => {
   }
 };
 
+export const ensureNewSubmissionStatuses = async () => {
+  const newStatuses = [
+    "new_candidate",
+    "initial_scanning",
+    "first_round",
+    "technical_round",
+    "final_round",
+  ];
+  try {
+    const dialect = sequelize.getDialect();
+    if (dialect === "postgres") {
+      for (const status of newStatuses) {
+        try {
+          await sequelize.query(
+            `ALTER TYPE "enum_submissions_status" ADD VALUE IF NOT EXISTS '${status}'`
+          );
+        } catch (e: any) {
+          logger.warn(`Could not add status '${status}' to enum: ${e.message}`);
+        }
+      }
+      logger.info("New submission statuses ensured in PostgreSQL ENUM");
+    }
+    // SQLite handles it via sync ALTER
+  } catch (error: any) {
+    logger.warn("ensureNewSubmissionStatuses: skipping —", error.message);
+  }
+};
+
