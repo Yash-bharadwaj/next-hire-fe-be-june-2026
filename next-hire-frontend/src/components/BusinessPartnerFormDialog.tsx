@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -141,9 +141,7 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
   };
 
   const handleSubmit = async () => {
-    if (!formData.name.trim()) {
-      return;
-    }
+    if (!formData.name.trim()) return;
 
     const payload: CreateBusinessPartnerRequest | UpdateBusinessPartnerRequest = {
       name: formData.name.trim(),
@@ -174,28 +172,34 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
     setSaving(true);
     const success = await onSubmit(payload);
     setSaving(false);
-    if (success) {
-      onOpenChange(false);
-    }
+    if (success) onOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="w-full sm:max-w-xl flex flex-col p-0"
+      >
+        {/* Fixed header */}
+        <SheetHeader className="px-6 py-5 border-b">
+          <SheetTitle>
             {mode === "create" ? "New Business Partner" : "Edit Business Partner"}
-          </DialogTitle>
-          <DialogDescription>
+          </SheetTitle>
+          <SheetDescription>
             {mode === "create"
               ? "Add a new lead, client, or vendor to your business partners."
               : "Update this business partner's information."}
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
+        {/* Scrollable form body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+          {/* Basic info */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Basic Info</h3>
+            <div>
               <Label className="mb-1 block">Company Name *</Label>
               <Input
                 value={formData.name}
@@ -203,240 +207,233 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
                 placeholder="Acme Corporation"
               />
             </div>
-            <div>
-              <Label className="mb-1 block">Primary Email</Label>
-              <Input
-                type="email"
-                value={formData.primary_email}
-                onChange={(e) => update("primary_email", e.target.value)}
-                placeholder="contact@acme.com"
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">Primary Phone</Label>
-              <Input
-                value={formData.primary_phone}
-                onChange={(e) => update("primary_phone", e.target.value)}
-                placeholder="+1 (555) 123-4567"
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">Website</Label>
-              <Input
-                value={formData.website}
-                onChange={(e) => update("website", e.target.value)}
-                placeholder="https://acme.com"
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">Domain</Label>
-              <Input
-                value={formData.domain}
-                onChange={(e) => update("domain", e.target.value)}
-                placeholder="acme.com"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label className="mb-2 block">Partner Type</Label>
-            <div className="flex flex-wrap gap-6">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="bp-is-lead"
-                  checked={formData.is_lead}
-                  onCheckedChange={(checked) => update("is_lead", checked === true)}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="mb-1 block">Primary Email</Label>
+                <Input
+                  type="email"
+                  value={formData.primary_email}
+                  onChange={(e) => update("primary_email", e.target.value)}
+                  placeholder="contact@acme.com"
                 />
-                <Label htmlFor="bp-is-lead" className="font-normal cursor-pointer">
-                  Lead
-                </Label>
               </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="bp-is-client"
-                  checked={formData.is_client}
-                  onCheckedChange={(checked) => update("is_client", checked === true)}
+              <div>
+                <Label className="mb-1 block">Primary Phone</Label>
+                <Input
+                  value={formData.primary_phone}
+                  onChange={(e) => update("primary_phone", e.target.value)}
+                  placeholder="+1 (555) 123-4567"
                 />
-                <Label htmlFor="bp-is-client" className="font-normal cursor-pointer">
-                  Client
-                </Label>
               </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="bp-is-vendor"
-                  checked={formData.is_vendor}
-                  onCheckedChange={(checked) => update("is_vendor", checked === true)}
+              <div>
+                <Label className="mb-1 block">Website</Label>
+                <Input
+                  value={formData.website}
+                  onChange={(e) => update("website", e.target.value)}
+                  placeholder="https://acme.com"
                 />
-                <Label htmlFor="bp-is-vendor" className="font-normal cursor-pointer">
-                  Vendor
-                </Label>
+              </div>
+              <div>
+                <Label className="mb-1 block">Domain</Label>
+                <Input
+                  value={formData.domain}
+                  onChange={(e) => update("domain", e.target.value)}
+                  placeholder="acme.com"
+                />
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
+          {/* Partner type */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Partner Type</h3>
+            <div className="flex gap-6">
+              {(["lead", "client", "vendor"] as const).map((type) => (
+                <div key={type} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`bp-is-${type}`}
+                    checked={formData[`is_${type}` as keyof FormState] as boolean}
+                    onCheckedChange={(checked) =>
+                      update(`is_${type}` as keyof FormState, checked === true as any)
+                    }
+                  />
+                  <Label htmlFor={`bp-is-${type}`} className="font-normal cursor-pointer capitalize">
+                    {type}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Address */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Address</h3>
+            <div>
               <Label className="mb-1 block">Address Line 1</Label>
-              <Input
-                value={formData.address1}
-                onChange={(e) => update("address1", e.target.value)}
-              />
+              <Input value={formData.address1} onChange={(e) => update("address1", e.target.value)} />
             </div>
-            <div className="md:col-span-2">
+            <div>
               <Label className="mb-1 block">Address Line 2</Label>
-              <Input
-                value={formData.address2}
-                onChange={(e) => update("address2", e.target.value)}
-              />
+              <Input value={formData.address2} onChange={(e) => update("address2", e.target.value)} />
             </div>
-            <div>
-              <Label className="mb-1 block">Country</Label>
-              <CountrySelect
-                value={formData.country}
-                onChange={(value) => {
-                  update("country", value);
-                  update("state", "");
-                  update("city", "");
-                }}
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">State</Label>
-              <StateSelect
-                country={formData.country}
-                value={formData.state}
-                onChange={(value) => {
-                  update("state", value);
-                  update("city", "");
-                }}
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">City</Label>
-              <CitySelect
-                country={formData.country}
-                state={formData.state}
-                value={formData.city}
-                onChange={(value) => update("city", value)}
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">Postal Code</Label>
-              <Input
-                value={formData.postal_code}
-                onChange={(e) => update("postal_code", e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label className="mb-1 block">Industry</Label>
-              <Input
-                value={formData.industry}
-                onChange={(e) => update("industry", e.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">Company Size</Label>
-              <Select
-                value={formData.company_size || undefined}
-                onValueChange={(value) => update("company_size", value as CompanySize)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select size" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="startup">Startup</SelectItem>
-                  <SelectItem value="small">Small</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="large">Large</SelectItem>
-                  <SelectItem value="enterprise">Enterprise</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="mb-1 block">Annual Revenue ($)</Label>
-              <Input
-                type="number"
-                min="0"
-                value={formData.annual_revenue}
-                onChange={(e) => update("annual_revenue", e.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">Tax ID</Label>
-              <Input value={formData.tax_id} onChange={(e) => update("tax_id", e.target.value)} />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="mb-1 block">Country</Label>
+                <CountrySelect
+                  value={formData.country}
+                  onChange={(value) => {
+                    update("country", value);
+                    update("state", "");
+                    update("city", "");
+                  }}
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block">State</Label>
+                <StateSelect
+                  country={formData.country}
+                  value={formData.state}
+                  onChange={(value) => {
+                    update("state", value);
+                    update("city", "");
+                  }}
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block">City</Label>
+                <CitySelect
+                  country={formData.country}
+                  state={formData.state}
+                  value={formData.city}
+                  onChange={(value) => update("city", value)}
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block">Postal Code</Label>
+                <Input
+                  value={formData.postal_code}
+                  onChange={(e) => update("postal_code", e.target.value)}
+                />
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label className="mb-1 block">Source</Label>
-              <Select
-                value={formData.source}
-                onValueChange={(value) => update("source", value as BusinessPartnerSource)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="referral">Referral</SelectItem>
-                  <SelectItem value="website">Website</SelectItem>
-                  <SelectItem value="cold_call">Cold Call</SelectItem>
-                  <SelectItem value="trade_show">Trade Show</SelectItem>
-                  <SelectItem value="linkedin">LinkedIn</SelectItem>
-                  <SelectItem value="email_campaign">Email Campaign</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="mb-1 block">Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value) => update("status", value as BusinessPartnerStatus)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="prospect">Prospect</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="on_hold">On Hold</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="mb-1 block">Priority</Label>
-              <Select
-                value={formData.priority}
-                onValueChange={(value) => update("priority", value as BusinessPartnerPriority)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                </SelectContent>
-              </Select>
+          {/* Company details */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Company Details</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="mb-1 block">Industry</Label>
+                <Input value={formData.industry} onChange={(e) => update("industry", e.target.value)} />
+              </div>
+              <div>
+                <Label className="mb-1 block">Company Size</Label>
+                <Select
+                  value={formData.company_size || undefined}
+                  onValueChange={(value) => update("company_size", value as CompanySize)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="startup">Startup</SelectItem>
+                    <SelectItem value="small">Small</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="large">Large</SelectItem>
+                    <SelectItem value="enterprise">Enterprise</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block">Annual Revenue ($)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={formData.annual_revenue}
+                  onChange={(e) => update("annual_revenue", e.target.value)}
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block">Tax ID</Label>
+                <Input value={formData.tax_id} onChange={(e) => update("tax_id", e.target.value)} />
+              </div>
             </div>
           </div>
 
+          {/* Classification */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Classification</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label className="mb-1 block">Source</Label>
+                <Select
+                  value={formData.source}
+                  onValueChange={(value) => update("source", value as BusinessPartnerSource)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="referral">Referral</SelectItem>
+                    <SelectItem value="website">Website</SelectItem>
+                    <SelectItem value="cold_call">Cold Call</SelectItem>
+                    <SelectItem value="trade_show">Trade Show</SelectItem>
+                    <SelectItem value="linkedin">LinkedIn</SelectItem>
+                    <SelectItem value="email_campaign">Email Campaign</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block">Status</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value) => update("status", value as BusinessPartnerStatus)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="prospect">Prospect</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="on_hold">On Hold</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block">Priority</Label>
+                <Select
+                  value={formData.priority}
+                  onValueChange={(value) => update("priority", value as BusinessPartnerPriority)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Notes */}
           <div>
             <Label className="mb-1 block">Notes</Label>
             <Textarea
               value={formData.notes}
               onChange={(e) => update("notes", e.target.value)}
-              rows={3}
+              rows={4}
+              placeholder="Any additional notes about this partner..."
             />
           </div>
         </div>
 
-        <DialogFooter>
+        {/* Fixed footer */}
+        <SheetFooter className="px-6 py-4 border-t">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
@@ -447,9 +444,9 @@ const BusinessPartnerFormDialog: React.FC<BusinessPartnerFormDialogProps> = ({
               ? "Create Partner"
               : "Save Changes"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 };
 
