@@ -44,6 +44,7 @@ import {
   Bot,
   UserCog,
   Settings,
+  Save,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -99,8 +100,14 @@ const CandidateDetail = () => {
   // Notes derived from real submission history (populated after fetch)
   const [notes, setNotes] = useState<any[]>([]);
 
-  // Add Note dialog state
-  const [isAddNoteOpen, setIsAddNoteOpen] = useState(false);
+  // Submit to Job dialog state
+  const [isSubmitJobOpen, setIsSubmitJobOpen] = useState(false);
+  const [availableJobs, setAvailableJobs] = useState<any[]>([]);
+  const [submitJobId, setSubmitJobId] = useState("");
+  const [submitJobSaving, setSubmitJobSaving] = useState(false);
+
+  // Add Note inline state
+  const [showAddNote, setShowAddNote] = useState(false);
   const [addNoteText, setAddNoteText] = useState("");
   const [addNoteSubmissionId, setAddNoteSubmissionId] = useState("");
   const [addNoteSaving, setAddNoteSaving] = useState(false);
@@ -317,7 +324,7 @@ const CandidateDetail = () => {
     setAddNoteSaving(true);
     try {
       await recruiterService.addSubmissionNote(addNoteSubmissionId, addNoteText.trim());
-      // Append note locally so UI updates immediately
+      const linkedSub = (submissions as any[]).find((s: any) => s.id === addNoteSubmissionId);
       setNotes((prev) => [
         {
           id: `local-${Date.now()}`,
@@ -326,13 +333,13 @@ const CandidateDetail = () => {
           content: addNoteText.trim(),
           category: "general",
           priority: "medium",
-          jobTitle: submissions.find((s: any) => s.id === addNoteSubmissionId)?.job?.title,
-          company: submissions.find((s: any) => s.id === addNoteSubmissionId)?.job?.company_name,
+          jobTitle: linkedSub?.job?.title,
+          company: linkedSub?.job?.company_name,
         },
         ...prev,
       ]);
       setAddNoteText("");
-      setIsAddNoteOpen(false);
+      setShowAddNote(false);
       toast({ title: "Note added", description: "Note saved successfully." });
     } catch (err: any) {
       toast({ title: "Failed to save note", description: err?.response?.data?.message || err?.message || "Unknown error", variant: "destructive" });
@@ -341,12 +348,39 @@ const CandidateDetail = () => {
     }
   };
 
-  const openAddNoteDialog = () => {
-    // Pre-select the first submission if only one exists
-    if (submissions.length === 1) setAddNoteSubmissionId(submissions[0].id);
+  const openAddNote = () => {
+    if (submissions.length === 1) setAddNoteSubmissionId((submissions as any[])[0].id);
     else setAddNoteSubmissionId("");
     setAddNoteText("");
-    setIsAddNoteOpen(true);
+    setShowAddNote(true);
+  };
+
+  const openSubmitToJob = async () => {
+    setSubmitJobId("");
+    setIsSubmitJobOpen(true);
+    try {
+      const res = await recruiterService.getJobs({ status: "open", limit: 100 });
+      setAvailableJobs(res.data?.jobs || []);
+    } catch {
+      setAvailableJobs([]);
+    }
+  };
+
+  const handleSubmitToJob = async () => {
+    if (!submitJobId || !candidate) return;
+    setSubmitJobSaving(true);
+    try {
+      await recruiterService.sourceCandidates(submitJobId, [candidate.id]);
+      toast({ title: "Candidate submitted", description: "Candidate added to the job pipeline." });
+      setIsSubmitJobOpen(false);
+      // Refresh submissions list
+      const res = await candidateSearchService.getCandidateDetails(id!);
+      setSubmissions(res.data.submissions || []);
+    } catch (err: any) {
+      toast({ title: "Submit failed", description: err?.response?.data?.message || err?.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setSubmitJobSaving(false);
+    }
   };
 
   // Load personalization settings from localStorage on component mount
@@ -843,6 +877,7 @@ const CandidateDetail = () => {
             <Button
               variant="outline"
               className="border-purple-300 text-purple-700 hover:bg-purple-50"
+              onClick={openSubmitToJob}
             >
               <Send className="w-4 h-4 mr-2" />
               Submit to Job
@@ -1142,106 +1177,89 @@ const CandidateDetail = () => {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-xl bg-gradient-to-r from-orange-700 to-orange-600 bg-clip-text text-transparent">
-                      Notes & Comments
+                      Candidate Notes & Comments
                     </CardTitle>
-                    <Button size="sm" className="button-gradient" onClick={openAddNoteDialog} disabled={submissions.length === 0}>
+                    <Button size="sm" className="button-gradient" onClick={openAddNote} disabled={submissions.length === 0}>
                       <Plus className="w-4 h-4 mr-1" />
                       Add Note
                     </Button>
                   </div>
 
-                  {/* Notes Filters and Search */}
-                  <div className="flex items-center gap-4 pt-4 border-t">
-                    <div className="relative flex-1 max-w-sm">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <Input
-                        placeholder="Search notes..."
-                        value={notesSearch}
-                        onChange={(e) => setNotesSearch(e.target.value)}
-                        className="pl-10 border-orange-200 focus:border-orange-400"
+                  {/* Inline Add Note form */}
+                  {showAddNote && (
+                    <div className="mt-4 pt-4 border-t space-y-3">
+                      {submissions.length > 1 && (
+                        <Select value={addNoteSubmissionId} onValueChange={setAddNoteSubmissionId}>
+                          <SelectTrigger className="border-orange-300">
+                            <SelectValue placeholder="Select a job / submission..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(submissions as any[]).map((s: any) => (
+                              <SelectItem key={s.id} value={s.id}>
+                                {s.job?.title || "Unknown job"}{s.job?.company_name ? ` — ${s.job.company_name}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Textarea
+                        placeholder="Write your note..."
+                        value={addNoteText}
+                        onChange={(e) => setAddNoteText(e.target.value)}
+                        className="min-h-[80px] border-orange-300 focus:border-orange-500"
+                        autoFocus
                       />
+                      <div className="flex gap-2 justify-end">
+                        <Button size="sm" variant="outline" onClick={() => { setShowAddNote(false); setAddNoteText(""); }}>
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="button-gradient"
+                          onClick={handleAddNote}
+                          disabled={addNoteSaving || !addNoteText.trim() || !addNoteSubmissionId}
+                        >
+                          {addNoteSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Save className="w-4 h-4 mr-1" />}
+                          Save Note
+                        </Button>
+                      </div>
                     </div>
-                    <Select value={notesFilter} onValueChange={setNotesFilter}>
-                      <SelectTrigger className="w-40 border-orange-200">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Categories</SelectItem>
-                        <SelectItem value="technical">Technical</SelectItem>
-                        <SelectItem value="interview">Interview</SelectItem>
-                        <SelectItem value="general">General</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select value={notesSort} onValueChange={setNotesSort}>
-                      <SelectTrigger className="w-32 border-orange-200">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="newest">Newest</SelectItem>
-                        <SelectItem value="oldest">Oldest</SelectItem>
-                        <SelectItem value="author">By Author</SelectItem>
-                        <SelectItem value="priority">By Priority</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {getFilteredAndSortedNotes().length === 0 && (
-                      <div className="text-center py-10 text-gray-400">
-                        <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                        <p>{notes.length === 0 ? "No notes yet. Add the first note." : "No notes match your filter."}</p>
-                      </div>
-                    )}
-                    {getFilteredAndSortedNotes().map((note) => (
+                    {notes.map((note, idx) => (
                       <div
-                        key={note.id}
-                        className="border border-green-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                        key={note.id ?? idx}
+                        className="border border-orange-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                              {note.author
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")}
+                            <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center text-white flex-shrink-0">
+                              <User className="w-4 h-4" />
                             </div>
                             <div>
-                              <p className="font-medium text-gray-800">
-                                {note.author}
-                              </p>
+                              <p className="font-medium text-gray-800 text-sm">{note.author}</p>
                               <p className="text-xs text-gray-500">
-                                {note.date}
+                                {note.date ? new Date(note.date).toLocaleString() : ""}
                               </p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Badge
-                              className={`text-xs ${
-                                note.priority === "high"
-                                  ? "bg-red-100 text-red-800 border-red-200"
-                                  : note.priority === "medium"
-                                  ? "bg-yellow-100 text-yellow-800 border-yellow-200"
-                                  : "bg-green-100 text-green-800 border-green-200"
-                              }`}
-                            >
-                              {note.priority}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {note.category}
-                            </Badge>
-                          </div>
+                          {(note.jobTitle || note.company) && (
+                            <p className="text-xs text-gray-400">
+                              {[note.jobTitle, note.company].filter(Boolean).join(" • ")}
+                            </p>
+                          )}
                         </div>
-                        <p className="text-gray-700">{note.content}</p>
-                        {(note.jobTitle || note.company) && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            {note.jobTitle && <span>{note.jobTitle}</span>}
-                            {note.jobTitle && note.company && <span> • </span>}
-                            {note.company && <span>{note.company}</span>}
-                          </p>
-                        )}
+                        <p className="text-gray-700 text-sm whitespace-pre-wrap">{note.content}</p>
                       </div>
                     ))}
+                    {notes.length === 0 && (
+                      <div className="text-center py-8 text-gray-500">
+                        <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                        <p>No notes yet. Add the first note above.</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1520,50 +1538,38 @@ const CandidateDetail = () => {
         </Tabs>
       </Card>
 
-      {/* Add Note Dialog */}
-      <Dialog open={isAddNoteOpen} onOpenChange={setIsAddNoteOpen}>
+      {/* Submit to Job Dialog */}
+      <Dialog open={isSubmitJobOpen} onOpenChange={setIsSubmitJobOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Note</DialogTitle>
+            <DialogTitle>Submit to Job</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            {submissions.length > 1 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-gray-700">Linked Job / Submission</Label>
-                <Select value={addNoteSubmissionId} onValueChange={setAddNoteSubmissionId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a submission..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {submissions.map((s: any) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.job?.title || "Unknown job"}{s.job?.company_name ? ` — ${s.job.company_name}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-gray-700">Note</Label>
-              <Textarea
-                placeholder="Write your note here..."
-                value={addNoteText}
-                onChange={(e) => setAddNoteText(e.target.value)}
-                rows={4}
-                className="resize-none"
-              />
-            </div>
+            <p className="text-sm text-gray-600">
+              Select an open job to add <strong>{candidate?.first_name} {candidate?.last_name}</strong> to the pipeline.
+            </p>
+            <Select value={submitJobId} onValueChange={setSubmitJobId}>
+              <SelectTrigger>
+                <SelectValue placeholder={availableJobs.length === 0 ? "Loading jobs…" : "Select a job…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {availableJobs.map((job: any) => (
+                  <SelectItem key={job.id} value={job.id}>
+                    {job.title}{job.company_name ? ` — ${job.company_name}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddNoteOpen(false)} disabled={addNoteSaving}>Cancel</Button>
+            <Button variant="outline" onClick={() => setIsSubmitJobOpen(false)} disabled={submitJobSaving}>Cancel</Button>
             <Button
               className="button-gradient"
-              onClick={handleAddNote}
-              disabled={addNoteSaving || !addNoteText.trim() || !addNoteSubmissionId}
+              onClick={handleSubmitToJob}
+              disabled={submitJobSaving || !submitJobId}
             >
-              {addNoteSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Save Note
+              {submitJobSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+              Submit
             </Button>
           </DialogFooter>
         </DialogContent>
