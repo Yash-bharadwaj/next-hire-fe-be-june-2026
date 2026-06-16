@@ -64,6 +64,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DocumentsManager, Document } from "@/components/DocumentsManager";
 import CandidateDetailPersonalizationSettings from "@/components/CandidateDetailPersonalizationSettings";
 import { candidateSearchService } from "@/services/candidateSearchService";
+import { recruiterService } from "@/services/recruiterService";
 import { API_BASE_URL } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -97,6 +98,12 @@ const CandidateDetail = () => {
 
   // Notes derived from real submission history (populated after fetch)
   const [notes, setNotes] = useState<any[]>([]);
+
+  // Add Note dialog state
+  const [isAddNoteOpen, setIsAddNoteOpen] = useState(false);
+  const [addNoteText, setAddNoteText] = useState("");
+  const [addNoteSubmissionId, setAddNoteSubmissionId] = useState("");
+  const [addNoteSaving, setAddNoteSaving] = useState(false);
 
   // Notes filter and sort state
   const [notesFilter, setNotesFilter] = useState("all");
@@ -303,6 +310,43 @@ const CandidateDetail = () => {
     } finally {
       setEditSaving(false);
     }
+  };
+
+  const handleAddNote = async () => {
+    if (!addNoteText.trim() || !addNoteSubmissionId) return;
+    setAddNoteSaving(true);
+    try {
+      await recruiterService.addSubmissionNote(addNoteSubmissionId, addNoteText.trim());
+      // Append note locally so UI updates immediately
+      setNotes((prev) => [
+        {
+          id: `local-${Date.now()}`,
+          date: new Date().toISOString(),
+          author: "Recruiter",
+          content: addNoteText.trim(),
+          category: "general",
+          priority: "medium",
+          jobTitle: submissions.find((s: any) => s.id === addNoteSubmissionId)?.job?.title,
+          company: submissions.find((s: any) => s.id === addNoteSubmissionId)?.job?.company_name,
+        },
+        ...prev,
+      ]);
+      setAddNoteText("");
+      setIsAddNoteOpen(false);
+      toast({ title: "Note added", description: "Note saved successfully." });
+    } catch (err: any) {
+      toast({ title: "Failed to save note", description: err?.response?.data?.message || err?.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setAddNoteSaving(false);
+    }
+  };
+
+  const openAddNoteDialog = () => {
+    // Pre-select the first submission if only one exists
+    if (submissions.length === 1) setAddNoteSubmissionId(submissions[0].id);
+    else setAddNoteSubmissionId("");
+    setAddNoteText("");
+    setIsAddNoteOpen(true);
   };
 
   // Load personalization settings from localStorage on component mount
@@ -540,6 +584,76 @@ const CandidateDetail = () => {
       status: s.status === "hired" ? "Hired" : s.status === "rejected" ? "Rejected" : "In Progress",
       feedback: s.notes || "",
     }));
+
+  // Dynamic timeline built from candidate profile + submissions + notes
+  const timelineEvents = (() => {
+    const events: Array<{ label: string; detail: string; date: Date; color: string; icon: string }> = [];
+
+    if (candidate?.created_at) {
+      events.push({
+        label: "Profile Created",
+        detail: `${candidate.first_name} ${candidate.last_name} added to the talent pool`,
+        date: new Date(candidate.created_at),
+        color: "from-green-500 to-green-600",
+        icon: "user",
+      });
+    }
+
+    (submissions as any[]).forEach((s: any) => {
+      const submittedAt = s.submitted_at || s.created_at;
+      events.push({
+        label: "Submitted to Job",
+        detail: `${s.job?.title || "a position"}${s.job?.company_name ? " at " + s.job.company_name : ""}`,
+        date: new Date(submittedAt),
+        color: "from-blue-500 to-blue-600",
+        icon: "send",
+      });
+
+      if (["first_round", "technical_round", "final_round", "interview_scheduled", "interviewed"].includes(s.status)) {
+        events.push({
+          label: "Moved to Interview",
+          detail: `${s.status.replace(/_/g, " ")} stage for ${s.job?.title || "a position"}`,
+          date: new Date(s.updated_at || s.created_at),
+          color: "from-purple-500 to-purple-600",
+          icon: "video",
+        });
+      }
+
+      if (s.status === "hired") {
+        events.push({
+          label: "Hired",
+          detail: `Placed at ${s.job?.company_name || s.job?.title || "a company"}`,
+          date: new Date(s.updated_at || s.created_at),
+          color: "from-yellow-500 to-orange-500",
+          icon: "check",
+        });
+      }
+
+      if (s.status === "rejected") {
+        events.push({
+          label: "Not Selected",
+          detail: `For ${s.job?.title || "a position"}`,
+          date: new Date(s.updated_at || s.created_at),
+          color: "from-red-400 to-red-500",
+          icon: "x",
+        });
+      }
+
+      const noteHistory = Array.isArray(s.notes_history) ? s.notes_history : [];
+      noteHistory.forEach((n: any) => {
+        if (!n?.note) return;
+        events.push({
+          label: "Note Added",
+          detail: n.note.substring(0, 100) + (n.note.length > 100 ? "…" : ""),
+          date: new Date(n.at || s.created_at),
+          color: "from-orange-400 to-orange-500",
+          icon: "message",
+        });
+      });
+    });
+
+    return events.sort((a, b) => a.date.getTime() - b.date.getTime());
+  })();
 
   return (
     <div className="space-y-6">
@@ -1030,7 +1144,7 @@ const CandidateDetail = () => {
                     <CardTitle className="text-xl bg-gradient-to-r from-orange-700 to-orange-600 bg-clip-text text-transparent">
                       Notes & Comments
                     </CardTitle>
-                    <Button size="sm" className="button-gradient">
+                    <Button size="sm" className="button-gradient" onClick={openAddNoteDialog} disabled={submissions.length === 0}>
                       <Plus className="w-4 h-4 mr-1" />
                       Add Note
                     </Button>
@@ -1073,6 +1187,12 @@ const CandidateDetail = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
+                    {getFilteredAndSortedNotes().length === 0 && (
+                      <div className="text-center py-10 text-gray-400">
+                        <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                        <p>{notes.length === 0 ? "No notes yet. Add the first note." : "No notes match your filter."}</p>
+                      </div>
+                    )}
                     {getFilteredAndSortedNotes().map((note) => (
                       <div
                         key={note.id}
@@ -1349,67 +1469,105 @@ const CandidateDetail = () => {
             <TabsContent value="timeline" className="space-y-6 mt-0">
               <Card className="card-gradient border-green-200/50 shadow-lg">
                 <CardHeader>
-                  <CardTitle className="text-xl bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
-                    Activity Timeline
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-xl bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
+                      Activity Timeline
+                    </CardTitle>
+                    <span className="text-sm text-gray-500">{timelineEvents.length} event{timelineEvents.length !== 1 ? "s" : ""}</span>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-6">
-                    <div className="flex items-start gap-4">
-                      <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white flex-shrink-0">
-                        <CheckCircle className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-800">
-                          Interview Completed
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Technical interview with TechCorp Inc.
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          January 18, 2024 at 2:00 PM
-                        </p>
-                      </div>
+                  {timelineEvents.length === 0 ? (
+                    <div className="text-center py-10 text-gray-400">
+                      <Clock className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                      <p>No activity yet. Timeline will populate as the candidate progresses.</p>
                     </div>
-                    <div className="flex items-start gap-4">
-                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white flex-shrink-0">
-                        <Send className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-800">
-                          Submitted to Job
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Senior React Developer position at TechCorp Inc.
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          January 15, 2024 at 10:30 AM
-                        </p>
-                      </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {timelineEvents.map((evt, idx) => {
+                        const isLast = idx === timelineEvents.length - 1;
+                        const IconComp =
+                          evt.icon === "send" ? Send :
+                          evt.icon === "video" ? Video :
+                          evt.icon === "check" ? CheckCircle :
+                          evt.icon === "message" ? MessageSquare :
+                          evt.icon === "x" ? AlertCircle :
+                          User;
+                        return (
+                          <div key={idx} className="flex items-start gap-4">
+                            <div className="flex flex-col items-center">
+                              <div className={`w-8 h-8 bg-gradient-to-br ${evt.color} rounded-full flex items-center justify-center text-white flex-shrink-0`}>
+                                <IconComp className="w-4 h-4" />
+                              </div>
+                              {!isLast && <div className="w-0.5 flex-1 bg-gray-200 mt-1 min-h-[24px]" />}
+                            </div>
+                            <div className="flex-1 pb-2">
+                              <p className="font-medium text-gray-800">{evt.label}</p>
+                              <p className="text-sm text-gray-600">{evt.detail}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                {evt.date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="flex items-start gap-4">
-                      <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center text-white flex-shrink-0">
-                        <MessageSquare className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-800">
-                          Initial Contact
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          First conversation about career opportunities
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          January 10, 2024 at 3:15 PM
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
           </div>
         </Tabs>
       </Card>
+
+      {/* Add Note Dialog */}
+      <Dialog open={isAddNoteOpen} onOpenChange={setIsAddNoteOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Note</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {submissions.length > 1 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-700">Linked Job / Submission</Label>
+                <Select value={addNoteSubmissionId} onValueChange={setAddNoteSubmissionId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a submission..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {submissions.map((s: any) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.job?.title || "Unknown job"}{s.job?.company_name ? ` — ${s.job.company_name}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-gray-700">Note</Label>
+              <Textarea
+                placeholder="Write your note here..."
+                value={addNoteText}
+                onChange={(e) => setAddNoteText(e.target.value)}
+                rows={4}
+                className="resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddNoteOpen(false)} disabled={addNoteSaving}>Cancel</Button>
+            <Button
+              className="button-gradient"
+              onClick={handleAddNote}
+              disabled={addNoteSaving || !addNoteText.trim() || !addNoteSubmissionId}
+            >
+              {addNoteSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Save Note
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Candidate Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
