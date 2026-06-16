@@ -79,6 +79,8 @@ const AddNewJob = () => {
       salaryMin: "",
       salaryMax: "",
       salaryCurrency: "USD",
+      billRateMin: "",
+      billRateMax: "",
       experienceMin: "",
       experienceMax: "",
       educationRequirements: "",
@@ -106,6 +108,8 @@ const AddNewJob = () => {
 
   const watchedCountry = useWatch({ control: form.control, name: "country" });
   const watchedState = useWatch({ control: form.control, name: "state" });
+  const watchedJobType = useWatch({ control: form.control, name: "jobType" });
+  const isContractJob = watchedJobType === "Contract";
 
   const formValuesRef = useRef<Record<string, any>>(form.getValues());
 
@@ -238,6 +242,14 @@ const AddNewJob = () => {
               ? String(job.salary_max)
               : "",
           salaryCurrency: job.salary_currency || "USD",
+          billRateMin:
+            (job as any).bill_rate_min !== undefined && (job as any).bill_rate_min !== null
+              ? String((job as any).bill_rate_min)
+              : "",
+          billRateMax:
+            (job as any).bill_rate_max !== undefined && (job as any).bill_rate_max !== null
+              ? String((job as any).bill_rate_max)
+              : "",
           experienceMin:
             job.experience_min !== undefined && job.experience_min !== null
               ? String(job.experience_min)
@@ -554,16 +566,26 @@ const AddNewJob = () => {
         jobData.external_description = externalDescription;
       }
 
-      // Salary fields
-      // Note: salary_currency is already set in initial jobData object above
-
-      const salaryMin = parseNumberInput(data.salaryMin);
-      jobData.salary_min =
-        salaryMin !== undefined && salaryMin >= 0 ? salaryMin : null;
-
-      const salaryMax = parseNumberInput(data.salaryMax);
-      jobData.salary_max =
-        salaryMax !== undefined && salaryMax >= 0 ? salaryMax : null;
+      // Salary / bill rate fields (mutually exclusive based on job type)
+      if (mappedJobType === "contract") {
+        jobData.salary_min = null;
+        jobData.salary_max = null;
+        const billRateMin = parseNumberInput(data.billRateMin);
+        jobData.bill_rate_min =
+          billRateMin !== undefined && billRateMin >= 0 ? billRateMin : null;
+        const billRateMax = parseNumberInput(data.billRateMax);
+        jobData.bill_rate_max =
+          billRateMax !== undefined && billRateMax >= 0 ? billRateMax : null;
+      } else {
+        jobData.bill_rate_min = null;
+        jobData.bill_rate_max = null;
+        const salaryMin = parseNumberInput(data.salaryMin);
+        jobData.salary_min =
+          salaryMin !== undefined && salaryMin >= 0 ? salaryMin : null;
+        const salaryMax = parseNumberInput(data.salaryMax);
+        jobData.salary_max =
+          salaryMax !== undefined && salaryMax >= 0 ? salaryMax : null;
+      }
 
       // Experience fields
       const experienceMin = parseNumberInput(data.experienceMin);
@@ -1042,63 +1064,127 @@ const AddNewJob = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <FormField
-                control={form.control}
-                name="salaryMin"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-gray-700 font-medium">
-                      Min Salary
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="e.g. 120000"
-                        className="border-gray-200 focus:border-green-400"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {isContractJob ? (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="billRateMin"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-700 font-medium">
+                          Min Bill Rate ($/hr)
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder="e.g. 80"
+                            className="border-gray-200 focus:border-green-400"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="salaryMax"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-gray-700 font-medium">
-                      Max Salary
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="e.g. 150000"
-                        className="border-gray-200 focus:border-green-400"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="billRateMax"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-700 font-medium">
+                          Max Bill Rate ($/hr)
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder="e.g. 120"
+                            className="border-gray-200 focus:border-green-400"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="salaryCurrency"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-gray-700 font-medium">
-                      Currency
-                    </FormLabel>
-                    <FormControl>
-                      <CurrencySelect value={field.value} onChange={field.onChange} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="salaryCurrency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-700 font-medium">
+                          Currency
+                        </FormLabel>
+                        <FormControl>
+                          <CurrencySelect value={field.value} onChange={field.onChange} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              ) : (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="salaryMin"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-700 font-medium">
+                          Min Salary
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder="e.g. 120000"
+                            className="border-gray-200 focus:border-green-400"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="salaryMax"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-700 font-medium">
+                          Max Salary
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder="e.g. 150000"
+                            className="border-gray-200 focus:border-green-400"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="salaryCurrency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-700 font-medium">
+                          Currency
+                        </FormLabel>
+                        <FormControl>
+                          <CurrencySelect value={field.value} onChange={field.onChange} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
             </div>
           </div>
         );

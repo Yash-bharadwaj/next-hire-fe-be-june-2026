@@ -70,6 +70,14 @@ const createJobValidation = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage("Maximum salary must be positive"),
+  body("bill_rate_min")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("Minimum bill rate must be positive"),
+  body("bill_rate_max")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("Maximum bill rate must be positive"),
   body("experience_min")
     .optional()
     .isInt({ min: 0 })
@@ -118,6 +126,14 @@ const updateJobValidation = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage("Maximum salary must be positive"),
+  body("bill_rate_min")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("Minimum bill rate must be positive"),
+  body("bill_rate_max")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("Maximum bill rate must be positive"),
   body("status")
     .optional()
     .isIn(["draft", "active", "paused", "closed"])

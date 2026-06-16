@@ -17,6 +17,8 @@ export interface JobAttributes {
   salary_min?: number;
   salary_max?: number;
   salary_currency: string;
+  bill_rate_min?: number;
+  bill_rate_max?: number;
   experience_min?: number;
   experience_max?: number;
   required_skills: string[]; // Array of required skills
@@ -73,6 +75,8 @@ export class Job
   public salary_min?: number;
   public salary_max?: number;
   public salary_currency!: string;
+  public bill_rate_min?: number;
+  public bill_rate_max?: number;
   public experience_min?: number;
   public experience_max?: number;
   public required_skills!: string[];
@@ -174,6 +178,14 @@ Job.init(
       type: DataTypes.STRING(3),
       allowNull: false,
       defaultValue: "USD",
+    },
+    bill_rate_min: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+    },
+    bill_rate_max: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
     },
     experience_min: {
       type: DataTypes.INTEGER,

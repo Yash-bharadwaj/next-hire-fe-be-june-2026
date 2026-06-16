@@ -19,6 +19,8 @@ export interface Job {
   salary_min?: number;
   salary_max?: number;
   salary_currency: string;
+  bill_rate_min?: number;
+  bill_rate_max?: number;
   experience_min?: number;
   experience_max?: number;
   required_skills: string[];
@@ -79,6 +81,8 @@ export interface CreateJobRequest {
   salary_min?: number;
   salary_max?: number;
   salary_currency?: string;
+  bill_rate_min?: number;
+  bill_rate_max?: number;
   experience_min?: number;
   experience_max?: number;
   required_skills?: string[];

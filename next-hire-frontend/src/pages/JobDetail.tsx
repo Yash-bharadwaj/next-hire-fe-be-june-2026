@@ -153,7 +153,13 @@ const JobDetail = () => {
       minExperience: apiJob.experience_min || 0,
       maxExperience: apiJob.experience_max || 0,
       salary:
-        apiJob.salary_min && apiJob.salary_max
+        apiJob.job_type === "contract"
+          ? apiJob.bill_rate_min && apiJob.bill_rate_max
+            ? `$${apiJob.bill_rate_min}/hr - $${apiJob.bill_rate_max}/hr`
+            : apiJob.bill_rate_min
+            ? `$${apiJob.bill_rate_min}/hr+`
+            : "Rate negotiable"
+          : apiJob.salary_min && apiJob.salary_max
           ? `$${apiJob.salary_min / 1000}k - $${apiJob.salary_max / 1000}k`
           : apiJob.salary_min
           ? `$${apiJob.salary_min / 1000}k+`
@@ -224,9 +230,11 @@ const JobDetail = () => {
         state: editedJob.state,
         country: editedJob.country,
         job_type: editedJob.jobType,
-        salary_min: editedJob.salary_min,
-        salary_max: editedJob.salary_max,
+        salary_min: editedJob.jobType === "contract" ? null : editedJob.salary_min,
+        salary_max: editedJob.jobType === "contract" ? null : editedJob.salary_max,
         salary_currency: editedJob.salary_currency,
+        bill_rate_min: editedJob.jobType === "contract" ? editedJob.bill_rate_min : null,
+        bill_rate_max: editedJob.jobType === "contract" ? editedJob.bill_rate_max : null,
         experience_min: editedJob.minExperience,
         experience_max: editedJob.maxExperience,
         required_skills: editedJob.primarySkills || [],
@@ -975,14 +983,52 @@ const JobDetail = () => {
                     <div className="flex gap-2 flex-wrap">
                       <div className="flex items-center gap-2">
                         <DollarSign className="w-4 h-4 text-green-600" />
-                        <Input
-                          value={currentJob.salary}
-                          onChange={(e) =>
-                            handleFieldChange("salary", e.target.value)
-                          }
-                          className="w-24 text-center border-blue-300"
-                          placeholder="Salary"
-                        />
+                        {job.job_type === "contract" ? (
+                          <>
+                            <Input
+                              type="number"
+                              value={currentJob.bill_rate_min ?? ""}
+                              onChange={(e) =>
+                                handleFieldChange("bill_rate_min", e.target.value ? Number(e.target.value) : null)
+                              }
+                              className="w-24 text-center border-blue-300"
+                              placeholder="Min $/hr"
+                            />
+                            <span className="text-gray-500">–</span>
+                            <Input
+                              type="number"
+                              value={currentJob.bill_rate_max ?? ""}
+                              onChange={(e) =>
+                                handleFieldChange("bill_rate_max", e.target.value ? Number(e.target.value) : null)
+                              }
+                              className="w-24 text-center border-blue-300"
+                              placeholder="Max $/hr"
+                            />
+                            <span className="text-gray-500 text-xs">/hr</span>
+                          </>
+                        ) : (
+                          <>
+                            <Input
+                              type="number"
+                              value={currentJob.salary_min ?? ""}
+                              onChange={(e) =>
+                                handleFieldChange("salary_min", e.target.value ? Number(e.target.value) : null)
+                              }
+                              className="w-28 text-center border-blue-300"
+                              placeholder="Min salary"
+                            />
+                            <span className="text-gray-500">–</span>
+                            <Input
+                              type="number"
+                              value={currentJob.salary_max ?? ""}
+                              onChange={(e) =>
+                                handleFieldChange("salary_max", e.target.value ? Number(e.target.value) : null)
+                              }
+                              className="w-28 text-center border-blue-300"
+                              placeholder="Max salary"
+                            />
+                          </>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-blue-600" />
@@ -1004,30 +1050,32 @@ const JobDetail = () => {
                           {currentJob.salary}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 bg-orange-50 px-3 py-1 rounded-full flex-shrink-0">
-                        <span className="font-medium text-orange-700 whitespace-nowrap">
-                          $
-                          {Math.round(
-                            (parseFloat(
-                              currentJob.salary.replace(/[$,k]/g, "")
-                            ) *
-                              1000 *
-                              1.55) /
-                              1000
-                          )}
-                          k (Estimated)
-                        </span>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Brain className="w-3 h-3 text-blue-500" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Estimated billing rate (calculated)</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
+                      {job.job_type !== "contract" && (
+                        <div className="flex items-center gap-2 bg-orange-50 px-3 py-1 rounded-full flex-shrink-0">
+                          <span className="font-medium text-orange-700 whitespace-nowrap">
+                            $
+                            {Math.round(
+                              (parseFloat(
+                                currentJob.salary.replace(/[$,k]/g, "")
+                              ) *
+                                1000 *
+                                1.55) /
+                                1000
+                            )}
+                            k (Estimated)
+                          </span>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Brain className="w-3 h-3 text-blue-500" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Estimated billing rate (calculated)</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full flex-shrink-0">
                         <MapPin className="w-4 h-4 text-blue-600" />
                         <span className="font-medium text-blue-700 whitespace-nowrap">
@@ -1085,7 +1133,13 @@ const JobDetail = () => {
                 <div className="flex items-center gap-8">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-blue-600">
-                      {job.salary_min && job.salary_max
+                      {job.job_type === "contract"
+                        ? job.bill_rate_min && job.bill_rate_max
+                          ? `$${Math.round((job.bill_rate_min + job.bill_rate_max) / 2)}`
+                          : job.bill_rate_min
+                          ? `$${job.bill_rate_min}`
+                          : "N/A"
+                        : job.salary_min && job.salary_max
                         ? `$${Math.round(
                             (job.salary_min + job.salary_max) / 2 / 2080
                           )}`
@@ -1095,7 +1149,7 @@ const JobDetail = () => {
                       /hr
                     </div>
                     <div className="text-sm text-gray-600">
-                      Estimated Pay Rate
+                      {job.job_type === "contract" ? "Bill Rate" : "Estimated Pay Rate"}
                     </div>
                   </div>
                   {/* Removed static margin percentages - these should come from backend if needed */}
@@ -1362,7 +1416,7 @@ const JobDetail = () => {
                         {job.priority} Priority
                       </Badge>
                       <p className="text-sm text-gray-600">
-                        Job Type: {job.job_type}
+                        Job Type: {job.job_type === "full_time" ? "Full-time" : job.job_type === "part_time" ? "Part-time" : job.job_type === "contract" ? "Contract" : job.job_type === "temporary" ? "Temporary" : job.job_type}
                       </p>
                     </CardContent>
                   </Card>
@@ -1415,6 +1469,20 @@ const JobDetail = () => {
                             <p className="text-sm text-gray-600">Experience</p>
                             <p className="font-semibold text-gray-800">
                               {job.experience_min || 0}-{job.experience_max || 0} years
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600">
+                              {job.job_type === "contract" ? "Bill Rate Range" : "Salary Range"}
+                            </p>
+                            <p className="font-semibold text-gray-800">
+                              {job.job_type === "contract"
+                                ? job.bill_rate_min || job.bill_rate_max
+                                  ? `$${job.bill_rate_min ?? "–"}/hr – $${job.bill_rate_max ?? "–"}/hr`
+                                  : "Not specified"
+                                : job.salary_min || job.salary_max
+                                ? `$${(job.salary_min ?? 0).toLocaleString()} – $${(job.salary_max ?? 0).toLocaleString()}`
+                                : "Not specified"}
                             </p>
                           </div>
                         </>
