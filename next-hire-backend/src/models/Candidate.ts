@@ -240,7 +240,7 @@ Candidate.init(
                 [Op.like]: `CAND-${year}-%`,
               },
             },
-            order: [["created_at", "DESC"]],
+            order: [["candidate_id", "DESC"]],
           });
           let num = 1;
           if (lastCandidate) {

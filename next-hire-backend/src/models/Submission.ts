@@ -244,7 +244,7 @@ Submission.init(
                 [Op.like]: `SUB-%`,
               },
             },
-            order: [["created_at", "DESC"]],
+            order: [["submission_id", "DESC"]],
           });
           let num = 1;
           if (lastSubmission) {

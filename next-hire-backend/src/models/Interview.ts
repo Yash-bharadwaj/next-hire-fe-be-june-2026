@@ -154,7 +154,7 @@ Interview.init(
                 [Op.like]: `INT-%`,
               },
             },
-            order: [["created_at", "DESC"]],
+            order: [["interview_id", "DESC"]],
           });
           let num = 1;
           if (lastInterview) {

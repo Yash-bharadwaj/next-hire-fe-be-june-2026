@@ -374,7 +374,7 @@ Job.init(
                 [Op.like]: `JOB-${year}-%`,
               },
             },
-            order: [["created_at", "DESC"]],
+            order: [["job_id", "DESC"]],
           });
 
           let jobNumber = 1;

@@ -360,7 +360,12 @@ const CandidateDetail = () => {
     setIsSubmitJobOpen(true);
     try {
       const res = await recruiterService.getJobs({ status: "active", limit: 100 });
-      setAvailableJobs(res.data?.jobs || []);
+      const alreadySubmittedJobIds = new Set(
+        (submissions as any[]).map((s: any) => s.job_id)
+      );
+      setAvailableJobs(
+        (res.data?.jobs || []).filter((j: any) => !alreadySubmittedJobIds.has(j.id))
+      );
     } catch {
       setAvailableJobs([]);
     }
@@ -1548,18 +1553,26 @@ const CandidateDetail = () => {
             <p className="text-sm text-gray-600">
               Select an open job to add <strong>{candidate?.first_name} {candidate?.last_name}</strong> to the pipeline.
             </p>
-            <Select value={submitJobId} onValueChange={setSubmitJobId}>
-              <SelectTrigger>
-                <SelectValue placeholder={availableJobs.length === 0 ? "Loading jobs…" : "Select a job…"} />
-              </SelectTrigger>
-              <SelectContent>
-                {availableJobs.map((job: any) => (
-                  <SelectItem key={job.id} value={job.id}>
-                    {job.title}{job.company_name ? ` — ${job.company_name}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {availableJobs.length === 0 ? (
+              <p className="text-sm text-gray-500 py-2">
+                {submissions.length === 0
+                  ? "Loading active jobs…"
+                  : "This candidate is already submitted to all active jobs."}
+              </p>
+            ) : (
+              <Select value={submitJobId} onValueChange={setSubmitJobId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a job…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableJobs.map((job: any) => (
+                    <SelectItem key={job.id} value={job.id}>
+                      {job.title}{job.company_name ? ` — ${job.company_name}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsSubmitJobOpen(false)} disabled={submitJobSaving}>Cancel</Button>
