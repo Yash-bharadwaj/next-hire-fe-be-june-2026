@@ -325,7 +325,7 @@ export function AppSidebar() {
                                     isActive
                                       ? isCollapsed
                                         ? "bg-green-50 text-green-700"
-                                        : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/30 scale-105"
+                                        : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/30"
                                       : isCollapsed
                                         ? "text-gray-500 hover:bg-green-50/80 hover:text-green-600"
                                         : "text-gray-700 hover:bg-gradient-to-r hover:from-green-50 hover:to-green-100/60 hover:text-green-700 hover:shadow-md hover:shadow-green-100/50"
@@ -348,11 +348,11 @@ export function AppSidebar() {
                                   />
                                   {!isCollapsed && (
                                     <>
-                                      <span className="font-medium relative z-10">
+                                      <span className="font-medium relative z-10 truncate min-w-0">
                                         {item.title}
                                       </span>
                                       {isActive && (
-                                        <ChevronRight className="w-4 h-4 ml-auto relative z-10 text-white/80" />
+                                        <ChevronRight className="w-4 h-4 ml-auto relative z-10 text-white/80 shrink-0" />
                                       )}
                                     </>
                                   )}
@@ -432,7 +432,7 @@ export function AppSidebar() {
                                     to={item.url}
                                     className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-300 group/navitem relative overflow-hidden ${
                                       isActive
-                                        ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/30 scale-105"
+                                        ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/30"
                                         : "text-gray-600 hover:bg-gradient-to-r hover:from-green-50 hover:to-green-100/60 hover:text-green-700 hover:shadow-md hover:shadow-green-100/50"
                                     }`}
                                   >
@@ -440,7 +440,7 @@ export function AppSidebar() {
                                       <div className="absolute inset-0 bg-gradient-to-r from-green-400/20 to-green-600/20 rounded-lg blur-sm" />
                                     )}
                                     <item.icon
-                                      className={`w-4 h-4 relative z-10 ${
+                                      className={`w-4 h-4 relative z-10 shrink-0 ${
                                         isActive
                                           ? "text-white"
                                           : "text-green-600"
@@ -448,11 +448,11 @@ export function AppSidebar() {
                                     />
                                     {!isCollapsed && (
                                       <>
-                                        <span className="text-sm font-medium relative z-10">
+                                        <span className="text-sm font-medium relative z-10 truncate min-w-0">
                                           {item.title}
                                         </span>
                                         {isActive && (
-                                          <ChevronRight className="w-3 h-3 ml-auto relative z-10 text-white/80" />
+                                          <ChevronRight className="w-3 h-3 ml-auto relative z-10 text-white/80 shrink-0" />
                                         )}
                                       </>
                                     )}
@@ -495,7 +495,7 @@ export function AppSidebar() {
                                       isActive
                                         ? isCollapsed
                                           ? "bg-green-50 text-green-700"
-                                          : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/30 scale-105"
+                                          : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/30"
                                         : isCollapsed
                                           ? "text-gray-500 hover:bg-green-50/80 hover:text-green-600"
                                           : "text-gray-700 hover:bg-gradient-to-r hover:from-green-50 hover:to-green-100/60 hover:text-green-700 hover:shadow-md hover:shadow-green-100/50"
@@ -518,11 +518,11 @@ export function AppSidebar() {
                                     />
                                     {!isCollapsed && (
                                       <>
-                                        <span className="font-medium relative z-10">
+                                        <span className="font-medium relative z-10 truncate min-w-0">
                                           {item.title}
                                         </span>
                                         {isActive && (
-                                          <ChevronRight className="w-4 h-4 ml-auto relative z-10 text-white/80" />
+                                          <ChevronRight className="w-4 h-4 ml-auto relative z-10 text-white/80 shrink-0" />
                                         )}
                                       </>
                                     )}

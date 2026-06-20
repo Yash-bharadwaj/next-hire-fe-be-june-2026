@@ -72,6 +72,44 @@ import { Loader2 } from "lucide-react";
 
 // Candidate data will be fetched from API - no static data needed
 
+// Experience dates come back as full ISO timestamps (e.g.
+// "2024-03-01T00:00:00.000Z") - role start/end dates only ever carry
+// month/year precision, so the time-of-day portion is never meaningful.
+const formatExperienceDate = (dateStr?: string): string => {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+};
+
+// LinkedIn-style duration: counts both the start and end month, so
+// Mar 2024 - May 2024 reads as "3 mos" rather than "2 mos".
+const formatExperienceDuration = (
+  startStr?: string,
+  endStr?: string,
+  isCurrent?: boolean
+): string => {
+  if (!startStr) return "";
+  const start = new Date(startStr);
+  if (isNaN(start.getTime())) return "";
+  const end = isCurrent || !endStr ? new Date() : new Date(endStr);
+  if (isNaN(end.getTime())) return "";
+
+  const totalMonths = Math.max(
+    0,
+    (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth())
+  ) + 1;
+  const years = Math.floor(totalMonths / 12);
+  const months = totalMonths % 12;
+
+  const parts: string[] = [];
+  if (years > 0) parts.push(`${years} yr${years > 1 ? "s" : ""}`);
+  if (months > 0 || years === 0) parts.push(`${months} mo${months !== 1 ? "s" : ""}`);
+  return parts.join(" ");
+};
+
+const EXPERIENCE_DESCRIPTION_PREVIEW_LENGTH = 220;
+
 const CandidateDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -92,6 +130,17 @@ const CandidateDetail = () => {
   // Search functionality state
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchCandidateId, setSearchCandidateId] = useState("");
+
+  // Work History "Show more/less" state - tracks which experience entries
+  // (by index) have their full description expanded.
+  const [expandedExperiences, setExpandedExperiences] = useState<Set<number>>(new Set());
+  const toggleExperienceExpanded = (index: number) => {
+    setExpandedExperiences((prev) => {
+      const next = new Set(prev);
+      next.has(index) ? next.delete(index) : next.add(index);
+      return next;
+    });
+  };
 
   // Personalization settings state
   const [isPersonalizationOpen, setIsPersonalizationOpen] = useState(false);
@@ -1025,23 +1074,48 @@ const CandidateDetail = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {candidate.experiences.map((experience, index) => (
-                      <div
-                        key={index}
-                        className="border-l-4 border-green-500 pl-4"
-                      >
-                        <h4 className="font-semibold text-gray-800">
-                          {experience.job_title}
-                        </h4>
-                        <p className="text-sm text-gray-600">
-                          {experience.company_name} • {experience.start_date} -{" "}
-                          {experience.end_date || "Present"}
-                        </p>
-                        <p className="text-sm text-gray-700 mt-1">
-                          {experience.description}
-                        </p>
-                      </div>
-                    ))}
+                    {candidate.experiences.map((experience, index) => {
+                      const description = experience.description || "";
+                      const isLong = description.length > EXPERIENCE_DESCRIPTION_PREVIEW_LENGTH;
+                      const isExpanded = expandedExperiences.has(index);
+                      const visibleDescription =
+                        isLong && !isExpanded
+                          ? `${description.slice(0, EXPERIENCE_DESCRIPTION_PREVIEW_LENGTH).trimEnd()}…`
+                          : description;
+
+                      return (
+                        <div
+                          key={index}
+                          className="border-l-4 border-green-500 pl-4"
+                        >
+                          <h4 className="font-semibold text-gray-800">
+                            {experience.job_title}
+                          </h4>
+                          <p className="text-sm text-gray-600">
+                            {experience.company_name} • {formatExperienceDate(experience.start_date)} –{" "}
+                            {experience.is_current ? "Present" : formatExperienceDate(experience.end_date)}
+                            {" "}
+                            <span className="text-gray-400">
+                              ({formatExperienceDuration(experience.start_date, experience.end_date, experience.is_current)})
+                            </span>
+                          </p>
+                          {description && (
+                            <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
+                              {visibleDescription}
+                              {isLong && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExperienceExpanded(index)}
+                                  className="ml-1.5 text-green-700 hover:text-green-800 font-medium text-sm"
+                                >
+                                  {isExpanded ? "Show less" : "Show more"}
+                                </button>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </CardContent>
                 </Card>
               )}

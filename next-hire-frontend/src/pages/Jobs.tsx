@@ -451,17 +451,26 @@ const Jobs = () => {
     {
       field: "title",
       headerName: "Title",
-      width: 200,
+      width: 280,
       renderCell: (value: string, row: any) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleViewJob(row.id);
-          }}
-          className="text-gray-900 font-semibold hover:text-blue-800 hover:underline text-xs"
-        >
-          {value}
-        </button>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleViewJob(row.id);
+                }}
+                className="text-gray-900 font-semibold hover:text-blue-800 hover:underline text-xs truncate max-w-[260px] block text-left"
+              >
+                {value}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs text-xs">
+              {value}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       ),
     },
     {
@@ -647,6 +656,16 @@ const Jobs = () => {
           </h1>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            onClick={refresh}
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            className="text-xs"
+          >
+            <RefreshCw className={`h-3 w-3 mr-1 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
           <Button
             onClick={() => setShowParseDialog(true)}
             variant="outline"
