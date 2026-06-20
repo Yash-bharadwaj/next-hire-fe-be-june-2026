@@ -9,6 +9,8 @@ import {
   updateBusinessPartner,
   deleteBusinessPartner,
   getBusinessPartnerStats,
+  getBusinessPartnerContacts,
+  createBusinessPartnerContact,
 } from "../controllers/businessPartnerController";
 
 const router = Router();
@@ -105,6 +107,15 @@ const businessPartnerIdValidation = [
   param("id").isUUID().withMessage("Valid business partner ID is required"),
 ];
 
+const createContactValidation = [
+  param("id").isUUID().withMessage("Valid business partner ID is required"),
+  body("name").notEmpty().withMessage("Contact name is required"),
+  body("title").optional().isString(),
+  body("email").optional().isEmail().withMessage("Valid email is required"),
+  body("phone").optional().isString(),
+  body("is_primary").optional().isBoolean().withMessage("is_primary must be a boolean"),
+];
+
 const paginationValidation = [
   query("page")
     .optional()
@@ -134,6 +145,10 @@ const paginationValidation = [
     .optional()
     .isUUID()
     .withMessage("Valid assigned_to user ID is required"),
+  query("scope")
+    .optional()
+    .isIn(["all", "mine"])
+    .withMessage("Invalid scope"),
   query("search").optional().isString().withMessage("Search must be a string"),
   query("sort_by")
     .optional()
@@ -165,5 +180,11 @@ router.put("/:id", updateBusinessPartnerValidation, validate, updateBusinessPart
 
 // Delete a business partner (Recruiters only)
 router.delete("/:id", businessPartnerIdValidation, validate, deleteBusinessPartner);
+
+// List contacts for a business partner (client)
+router.get("/:id/contacts", businessPartnerIdValidation, validate, getBusinessPartnerContacts);
+
+// Add a contact to a business partner (Recruiters only)
+router.post("/:id/contacts", createContactValidation, validate, createBusinessPartnerContact);
 
 export default router;

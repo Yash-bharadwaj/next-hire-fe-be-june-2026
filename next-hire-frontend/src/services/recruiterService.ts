@@ -77,15 +77,29 @@ export interface Job {
   application_deadline?: string;
   created_by: string;
   assigned_to?: string;
+  business_partner_id?: string;
+  client_contact_id?: string;
+  primary_recruiter_id?: string;
+  account_manager_id?: string;
   created_at: string;
   updated_at: string;
+  // Resolved associations (present on getJobDetails responses)
+  client?: { id: string; name: string; primary_email?: string; primary_phone?: string };
+  clientContact?: { id: string; name: string; title?: string; email?: string; phone?: string };
+  primaryRecruiter?: TeamMember;
+  accountManager?: TeamMember;
+  assignee?: TeamMember;
 }
 
 export interface CreateJobRequest {
   title: string;
   description: string;
   external_description?: string;
-  company_name: string;
+  company_name?: string;
+  business_partner_id?: string;
+  client_contact_id?: string;
+  primary_recruiter_id?: string;
+  account_manager_id?: string;
   location: string;
   job_type: JobType;
   salary_min?: number;
@@ -111,6 +125,23 @@ export interface CreateJobRequest {
 }
 
 export interface UpdateJobRequest extends Partial<CreateJobRequest> {}
+
+// A recruiter user, for Primary Recruiter / Account Manager / Assigned To dropdowns
+export interface TeamMember {
+  id: string;
+  email: string;
+  recruiterProfile?: {
+    first_name?: string;
+    last_name?: string;
+  };
+}
+
+export interface TeamMembersResponse {
+  success: boolean;
+  data: {
+    members: TeamMember[];
+  };
+}
 
 // Submission types
 export type SubmissionStatus =
@@ -275,6 +306,18 @@ class RecruiterService {
     try {
       const response = await apiClient.put<ApiResponse<RecruiterProfile>>("/recruiter/profile", data);
       return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * List recruiter users, for Primary Recruiter / Account Manager / Assigned To dropdowns
+   */
+  async getTeamMembers(): Promise<TeamMember[]> {
+    try {
+      const response = await apiClient.get<TeamMembersResponse>("/recruiter/team");
+      return response.data.data.members;
     } catch (error: any) {
       throw this.handleError(error);
     }

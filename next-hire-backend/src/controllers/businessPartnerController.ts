@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { Op } from "sequelize";
 import { BusinessPartner } from "../models/BusinessPartner";
+import { BusinessPartnerContact } from "../models/BusinessPartnerContact";
 import { User, Recruiter } from "../models";
 import { logger } from "../utils/logger";
 import { AuthenticatedRequest } from "../middleware/auth";
@@ -54,6 +55,7 @@ export const getBusinessPartners = async (req: AuthenticatedRequest, res: Respon
       source,
       priority,
       assigned_to,
+      scope,
       sort_by = "created_at",
       sort_order = "DESC",
     } = req.query;
@@ -71,8 +73,11 @@ export const getBusinessPartners = async (req: AuthenticatedRequest, res: Respon
     const offset = (Number(page) - 1) * Number(limit);
     const whereConditions: any = {};
 
-    // Role-based filtering
-    if (userRole === "recruiter") {
+    // Role-based filtering. scope=all opts out of the "mine only" restriction
+    // so any recruiter can pick any client when staffing a job - account
+    // ownership (created_by/assigned_to) is still tracked, just not used to
+    // hide other recruiters' clients from this lookup.
+    if (userRole === "recruiter" && scope !== "all") {
       // Recruiters can see partners they created or are assigned to
       whereConditions[Op.or] = [
         { created_by: userId },
@@ -496,6 +501,105 @@ export const getBusinessPartnerStats = async (req: AuthenticatedRequest, res: Re
     res.status(500).json({
       success: false,
       message: "Failed to fetch business partner statistics",
+    });
+  }
+};
+
+// List contacts for a business partner (client). Any recruiter can view -
+// contacts are looked up while staffing a job for any client, not just ones
+// the current recruiter personally owns.
+export const getBusinessPartnerContacts = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    const businessPartner = await BusinessPartner.findByPk(id);
+    if (!businessPartner) {
+      return res.status(404).json({
+        success: false,
+        message: "Business partner not found",
+      });
+    }
+
+    const contacts = await BusinessPartnerContact.findAll({
+      where: { business_partner_id: id },
+      order: [
+        ["is_primary", "DESC"],
+        ["name", "ASC"],
+      ],
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { contacts },
+    });
+  } catch (error) {
+    logger.error("Error fetching business partner contacts:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch business partner contacts",
+    });
+  }
+};
+
+// Add a contact to a business partner (client). Used for the quick "+ Add
+// contact" affordance on the Job form's Client Contact dropdown.
+export const createBusinessPartnerContact = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+
+    if (!userId || userRole !== "recruiter") {
+      return res.status(403).json({
+        success: false,
+        message: "Only recruiters can add business partner contacts",
+      });
+    }
+
+    const businessPartner = await BusinessPartner.findByPk(id);
+    if (!businessPartner) {
+      return res.status(404).json({
+        success: false,
+        message: "Business partner not found",
+      });
+    }
+
+    const { name, title, email, phone, is_primary = false } = req.body;
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: "Contact name is required",
+      });
+    }
+
+    const contact = await BusinessPartnerContact.create({
+      business_partner_id: id,
+      name,
+      title,
+      email,
+      phone,
+      is_primary,
+      created_by: userId,
+    });
+
+    logger.info(`Business partner contact created: ${contact.id} for partner ${id} by user ${userId}`);
+    res.status(201).json({
+      success: true,
+      message: "Contact added successfully",
+      data: { contact },
+    });
+  } catch (error) {
+    logger.error("Error creating business partner contact:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add contact",
     });
   }
 };

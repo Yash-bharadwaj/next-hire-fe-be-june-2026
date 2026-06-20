@@ -82,9 +82,30 @@ export interface BusinessPartnerFilters {
   source?: BusinessPartnerSource;
   priority?: BusinessPartnerPriority;
   assigned_to?: string;
+  scope?: "all" | "mine";
   search?: string;
   sort_by?: "name" | "created_at" | "last_activity_at" | "status" | "priority";
   sort_order?: "ASC" | "DESC";
+}
+
+export interface BusinessPartnerContact {
+  id: string;
+  business_partner_id: string;
+  name: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  is_primary: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateBusinessPartnerContactRequest {
+  name: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  is_primary?: boolean;
 }
 
 export interface CreateBusinessPartnerRequest {
@@ -222,6 +243,31 @@ class BusinessPartnerService {
   async getBusinessPartnerStats(): Promise<BusinessPartnerStatsResponse> {
     const response = await apiClient.get(`${this.baseUrl}/stats`);
     return response.data;
+  }
+
+  /** All clients org-wide (not scoped to the current recruiter) - for the Job form's Client dropdown. */
+  async getClientOptions(): Promise<BusinessPartner[]> {
+    const response = await this.getBusinessPartners({
+      partner_type: "client",
+      scope: "all",
+      limit: 100,
+      sort_by: "name",
+      sort_order: "ASC",
+    });
+    return response.data.businessPartners;
+  }
+
+  async getContacts(businessPartnerId: string): Promise<BusinessPartnerContact[]> {
+    const response = await apiClient.get(`${this.baseUrl}/${businessPartnerId}/contacts`);
+    return response.data.data.contacts;
+  }
+
+  async createContact(
+    businessPartnerId: string,
+    data: CreateBusinessPartnerContactRequest
+  ): Promise<BusinessPartnerContact> {
+    const response = await apiClient.post(`${this.baseUrl}/${businessPartnerId}/contacts`, data);
+    return response.data.data.contact;
   }
 
   // Helper methods

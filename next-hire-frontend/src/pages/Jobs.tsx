@@ -466,7 +466,7 @@ const Jobs = () => {
     },
     {
       field: "company",
-      headerName: "Company",
+      headerName: "Client",
       width: 170,
     },
     {

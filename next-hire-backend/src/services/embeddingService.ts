@@ -1,4 +1,4 @@
-import { QueryTypes } from "sequelize";
+import { QueryTypes, Transaction } from "sequelize";
 import { sequelize, Candidate, Job, User } from "../models";
 import { logger } from "../utils/logger";
 
@@ -17,7 +17,7 @@ export interface MatchResults {
 interface EmbeddableInstance {
   id: string;
   embedding?: number[] | null;
-  save: () => Promise<any>;
+  save: (options?: { transaction?: Transaction }) => Promise<any>;
 }
 
 /**
@@ -49,16 +49,17 @@ export const cosineSimilarity = (a: number[], b: number[]): number => {
 export async function persistEmbedding(
   instance: EmbeddableInstance,
   table: EmbeddingTable,
-  vector: number[] | null
+  vector: number[] | null,
+  transaction?: Transaction
 ): Promise<void> {
   instance.embedding = vector;
-  await instance.save();
+  await instance.save({ transaction });
 
   if (vector && sequelize.getDialect() === "postgres") {
     try {
       await sequelize.query(
         `UPDATE ${table} SET embedding_vector = :vector::vector WHERE id = :id`,
-        { replacements: { vector: `[${vector.join(",")}]`, id: instance.id } }
+        { replacements: { vector: `[${vector.join(",")}]`, id: instance.id }, transaction }
       );
     } catch (error) {
       logger.error(`Failed to sync ${table}.embedding_vector for ${instance.id}`, error);

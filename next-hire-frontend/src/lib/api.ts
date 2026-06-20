@@ -116,7 +116,11 @@ api.interceptors.response.use(
     }
 
     if ((error.response?.status ?? 0) >= 500) {
-      throw new Error("Server error. Please try again later.");
+      // Some 5xx responses carry a specific, actionable message (e.g. "AI
+      // parsing is temporarily unavailable") - prefer that over the generic
+      // fallback so the user isn't left with a black-box error.
+      const backendMessage = (error.response?.data as any)?.message;
+      throw new Error(backendMessage || "Server error. Please try again later.");
     }
 
     return Promise.reject(error);

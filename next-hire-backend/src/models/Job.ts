@@ -34,7 +34,11 @@ export interface JobAttributes {
   end_date?: Date;
   application_deadline?: Date;
   created_by: string; // User ID of recruiter who created this job
-  assigned_to?: string; // User ID of recruiter assigned to this job
+  assigned_to?: string; // User ID of recruiter assigned to this job (shown as "Assigned To" in the header)
+  business_partner_id?: string; // Client (BusinessPartner with is_client=true) this job is for
+  client_contact_id?: string; // Contact at the client (BusinessPartnerContact)
+  primary_recruiter_id?: string; // User ID of the recruiter who owns sourcing for this job
+  account_manager_id?: string; // User ID of the account manager who owns the client relationship
   created_at?: Date;
   updated_at?: Date;
   notes_history?: any;
@@ -93,6 +97,10 @@ export class Job
   public application_deadline?: Date;
   public created_by!: string;
   public assigned_to?: string;
+  public business_partner_id?: string;
+  public client_contact_id?: string;
+  public primary_recruiter_id?: string;
+  public account_manager_id?: string;
 
   // Timestamps
   public readonly created_at!: Date;
@@ -357,6 +365,38 @@ Job.init(
         key: "id",
       },
     },
+    business_partner_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "business_partners",
+        key: "id",
+      },
+    },
+    client_contact_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "business_partner_contacts",
+        key: "id",
+      },
+    },
+    primary_recruiter_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: User,
+        key: "id",
+      },
+    },
+    account_manager_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: User,
+        key: "id",
+      },
+    },
   },
   {
     sequelize,
@@ -412,6 +452,18 @@ Job.init(
       },
       {
         fields: ["location"],
+      },
+      {
+        fields: ["business_partner_id"],
+      },
+      {
+        fields: ["client_contact_id"],
+      },
+      {
+        fields: ["primary_recruiter_id"],
+      },
+      {
+        fields: ["account_manager_id"],
       },
     ],
   }

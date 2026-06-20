@@ -9,11 +9,50 @@ import {
   Interview,
   Task,
   Placement,
+  BusinessPartner,
+  BusinessPartnerContact,
 } from "../models";
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../utils/email";
+
+// Shared `include` for resolving Job's people/client references to
+// human-readable data instead of raw UUIDs.
+const jobPersonAttributes = ["id", "email"];
+const jobPersonInclude = (as: string) => ({
+  model: User,
+  as,
+  attributes: jobPersonAttributes,
+  required: false,
+  include: [
+    {
+      model: Recruiter,
+      as: "recruiterProfile",
+      attributes: ["first_name", "last_name"],
+      required: false,
+    },
+  ],
+});
+
+export const jobDetailIncludes = [
+  jobPersonInclude("creator"),
+  jobPersonInclude("assignee"),
+  jobPersonInclude("primaryRecruiter"),
+  jobPersonInclude("accountManager"),
+  {
+    model: BusinessPartner,
+    as: "client",
+    attributes: ["id", "name", "primary_email", "primary_phone"],
+    required: false,
+  },
+  {
+    model: BusinessPartnerContact,
+    as: "clientContact",
+    attributes: ["id", "name", "title", "email", "phone"],
+    required: false,
+  },
+];
 
 // Get recruiter profile
 export const getProfile = asyncHandler(
@@ -86,6 +125,30 @@ export const updateProfile = asyncHandler(
   }
 );
 
+// List recruiter users, for Primary Recruiter / Account Manager / Assigned To dropdowns
+export const listTeamMembers = asyncHandler(
+  async (_req: AuthenticatedRequest, res: Response) => {
+    const members = await User.findAll({
+      where: { role: "recruiter", status: "active" },
+      attributes: ["id", "email"],
+      include: [
+        {
+          model: Recruiter,
+          as: "recruiterProfile",
+          attributes: ["first_name", "last_name"],
+          required: false,
+        },
+      ],
+      order: [["email", "ASC"]],
+    });
+
+    res.json({
+      success: true,
+      data: { members },
+    });
+  }
+);
+
 // Create a new job
 export const createJob = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -119,8 +182,24 @@ export const createJob = asyncHandler(
       end_date,
       application_deadline,
       assigned_to,
+      business_partner_id,
+      client_contact_id,
+      primary_recruiter_id,
+      account_manager_id,
       status, // Allow status to be set from frontend
     } = req.body;
+
+    // The Client dropdown sends business_partner_id; company_name (used by
+    // every other job listing/display) is kept in sync from the partner's
+    // name rather than trusted from the client, so the two can never drift.
+    let resolvedCompanyName = company_name;
+    if (business_partner_id) {
+      const client = await BusinessPartner.findByPk(business_partner_id);
+      if (!client) {
+        throw createError("Selected client was not found", 400);
+      }
+      resolvedCompanyName = client.name;
+    }
 
     // Generate job_id if not provided
     let job_id: string;
@@ -166,7 +245,9 @@ export const createJob = asyncHandler(
         title,
         description,
         external_description,
-        company_name,
+        company_name: resolvedCompanyName,
+        business_partner_id: business_partner_id || undefined,
+        client_contact_id: client_contact_id || undefined,
         location,
         city,
         state,
@@ -191,7 +272,11 @@ export const createJob = asyncHandler(
         end_date,
         application_deadline,
         created_by: userId!,
-        assigned_to: assigned_to || userId,
+        primary_recruiter_id: primary_recruiter_id || undefined,
+        account_manager_id: account_manager_id || undefined,
+        // "Assigned To" defaults to the Primary Recruiter when not set
+        // explicitly, falling back to whoever is creating the job.
+        assigned_to: assigned_to || primary_recruiter_id || userId,
         status: status || "active", // Use provided status or default to active
       });
 
@@ -221,11 +306,30 @@ export const updateJob = asyncHandler(
     }
 
     // Check if user has permission to update this job
-    if (job.created_by !== userId && job.assigned_to !== userId) {
+    const isPermitted = [
+      job.created_by,
+      job.assigned_to,
+      job.primary_recruiter_id,
+      job.account_manager_id,
+    ].includes(userId);
+    if (!isPermitted) {
       throw createError("You do not have permission to update this job", 403);
     }
 
-    const updatedJob = await job.update(req.body);
+    const updateData = { ...req.body };
+
+    // Keep company_name in sync with the selected client (see createJob).
+    if (updateData.business_partner_id) {
+      const client = await BusinessPartner.findByPk(updateData.business_partner_id);
+      if (!client) {
+        throw createError("Selected client was not found", 400);
+      }
+      updateData.company_name = client.name;
+    }
+
+    await job.update(updateData);
+
+    const updatedJob = await Job.findByPk(jobId, { include: jobDetailIncludes });
 
     res.json({
       success: true,
@@ -254,13 +358,16 @@ export const listJobs = asyncHandler(
     // Build where conditions
     const whereConditions: any = {};
 
-    // Show jobs created by or assigned to the current user
+    // Show jobs created by, assigned to, or staffed (as primary recruiter /
+    // account manager) by the current user
     if (created_by_me === "true") {
       whereConditions.created_by = userId;
     } else {
       whereConditions[Op.or] = [
         { created_by: userId },
         { assigned_to: userId },
+        { primary_recruiter_id: userId },
+        { account_manager_id: userId },
       ];
     }
 
@@ -286,18 +393,7 @@ export const listJobs = asyncHandler(
 
     const { rows: jobs, count: total } = await Job.findAndCountAll({
       where: whereConditions,
-      include: [
-        {
-          model: User,
-          as: "creator",
-          attributes: ["id", "email"],
-        },
-        {
-          model: User,
-          as: "assignee",
-          attributes: ["id", "email"],
-        },
-      ],
+      include: jobDetailIncludes,
       order: [["created_at", "DESC"]],
       limit: parseInt(limit as string),
       offset,
@@ -414,27 +510,20 @@ export const getJobDetails = asyncHandler(
     const { jobId } = req.params;
     const userId = req.user?.userId;
 
-    const job = await Job.findByPk(jobId, {
-      include: [
-        {
-          model: User,
-          as: "creator",
-          attributes: ["id", "email"],
-        },
-        {
-          model: User,
-          as: "assignee",
-          attributes: ["id", "email"],
-        },
-      ],
-    });
+    const job = await Job.findByPk(jobId, { include: jobDetailIncludes });
 
     if (!job) {
       throw createError("Job not found", 404);
     }
 
     // Check if user has permission to view this job
-    if (job.created_by !== userId && job.assigned_to !== userId) {
+    const isPermitted = [
+      job.created_by,
+      job.assigned_to,
+      job.primary_recruiter_id,
+      job.account_manager_id,
+    ].includes(userId);
+    if (!isPermitted) {
       throw createError("You do not have permission to view this job", 403);
     }
 

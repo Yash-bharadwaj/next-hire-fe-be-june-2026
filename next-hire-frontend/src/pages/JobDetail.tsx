@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,6 @@ import {
   ChevronDown,
   ChevronUp,
   Save,
-  X,
   Search,
   Brain,
   Bot,
@@ -97,8 +96,6 @@ import {
 import { format } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { useJob } from "@/hooks/useJobs";
-import { jobService } from "@/services/jobService";
 import { recruiterService } from "@/services/recruiterService";
 import { candidateSearchService } from "@/services/candidateSearchService";
 import { Slider } from "@/components/ui/slider";
@@ -122,30 +119,71 @@ interface Document {
 const JobDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  const { job, loading, error, refresh } = useJob(id || null, false); // Use private endpoint for recruiters
   const [activeTab, setActiveTab] = useState("overview");
   const { toast } = useToast();
 
-  // Local state for edit operations
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [localJob, setLocalJob] = useState(null);
+  // Job data - fetched from the recruiter-scoped endpoint so the same
+  // request resolves the client, client contact, primary recruiter, and
+  // account manager associations needed throughout this page.
+  const [job, setJob] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Edit mode state
-  const [isEditMode, setIsEditMode] = useState(
-    searchParams.get("edit") === "true"
-  );
-  const [editedJob, setEditedJob] = useState<any>(null);
+  const fetchJob = useCallback(async () => {
+    if (!id) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await recruiterService.getJobDetails(id);
+      setJob(res.data.job);
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || "Failed to fetch job");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
-  // Map API job data to component expected format
+  useEffect(() => {
+    fetchJob();
+  }, [fetchJob]);
+
+  const refresh = fetchJob;
+
+  const getPriorityBadgeClass = (priority?: string) => {
+    switch (priority) {
+      case "high":
+        return "bg-red-100 text-red-700 border border-red-300";
+      case "low":
+        return "bg-blue-100 text-blue-700 border border-blue-300";
+      case "medium":
+      default:
+        return "bg-orange-100 text-orange-700 border border-orange-300";
+    }
+  };
+
+  const formatPriority = (priority?: string) =>
+    priority ? priority.charAt(0).toUpperCase() + priority.slice(1) : "Medium";
+
+  // Resolve a User (with an included Recruiter profile) to a display name.
+  const formatPersonName = (person: any): string | null => {
+    if (!person) return null;
+    const profile = person.recruiterProfile;
+    const name = [profile?.first_name, profile?.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    return name || person.email || null;
+  };
+
+  // Map API job data to the format the rest of this page renders.
   const mapJobData = (apiJob: any) => {
     if (!apiJob) return null;
 
     return {
       ...apiJob,
       jobTitle: apiJob.title,
-      customer: apiJob.company_name,
+      customer: apiJob.client?.name || apiJob.company_name,
       jobDescription: apiJob.description,
       externalJobDescription: apiJob.external_description || "",
       jobType: apiJob.job_type,
@@ -167,8 +205,13 @@ const JobDetail = () => {
       primarySkills: apiJob.required_skills || [],
       secondarySkills: apiJob.preferred_skills || [],
       state: apiJob.location || apiJob.city || apiJob.state || "Remote",
-      clientContact: apiJob.assigned_to || "Unassigned",
-      endClient: apiJob.company_name,
+      clientContactName: apiJob.clientContact?.name || null,
+      clientContactEmail: apiJob.clientContact?.email || apiJob.client?.primary_email || null,
+      clientContactPhone: apiJob.clientContact?.phone || apiJob.client?.primary_phone || null,
+      endClient: apiJob.client?.name || apiJob.company_name,
+      primaryRecruiterName: formatPersonName(apiJob.primaryRecruiter),
+      accountManagerName: formatPersonName(apiJob.accountManager),
+      assignedToName: formatPersonName(apiJob.assignee),
       educationRequirements: apiJob.education_requirements || "Not specified",
       positionsAvailable: apiJob.positions_available || 1,
       applicationDeadline: apiJob.application_deadline,
@@ -177,15 +220,7 @@ const JobDetail = () => {
     };
   };
 
-  // Update editedJob when job data is loaded
-  useEffect(() => {
-    if (job && !editedJob) {
-      const mappedJob = mapJobData(job);
-      setEditedJob(mappedJob);
-    }
-  }, [job, editedJob]);
-
-  // Sync notes and attachments from job data
+  // Sync notes from job data
   useEffect(() => {
     if (job) {
       setJobNotes((job as any).notes_history || []);
@@ -196,110 +231,7 @@ const JobDetail = () => {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchJobId, setSearchJobId] = useState("");
 
-  // Profitability analysis removed - not needed for this version
-
-  // Handle edit mode changes
-  useEffect(() => {
-    if (searchParams.get("edit") === "true") {
-      setIsEditMode(true);
-    }
-  }, [searchParams]);
-
-  const handleSave = async () => {
-    if (!editedJob || !id) return;
-
-    // Validate deadline
-    if (editedJob.endDate && editedJob.applicationDeadline) {
-      if (new Date(editedJob.applicationDeadline) < new Date(editedJob.endDate)) {
-        toast({ title: "Validation Error", description: "Application Deadline must be on or after the End Date", variant: "destructive" });
-        return;
-      }
-    }
-
-    try {
-      setIsUpdating(true);
-
-      // Map the edited job data to API format
-      const updateData = {
-        title: editedJob.jobTitle,
-        description: editedJob.jobDescription,
-        external_description: editedJob.externalJobDescription,
-        company_name: editedJob.customer,
-        location: editedJob.state || editedJob.location,
-        city: editedJob.city,
-        state: editedJob.state,
-        country: editedJob.country,
-        job_type: editedJob.jobType,
-        salary_min: editedJob.jobType === "contract" ? null : editedJob.salary_min,
-        salary_max: editedJob.jobType === "contract" ? null : editedJob.salary_max,
-        salary_currency: editedJob.salary_currency,
-        bill_rate_min: editedJob.jobType === "contract" ? editedJob.bill_rate_min : null,
-        bill_rate_max: editedJob.jobType === "contract" ? editedJob.bill_rate_max : null,
-        experience_min: editedJob.minExperience,
-        experience_max: editedJob.maxExperience,
-        required_skills: editedJob.primarySkills || [],
-        preferred_skills: editedJob.secondarySkills || [],
-        education_requirements: editedJob.educationRequirements,
-        status: editedJob.status,
-        priority: editedJob.priority,
-        positions_available: editedJob.positionsAvailable,
-        max_submissions_allowed: editedJob.max_submissions_allowed,
-        vendor_eligible: editedJob.vendor_eligible,
-        remote_work_allowed: editedJob.remote_work_allowed,
-        start_date: editedJob.startDate,
-        end_date: editedJob.endDate,
-        application_deadline: editedJob.applicationDeadline,
-      };
-
-      const response = await jobService.updateJob(id, updateData);
-
-      if (response.success) {
-        // Update the job data with the response
-        setLocalJob(response.data.job);
-        setEditedJob(null);
-        setIsEditMode(false);
-
-        // Show success message
-        toast({
-          title: "Job Updated Successfully",
-          description: "The job has been updated with your changes.",
-        });
-
-        // Remove edit parameter from URL
-        navigate(`/dashboard/jobs/${id}`, { replace: true });
-      } else {
-        throw new Error(response.message || "Failed to update job");
-      }
-    } catch (error: any) {
-      console.error("Error updating job:", error);
-      toast({
-        title: "Error Updating Job",
-        description:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to update job",
-        variant: "destructive",
-      });
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleCancel = () => {
-    // Reset to original job data
-    setEditedJob(job ? { ...job } : null);
-    setIsEditMode(false);
-    // Remove edit parameter from URL
-    navigate(`/dashboard/jobs/${id}`, { replace: true });
-  };
-
-  const handleFieldChange = (field: string, value: any) => {
-    if (editedJob) {
-      setEditedJob({ ...editedJob, [field]: value });
-    }
-  };
-
-  const currentJob = isEditMode ? editedJob : mapJobData(job);
+  const currentJob = mapJobData(job);
 
   // Search functionality
   const handleSearchJob = () => {
@@ -713,14 +645,6 @@ const JobDetail = () => {
     }
   };
 
-  // ── Deadline validation ───────────────────────────────────────────────
-  const deadlineError = (() => {
-    if (!isEditMode || !editedJob) return null;
-    const end = editedJob.endDate ? new Date(editedJob.endDate) : null;
-    const deadline = editedJob.applicationDeadline ? new Date(editedJob.applicationDeadline) : null;
-    if (end && deadline && deadline < end) return "Application Deadline must be on or after the End Date";
-    return null;
-  })();
 
   // ── Timeline events (dynamic) ─────────────────────────────────────────
   const timelineEvents = (() => {
@@ -866,79 +790,55 @@ const JobDetail = () => {
                 </Button>
               </div>
 
-              {isEditMode ? (
-                <>
-                  <Button
-                    onClick={handleSave}
-                    size="sm"
-                    className="bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    <Save className="w-4 h-4 mr-1" />
-                    Save Changes
-                  </Button>
-                  <Button
-                    onClick={handleCancel}
-                    variant="outline"
-                    size="sm"
-                    className="border-gray-300 text-gray-700 hover:bg-gray-50"
-                  >
-                    <X className="w-4 h-4 mr-1" />
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsPersonalizationOpen(true)}
+                className="border-gray-300 text-gray-700 hover:bg-gray-50 bg-white"
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setIsPersonalizationOpen(true)}
-                    className="border-gray-300 text-gray-700 hover:bg-gray-50 bg-white"
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50 bg-white"
                   >
-                    <Settings className="w-4 h-4" />
+                    <MoreHorizontal className="w-4 h-4 mr-1" />
+                    Actions
+                    <ChevronDown className="w-3 h-3 ml-1" />
                   </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="border-blue-300 text-blue-700 hover:bg-blue-50 bg-white"
-                      >
-                        <MoreHorizontal className="w-4 h-4 mr-1" />
-                        Actions
-                        <ChevronDown className="w-3 h-3 ml-1" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="end"
-                      className="w-48 bg-white border border-gray-200 shadow-lg z-50"
-                    >
-                      <DropdownMenuItem
-                        onClick={() => navigate(`/dashboard/jobs/${job.id}/edit`)}
-                        className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                      >
-                        <Edit3 className="w-4 h-4 mr-2" />
-                        Edit Job
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-gray-200" />
-                      <DropdownMenuItem
-                        onClick={handleOpenManualSearch}
-                        className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                      >
-                        <Search className="w-4 h-4 mr-2" />
-                        Manual Search
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
-                        <UserCog className="w-4 h-4 mr-2" />
-                        Change Assignment
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
-                        <Bot className="w-4 h-4 mr-2" />
-                        Assign to AI Agent
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </>
-              )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-48 bg-white border border-gray-200 shadow-lg z-50"
+                >
+                  <DropdownMenuItem
+                    onClick={() => navigate(`/dashboard/jobs/${job.id}/edit`)}
+                    className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                  >
+                    <Edit3 className="w-4 h-4 mr-2" />
+                    Edit Job
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-gray-200" />
+                  <DropdownMenuItem
+                    onClick={handleOpenManualSearch}
+                    className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                  >
+                    <Search className="w-4 h-4 mr-2" />
+                    Manual Search
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                    <UserCog className="w-4 h-4 mr-2" />
+                    Change Assignment
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                    <Bot className="w-4 h-4 mr-2" />
+                    Assign to AI Agent
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
           <div className="flex items-start justify-between gap-6">
@@ -949,35 +849,17 @@ const JobDetail = () => {
               </div>
 
               <div className="flex-1 min-w-0">
-                {isEditMode ? (
-                  <div className="space-y-3">
-                    <Input
-                      value={currentJob.jobTitle}
-                      onChange={(e) =>
-                        handleFieldChange("jobTitle", e.target.value)
-                      }
-                      className="text-2xl font-bold border-2 border-blue-300 focus:border-blue-500"
-                      placeholder="Job Title"
-                    />
-                    <Input
-                      value={currentJob.customer}
-                      onChange={(e) =>
-                        handleFieldChange("customer", e.target.value)
-                      }
-                      className="text-lg border-2 border-blue-300 focus:border-blue-500"
-                      placeholder="Company Name"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3 mb-3">
-                    <CardTitle className="text-3xl bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
-                      {currentJob.jobTitle}
-                    </CardTitle>
-                    <Badge className="bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md hover:shadow-lg transition-shadow flex-shrink-0">
-                      Public
-                    </Badge>
-                  </div>
-                )}
+                <div className="flex items-center gap-3 mb-3 flex-wrap">
+                  <CardTitle className="text-3xl bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
+                    {currentJob.jobTitle}
+                  </CardTitle>
+                  <Badge className="bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md hover:shadow-lg transition-shadow flex-shrink-0">
+                    Public
+                  </Badge>
+                  <Badge className={`${getPriorityBadgeClass(job.priority)} shadow-sm flex-shrink-0`}>
+                    {formatPriority(job.priority)} Priority
+                  </Badge>
+                </div>
 
                 <div className="flex items-center gap-6 text-sm text-gray-600 mb-4 flex-wrap">
                   <span className="font-medium whitespace-nowrap">
@@ -987,121 +869,60 @@ const JobDetail = () => {
                 </div>
 
                 <div className="flex items-center gap-3 text-sm text-gray-600 flex-wrap">
-                  {isEditMode ? (
-                    <div className="flex gap-2 flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-green-600" />
-                        {job.job_type === "contract" ? (
-                          <>
-                            <Input
-                              type="number"
-                              value={currentJob.bill_rate_min ?? ""}
-                              onChange={(e) =>
-                                handleFieldChange("bill_rate_min", e.target.value ? Number(e.target.value) : null)
-                              }
-                              className="w-24 text-center border-blue-300"
-                              placeholder="Min $/hr"
-                            />
-                            <span className="text-gray-500">–</span>
-                            <Input
-                              type="number"
-                              value={currentJob.bill_rate_max ?? ""}
-                              onChange={(e) =>
-                                handleFieldChange("bill_rate_max", e.target.value ? Number(e.target.value) : null)
-                              }
-                              className="w-24 text-center border-blue-300"
-                              placeholder="Max $/hr"
-                            />
-                            <span className="text-gray-500 text-xs">/hr</span>
-                          </>
-                        ) : (
-                          <>
-                            <Input
-                              type="number"
-                              value={currentJob.salary_min ?? ""}
-                              onChange={(e) =>
-                                handleFieldChange("salary_min", e.target.value ? Number(e.target.value) : null)
-                              }
-                              className="w-28 text-center border-blue-300"
-                              placeholder="Min salary"
-                            />
-                            <span className="text-gray-500">–</span>
-                            <Input
-                              type="number"
-                              value={currentJob.salary_max ?? ""}
-                              onChange={(e) =>
-                                handleFieldChange("salary_max", e.target.value ? Number(e.target.value) : null)
-                              }
-                              className="w-28 text-center border-blue-300"
-                              placeholder="Max salary"
-                            />
-                          </>
+                  <div className="flex items-center gap-2 bg-green-50 px-3 py-1 rounded-full flex-shrink-0">
+                    <DollarSign className="w-4 h-4 text-green-600" />
+                    <span className="font-medium text-green-700 whitespace-nowrap">
+                      {currentJob.salary}
+                    </span>
+                  </div>
+                  {job.job_type !== "contract" && (
+                    <div className="flex items-center gap-2 bg-orange-50 px-3 py-1 rounded-full flex-shrink-0">
+                      <span className="font-medium text-orange-700 whitespace-nowrap">
+                        $
+                        {Math.round(
+                          (parseFloat(
+                            currentJob.salary.replace(/[$,k]/g, "")
+                          ) *
+                            1000 *
+                            1.55) /
+                            1000
                         )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-blue-600" />
-                        <Input
-                          value={currentJob.state || "Remote"}
-                          onChange={(e) =>
-                            handleFieldChange("state", e.target.value)
-                          }
-                          className="w-32 text-center border-blue-300"
-                          placeholder="Location"
-                        />
-                      </div>
+                        k (Estimated)
+                      </span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Brain className="w-3 h-3 text-blue-500" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Estimated billing rate (calculated)</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-2 bg-green-50 px-3 py-1 rounded-full flex-shrink-0">
-                        <DollarSign className="w-4 h-4 text-green-600" />
-                        <span className="font-medium text-green-700 whitespace-nowrap">
-                          {currentJob.salary}
-                        </span>
-                      </div>
-                      {job.job_type !== "contract" && (
-                        <div className="flex items-center gap-2 bg-orange-50 px-3 py-1 rounded-full flex-shrink-0">
-                          <span className="font-medium text-orange-700 whitespace-nowrap">
-                            $
-                            {Math.round(
-                              (parseFloat(
-                                currentJob.salary.replace(/[$,k]/g, "")
-                              ) *
-                                1000 *
-                                1.55) /
-                                1000
-                            )}
-                            k (Estimated)
-                          </span>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Brain className="w-3 h-3 text-blue-500" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Estimated billing rate (calculated)</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full flex-shrink-0">
-                        <MapPin className="w-4 h-4 text-blue-600" />
-                        <span className="font-medium text-blue-700 whitespace-nowrap">
-                          {currentJob.state ||
-                            job.location ||
-                            job.city ||
-                            "Remote"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 bg-purple-50 px-3 py-1 rounded-full flex-shrink-0">
-                        <Calendar className="w-4 h-4 text-purple-600" />
-                        <span className="font-medium text-purple-700 whitespace-nowrap">
-                          Posted{" "}
-                          {new Date(currentJob.createdOn).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </>
                   )}
+                  <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full flex-shrink-0">
+                    <MapPin className="w-4 h-4 text-blue-600" />
+                    <span className="font-medium text-blue-700 whitespace-nowrap">
+                      {currentJob.state ||
+                        job.location ||
+                        job.city ||
+                        "Remote"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-purple-50 px-3 py-1 rounded-full flex-shrink-0">
+                    <Calendar className="w-4 h-4 text-purple-600" />
+                    <span className="font-medium text-purple-700 whitespace-nowrap">
+                      Posted{" "}
+                      {new Date(currentJob.createdOn).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-teal-50 px-3 py-1 rounded-full flex-shrink-0">
+                    <User className="w-4 h-4 text-teal-600" />
+                    <span className="font-medium text-teal-700 whitespace-nowrap">
+                      Assigned to {currentJob.assignedToName || currentJob.primaryRecruiterName || "Unassigned"}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1143,16 +964,16 @@ const JobDetail = () => {
                     <div className="text-2xl font-bold text-blue-600">
                       {job.job_type === "contract"
                         ? job.bill_rate_min && job.bill_rate_max
-                          ? `$${Math.round((job.bill_rate_min + job.bill_rate_max) / 2)}`
+                          ? `$${Math.round((Number(job.bill_rate_min) + Number(job.bill_rate_max)) / 2)}`
                           : job.bill_rate_min
                           ? `$${job.bill_rate_min}`
                           : "N/A"
                         : job.salary_min && job.salary_max
                         ? `$${Math.round(
-                            (job.salary_min + job.salary_max) / 2 / 2080
+                            (Number(job.salary_min) + Number(job.salary_max)) / 2 / 2080
                           )}`
                         : job.salary_min
-                        ? `$${Math.round(job.salary_min / 2080)}`
+                        ? `$${Math.round(Number(job.salary_min) / 2080)}`
                         : "N/A"}
                       /hr
                     </div>
@@ -1225,20 +1046,9 @@ const JobDetail = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {isEditMode ? (
-                      <Textarea
-                        value={currentJob.jobDescription}
-                        onChange={(e) =>
-                          handleFieldChange("jobDescription", e.target.value)
-                        }
-                        className="min-h-32 border-2 border-blue-300 focus:border-blue-500"
-                        placeholder="Enter job description..."
-                      />
-                    ) : (
-                      <p className="text-gray-700 leading-relaxed">
-                        {currentJob.jobDescription}
-                      </p>
-                    )}
+                    <p className="text-gray-700 leading-relaxed">
+                      {currentJob.jobDescription}
+                    </p>
                   </CardContent>
                 </Card>
 
@@ -1250,53 +1060,36 @@ const JobDetail = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {isEditMode ? (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-sm font-medium text-gray-700 mb-1 block">
-                            Primary Skills
-                          </label>
-                          <Input
-                            value={currentJob.primarySkills.join(", ")}
-                            onChange={(e) =>
-                              handleFieldChange(
-                                "primarySkills",
-                                e.target.value.split(", ")
-                              )
-                            }
-                            className="border-2 border-blue-300 focus:border-blue-500"
-                            placeholder="React, TypeScript, Node.js"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium text-gray-700 mb-1 block">
-                            Secondary Skills
-                          </label>
-                          <Input
-                            value={currentJob.secondarySkills.join(", ")}
-                            onChange={(e) =>
-                              handleFieldChange(
-                                "secondarySkills",
-                                e.target.value.split(", ")
-                              )
-                            }
-                            className="border-2 border-blue-300 focus:border-blue-500"
-                            placeholder="AWS, Docker, GraphQL"
-                          />
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="font-semibold mb-3 text-gray-700">
+                          Primary Skills
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {currentJob.primarySkills.map(
+                            (skill: string, index: number) => (
+                              <Badge
+                                key={index}
+                                className="bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md"
+                              >
+                                {skill}
+                              </Badge>
+                            )
+                          )}
                         </div>
                       </div>
-                    ) : (
-                      <div className="space-y-4">
+                      {currentJob.secondarySkills.length > 0 && (
                         <div>
                           <h4 className="font-semibold mb-3 text-gray-700">
-                            Primary Skills
+                            Secondary Skills
                           </h4>
                           <div className="flex flex-wrap gap-2">
-                            {currentJob.primarySkills.map(
+                            {currentJob.secondarySkills.map(
                               (skill: string, index: number) => (
                                 <Badge
                                   key={index}
-                                  className="bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md"
+                                  variant="outline"
+                                  className="border-green-300 text-green-700 hover:bg-green-50"
                                 >
                                   {skill}
                                 </Badge>
@@ -1304,28 +1097,8 @@ const JobDetail = () => {
                             )}
                           </div>
                         </div>
-                        {currentJob.secondarySkills.length > 0 && (
-                          <div>
-                            <h4 className="font-semibold mb-3 text-gray-700">
-                              Secondary Skills
-                            </h4>
-                            <div className="flex flex-wrap gap-2">
-                              {currentJob.secondarySkills.map(
-                                (skill: string, index: number) => (
-                                  <Badge
-                                    key={index}
-                                    variant="outline"
-                                    className="border-green-300 text-green-700 hover:bg-green-50"
-                                  >
-                                    {skill}
-                                  </Badge>
-                                )
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -1339,54 +1112,50 @@ const JobDetail = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {isEditMode ? (
-                        <div className="space-y-2">
-                          <Input
-                            value={currentJob.clientContact}
-                            onChange={(e) =>
-                              handleFieldChange("clientContact", e.target.value)
-                            }
-                            className="border-2 border-blue-300 focus:border-blue-500"
-                            placeholder="Client Contact Name"
-                          />
-                          <Input
-                            value={currentJob.endClient}
-                            onChange={(e) =>
-                              handleFieldChange("endClient", e.target.value)
-                            }
-                            className="border-2 border-blue-300 focus:border-blue-500"
-                            placeholder="End Client"
-                          />
-                        </div>
-                      ) : (
-                        <>
-                          <div>
-                            <p className="font-semibold text-gray-800">
-                              {currentJob.clientContact}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              Hiring Manager
-                            </p>
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <Button
-                              size="sm"
-                              className="button-gradient shadow-md hover:shadow-lg transition-shadow w-full justify-center"
-                            >
-                              <Mail className="w-4 h-4 mr-1" />
-                              Email
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-green-300 text-green-700 hover:bg-green-50 w-full justify-center"
-                            >
-                              <Phone className="w-4 h-4 mr-1" />
-                              Call
-                            </Button>
-                          </div>
-                        </>
-                      )}
+                      <div>
+                        <p className="font-semibold text-gray-800">
+                          {currentJob.clientContactName || "No contact on file"}
+                        </p>
+                        <p className="text-sm text-gray-600">{currentJob.endClient}</p>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          size="sm"
+                          disabled={!currentJob.clientContactEmail}
+                          onClick={() => handleEmailClick(currentJob.clientContactEmail)}
+                          className="button-gradient shadow-md hover:shadow-lg transition-shadow w-full justify-center disabled:opacity-50"
+                        >
+                          <Mail className="w-4 h-4 mr-1" />
+                          Email
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!currentJob.clientContactPhone}
+                          onClick={() => handlePhoneClick(currentJob.clientContactPhone)}
+                          className="border-green-300 text-green-700 hover:bg-green-50 w-full justify-center disabled:opacity-50"
+                        >
+                          <Phone className="w-4 h-4 mr-1" />
+                          Call
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Primary Recruiter Card */}
+                  <Card className="card-gradient border-teal-200/50 shadow-lg card-hover">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-lg bg-gradient-to-r from-teal-700 to-teal-600 bg-clip-text text-transparent">
+                        Primary Recruiter
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="font-semibold text-gray-800">
+                        {currentJob.primaryRecruiterName || "Unassigned"}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Owns sourcing for this role
+                      </p>
                     </CardContent>
                   </Card>
 
@@ -1399,32 +1168,10 @@ const JobDetail = () => {
                     </CardHeader>
                     <CardContent>
                       <p className="font-semibold text-gray-800">
-                        {job.assigned_to || "Unassigned"}
+                        {currentJob.accountManagerName || "Unassigned"}
                       </p>
                       <p className="text-sm text-gray-600">
-                        Responsible for this placement
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  {/* Job Priority Card */}
-                  <Card className="card-gradient border-red-200/50 shadow-lg card-hover">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-lg bg-gradient-to-r from-red-700 to-red-600 bg-clip-text text-transparent">
-                        Priority Level
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Badge
-                        variant={
-                          job.priority === "high" ? "destructive" : "secondary"
-                        }
-                        className="mb-2"
-                      >
-                        {job.priority} Priority
-                      </Badge>
-                      <p className="text-sm text-gray-600">
-                        Job Type: {job.job_type === "full_time" ? "Full-time" : job.job_type === "part_time" ? "Part-time" : job.job_type === "contract" ? "Contract" : job.job_type === "temporary" ? "Temporary" : job.job_type}
+                        Owns the client relationship
                       </p>
                     </CardContent>
                   </Card>
@@ -1437,64 +1184,38 @@ const JobDetail = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                      {isEditMode ? (
-                        <div className="space-y-2">
-                          <div>
-                            <label className="text-xs font-medium text-gray-600 block mb-1">End Date</label>
-                            <Input
-                              type="date"
-                              value={editedJob?.endDate ? editedJob.endDate.split("T")[0] : ""}
-                              onChange={(e) => handleFieldChange("endDate", e.target.value)}
-                              className="border-blue-300 text-sm"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-gray-600 block mb-1">Application Deadline</label>
-                            <Input
-                              type="date"
-                              value={editedJob?.applicationDeadline ? editedJob.applicationDeadline.split("T")[0] : ""}
-                              onChange={(e) => handleFieldChange("applicationDeadline", e.target.value)}
-                              className={`text-sm ${deadlineError ? "border-red-400" : "border-blue-300"}`}
-                            />
-                            {deadlineError && <p className="text-xs text-red-600 mt-1">{deadlineError}</p>}
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div>
-                            <p className="text-sm text-gray-600">End Date</p>
-                            <p className="font-semibold text-gray-800">
-                              {job.end_date ? new Date(job.end_date).toLocaleDateString() : "Not set"}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">Application Deadline</p>
-                            <p className="font-semibold text-gray-800">
-                              {job.application_deadline ? new Date(job.application_deadline).toLocaleDateString() : "Not set"}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">Experience</p>
-                            <p className="font-semibold text-gray-800">
-                              {job.experience_min || 0}-{job.experience_max || 0} years
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">
-                              {job.job_type === "contract" ? "Bill Rate Range" : "Salary Range"}
-                            </p>
-                            <p className="font-semibold text-gray-800">
-                              {job.job_type === "contract"
-                                ? job.bill_rate_min || job.bill_rate_max
-                                  ? `$${job.bill_rate_min ?? "–"}/hr – $${job.bill_rate_max ?? "–"}/hr`
-                                  : "Not specified"
-                                : job.salary_min || job.salary_max
-                                ? `$${(job.salary_min ?? 0).toLocaleString()} – $${(job.salary_max ?? 0).toLocaleString()}`
-                                : "Not specified"}
-                            </p>
-                          </div>
-                        </>
-                      )}
+                      <div>
+                        <p className="text-sm text-gray-600">End Date</p>
+                        <p className="font-semibold text-gray-800">
+                          {job.end_date ? new Date(job.end_date).toLocaleDateString() : "Not set"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Application Deadline</p>
+                        <p className="font-semibold text-gray-800">
+                          {job.application_deadline ? new Date(job.application_deadline).toLocaleDateString() : "Not set"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Experience</p>
+                        <p className="font-semibold text-gray-800">
+                          {job.experience_min || 0}-{job.experience_max || 0} years
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">
+                          {job.job_type === "contract" ? "Bill Rate Range" : "Salary Range"}
+                        </p>
+                        <p className="font-semibold text-gray-800">
+                          {job.job_type === "contract"
+                            ? job.bill_rate_min || job.bill_rate_max
+                              ? `$${job.bill_rate_min ?? "–"}/hr – $${job.bill_rate_max ?? "–"}/hr`
+                              : "Not specified"
+                            : job.salary_min || job.salary_max
+                            ? `$${(job.salary_min ?? 0).toLocaleString()} – $${(job.salary_max ?? 0).toLocaleString()}`
+                            : "Not specified"}
+                        </p>
+                      </div>
                     </CardContent>
                   </Card>
                 </div>

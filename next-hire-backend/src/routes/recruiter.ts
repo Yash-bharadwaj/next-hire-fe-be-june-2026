@@ -20,6 +20,7 @@ import {
   listTasks,
   updateTaskStatus,
   sourceCandidates,
+  listTeamMembers,
 } from "../controllers/recruiterController";
 import { authenticate, recruiterOnly } from "../middleware/auth";
 import { validate } from "../middleware/validation";
@@ -57,33 +58,55 @@ const createJobValidation = [
     .isLength({ max: 200 })
     .withMessage("Job title is required and must be less than 200 characters"),
   body("description").notEmpty().withMessage("Job description is required"),
-  body("company_name").notEmpty().withMessage("Company name is required"),
+  body("company_name").optional({ nullable: true }).isString(),
+  body("business_partner_id")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Valid client (business partner) ID is required"),
+  body().custom((value) => {
+    if (!value.company_name?.trim() && !value.business_partner_id) {
+      throw new Error("A client is required");
+    }
+    return true;
+  }),
+  body("client_contact_id")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Valid client contact ID is required"),
+  body("primary_recruiter_id")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Valid primary recruiter ID is required"),
+  body("account_manager_id")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Valid account manager ID is required"),
   body("location").notEmpty().withMessage("Location is required"),
   body("job_type")
     .isIn(["full_time", "part_time", "contract", "temporary"])
     .withMessage("Valid job type is required"),
   body("salary_min")
-    .optional()
+    .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("Minimum salary must be positive"),
   body("salary_max")
-    .optional()
+    .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("Maximum salary must be positive"),
   body("bill_rate_min")
-    .optional()
+    .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("Minimum bill rate must be positive"),
   body("bill_rate_max")
-    .optional()
+    .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("Maximum bill rate must be positive"),
   body("experience_min")
-    .optional()
+    .optional({ nullable: true })
     .isInt({ min: 0 })
     .withMessage("Minimum experience must be non-negative"),
   body("experience_max")
-    .optional()
+    .optional({ nullable: true })
     .isInt({ min: 0 })
     .withMessage("Maximum experience must be non-negative"),
   body("required_skills")
@@ -118,20 +141,36 @@ const updateJobValidation = [
     .optional()
     .isLength({ max: 200 })
     .withMessage("Job title must be less than 200 characters"),
+  body("business_partner_id")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Valid client (business partner) ID is required"),
+  body("client_contact_id")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Valid client contact ID is required"),
+  body("primary_recruiter_id")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Valid primary recruiter ID is required"),
+  body("account_manager_id")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Valid account manager ID is required"),
   body("salary_min")
-    .optional()
+    .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("Minimum salary must be positive"),
   body("salary_max")
-    .optional()
+    .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("Maximum salary must be positive"),
   body("bill_rate_min")
-    .optional()
+    .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("Minimum bill rate must be positive"),
   body("bill_rate_max")
-    .optional()
+    .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("Maximum bill rate must be positive"),
   body("status")
@@ -324,6 +363,9 @@ const updateTaskStatusValidation = [
 // Profile management
 router.get("/profile", getProfile);
 router.put("/profile", updateProfileValidation, validate, updateProfile);
+
+// Team members (for Primary Recruiter / Account Manager / Assigned To dropdowns)
+router.get("/team", listTeamMembers);
 
 // Job management
 router.post("/jobs", createJobValidation, validate, createJob);

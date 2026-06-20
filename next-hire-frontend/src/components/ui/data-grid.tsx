@@ -469,7 +469,7 @@ export const DataGrid = ({
       )}
 
       {/* Table */}
-      <div className="overflow-hidden">
+      <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50 border-gray-200 hover:bg-gray-50">

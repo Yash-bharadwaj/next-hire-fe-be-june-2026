@@ -632,120 +632,158 @@ export const parseResumeAndCreateCandidate = asyncHandler(
     const tempPassword = crypto.randomBytes(9).toString("base64");
     const hashedPassword = await bcrypt.hash(tempPassword, 12);
 
-    const user = await User.create({
-      email,
-      password: hashedPassword,
-      role: "candidate",
-      status: "active",
-      email_verified: true,
-      email_verified_at: new Date(),
-    });
-
     const experienceYears =
       parsed.total_experience_years !== undefined
         ? Math.max(0, Math.min(50, Math.round(parsed.total_experience_years)))
         : undefined;
 
-    const candidate = await Candidate.create({
-      user_id: user.id,
-      created_by: req.user?.userId,
-      first_name,
-      last_name,
-      phone: parsed.phone,
-      location: parsed.location,
-      experience_years: experienceYears,
-      skills: parsed.skills.map((s) => s.name),
-      bio: parsed.summary,
-      linkedin_url: parsed.linkedin_url,
-      portfolio_url: parsed.portfolio_url,
-      availability_status: "available",
-    });
-
-    const uploaded = await uploadDocument(tempFilePath, req.file.filename, req.file.mimetype);
-    await CandidateResume.create({
-      candidate_id: candidate.id,
-      file_url: uploaded.key,
-      file_name: req.file.originalname,
-      is_primary: true,
-    });
-    await candidate.update({ resume_url: uploaded.key });
-
-    // Work history: only persist entries that have both an employer/title and
-    // a parseable start date - Experience requires all three, and we never
-    // fabricate a placeholder for a missing one. Entries that don't qualify
-    // remain visible in `parsed.experience` for manual entry/review.
-    let sawCurrentRole = false;
-    for (const exp of parsed.experience) {
-      if (!exp.employer || !exp.title) continue;
-      const startDate = parseFlexibleDate(exp.start_date);
-      if (!startDate) continue;
-
-      const isCurrent = !!exp.is_current && !sawCurrentRole;
-      if (isCurrent) sawCurrentRole = true;
-
-      await Experience.create({
-        candidate_id: candidate.id,
-        job_title: exp.title,
-        company_name: exp.employer,
-        location: exp.location,
-        start_date: startDate,
-        end_date: isCurrent ? undefined : parseFlexibleDate(exp.end_date),
-        is_current: isCurrent,
-        description: exp.description,
-        achievements: exp.responsibilities || [],
-        technologies: exp.technologies || [],
-      });
-    }
-
-    // Education: only persist entries with both a degree and an institution
-    // (the model's required fields). Dates are optional and left blank when
-    // the resume doesn't state them.
-    let sawCurrentEducation = false;
-    for (const edu of parsed.education) {
-      if (!edu.degree || !edu.institution) continue;
-
-      const isCurrent = !!edu.is_current && !sawCurrentEducation;
-      if (isCurrent) sawCurrentEducation = true;
-
-      await Education.create({
-        candidate_id: candidate.id,
-        institution_name: edu.institution,
-        degree: edu.degree,
-        field_of_study: edu.field,
-        start_date: parseFlexibleDate(edu.start_date),
-        end_date: isCurrent ? undefined : parseFlexibleDate(edu.end_date),
-        is_current: isCurrent,
-        grade: edu.grade,
-      });
-    }
-
-    // Structured skills, including certifications tagged as "certification",
-    // de-duplicated case-insensitively to satisfy the unique
-    // (candidate_id, skill_name) constraint.
-    const skillMap = new Map<string, { name: string; category: SkillCategory }>();
-    for (const skill of parsed.skills) {
-      skillMap.set(skill.name.toLowerCase(), skill);
-    }
-    for (const cert of parsed.certifications) {
-      const key = cert.toLowerCase();
-      if (!skillMap.has(key)) skillMap.set(key, { name: cert, category: "certification" });
-    }
-    if (skillMap.size > 0) {
-      await CandidateSkill.bulkCreate(
-        Array.from(skillMap.values()).map(({ name, category }) => ({
-          candidate_id: candidate.id,
-          skill_name: name,
-          category,
-          proficiency_level: "intermediate" as const,
-          is_primary: false,
-        }))
-      );
-    }
-
+    // Computed up front since it only depends on `parsed`, not on the
+    // candidate row created below - keeps it (and its Gemini round-trip)
+    // out of the transaction.
     const embedding = await getEmbedding(buildCandidateEmbeddingText(parsed));
-    await persistEmbedding(candidate, "candidates", embedding);
 
-    const created = await Candidate.findByPk(candidate.id, {
+    // The candidate, its resume, work history, education, and skills are all
+    // created together. Without a transaction, a failure partway through
+    // (e.g. an Experience/Education record that violates a constraint) would
+    // leave an orphaned User behind - and since that email is now "taken",
+    // every retry would incorrectly report "candidate already exists" even
+    // though no usable candidate was ever created.
+    let candidateId: string;
+    let uploaded: { key: string; url: string };
+    try {
+      const result = await sequelize.transaction(async (transaction) => {
+        const user = await User.create(
+          {
+            email,
+            password: hashedPassword,
+            role: "candidate",
+            status: "active",
+            email_verified: true,
+            email_verified_at: new Date(),
+          },
+          { transaction }
+        );
+
+        const candidate = await Candidate.create(
+          {
+            user_id: user.id,
+            created_by: req.user?.userId,
+            first_name,
+            last_name,
+            phone: parsed.phone,
+            location: parsed.location,
+            experience_years: experienceYears,
+            skills: parsed.skills.map((s) => s.name),
+            bio: parsed.summary,
+            linkedin_url: parsed.linkedin_url,
+            portfolio_url: parsed.portfolio_url,
+            availability_status: "available",
+          },
+          { transaction }
+        );
+
+        const uploadedDoc = await uploadDocument(tempFilePath, req.file!.filename, req.file!.mimetype);
+        await CandidateResume.create(
+          {
+            candidate_id: candidate.id,
+            file_url: uploadedDoc.key,
+            file_name: req.file!.originalname,
+            is_primary: true,
+          },
+          { transaction }
+        );
+        await candidate.update({ resume_url: uploadedDoc.key }, { transaction });
+
+        // Work history: only persist entries that have both an employer/title
+        // and a parseable start date - Experience requires all three, and we
+        // never fabricate a placeholder for a missing one. Entries that don't
+        // qualify remain visible in `parsed.experience` for manual entry/review.
+        let sawCurrentRole = false;
+        for (const exp of parsed.experience) {
+          if (!exp.employer || !exp.title) continue;
+          const startDate = parseFlexibleDate(exp.start_date);
+          if (!startDate) continue;
+
+          const isCurrent = !!exp.is_current && !sawCurrentRole;
+          if (isCurrent) sawCurrentRole = true;
+
+          await Experience.create(
+            {
+              candidate_id: candidate.id,
+              job_title: exp.title,
+              company_name: exp.employer,
+              location: exp.location,
+              start_date: startDate,
+              end_date: isCurrent ? undefined : parseFlexibleDate(exp.end_date),
+              is_current: isCurrent,
+              description: exp.description,
+              achievements: exp.responsibilities || [],
+              technologies: exp.technologies || [],
+            },
+            { transaction }
+          );
+        }
+
+        // Education: only persist entries with both a degree and an
+        // institution (the model's required fields). Dates are optional and
+        // left blank when the resume doesn't state them.
+        let sawCurrentEducation = false;
+        for (const edu of parsed.education) {
+          if (!edu.degree || !edu.institution) continue;
+
+          const isCurrent = !!edu.is_current && !sawCurrentEducation;
+          if (isCurrent) sawCurrentEducation = true;
+
+          await Education.create(
+            {
+              candidate_id: candidate.id,
+              institution_name: edu.institution,
+              degree: edu.degree,
+              field_of_study: edu.field,
+              start_date: parseFlexibleDate(edu.start_date),
+              end_date: isCurrent ? undefined : parseFlexibleDate(edu.end_date),
+              is_current: isCurrent,
+              grade: edu.grade,
+            },
+            { transaction }
+          );
+        }
+
+        // Structured skills, including certifications tagged as
+        // "certification", de-duplicated case-insensitively to satisfy the
+        // unique (candidate_id, skill_name) constraint.
+        const skillMap = new Map<string, { name: string; category: SkillCategory }>();
+        for (const skill of parsed.skills) {
+          skillMap.set(skill.name.toLowerCase(), skill);
+        }
+        for (const cert of parsed.certifications) {
+          const key = cert.toLowerCase();
+          if (!skillMap.has(key)) skillMap.set(key, { name: cert, category: "certification" });
+        }
+        if (skillMap.size > 0) {
+          await CandidateSkill.bulkCreate(
+            Array.from(skillMap.values()).map(({ name, category }) => ({
+              candidate_id: candidate.id,
+              skill_name: name,
+              category,
+              proficiency_level: "intermediate" as const,
+              is_primary: false,
+            })),
+            { transaction }
+          );
+        }
+
+        await persistEmbedding(candidate, "candidates", embedding, transaction);
+
+        return { candidateId: candidate.id, uploaded: uploadedDoc };
+      });
+      candidateId = result.candidateId;
+      uploaded = result.uploaded;
+    } finally {
+      await cleanupTempFile();
+    }
+
+    const created = await Candidate.findByPk(candidateId, {
       include: [
         { model: User, as: "user", attributes: ["id", "email", "status", "created_at"] },
         { model: Experience, as: "experiences", order: [["start_date", "DESC"]] },

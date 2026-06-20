@@ -15,6 +15,7 @@ import { Education } from "./Education";
 import { CandidateSkill } from "./CandidateSkill";
 import { CandidateResume } from "./CandidateResume";
 import { BusinessPartner } from "./BusinessPartner";
+import { BusinessPartnerContact } from "./BusinessPartnerContact";
 
 let associationsApplied = false;
 
@@ -39,6 +40,10 @@ export function applyAssociations() {
   // Jobs
   Job.belongsTo(User, { foreignKey: "created_by", as: "creator" });
   Job.belongsTo(User, { foreignKey: "assigned_to", as: "assignee" });
+  Job.belongsTo(User, { foreignKey: "primary_recruiter_id", as: "primaryRecruiter" });
+  Job.belongsTo(User, { foreignKey: "account_manager_id", as: "accountManager" });
+  Job.belongsTo(BusinessPartner, { foreignKey: "business_partner_id", as: "client" });
+  Job.belongsTo(BusinessPartnerContact, { foreignKey: "client_contact_id", as: "clientContact" });
 
   // Submissions
   Submission.belongsTo(Job, { foreignKey: "job_id", as: "job" });
@@ -122,6 +127,20 @@ export function applyAssociations() {
     foreignKey: "assigned_to",
     as: "assignee",
   });
+
+  // Business Partner Contacts
+  BusinessPartner.hasMany(BusinessPartnerContact, {
+    foreignKey: "business_partner_id",
+    as: "contacts",
+  });
+  BusinessPartnerContact.belongsTo(BusinessPartner, {
+    foreignKey: "business_partner_id",
+    as: "businessPartner",
+  });
+  BusinessPartnerContact.belongsTo(User, {
+    foreignKey: "created_by",
+    as: "creator",
+  });
 }
 
 // Export models & sequelize
@@ -140,5 +159,6 @@ export {
   CandidateSkill,
   CandidateResume,
   BusinessPartner,
+  BusinessPartnerContact,
   sequelize,
 };

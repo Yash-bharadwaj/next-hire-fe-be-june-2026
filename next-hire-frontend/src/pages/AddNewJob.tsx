@@ -45,9 +45,21 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useForm, useWatch } from "react-hook-form";
 import { useToast } from "@/hooks/use-toast";
-import { recruiterService, Job as RecruiterJob } from "@/services/recruiterService";
+import { recruiterService, Job as RecruiterJob, TeamMember } from "@/services/recruiterService";
+import {
+  businessPartnerService,
+  BusinessPartner,
+  BusinessPartnerContact,
+} from "@/services/businessPartnerService";
 import { useAuth } from "@/contexts/AuthContext";
 import { useParams } from "react-router-dom";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const AddNewJob = () => {
   const navigate = useNavigate();
@@ -64,11 +76,50 @@ const AddNewJob = () => {
   const [newSkill, setNewSkill] = useState("");
   const [newSecondarySkill, setNewSecondarySkill] = useState("");
 
+  // Client / Client Contact / staffing dropdown data
+  const [clients, setClients] = useState<BusinessPartner[]>([]);
+  const [loadingClients, setLoadingClients] = useState(true);
+  const [contacts, setContacts] = useState<BusinessPartnerContact[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [loadingTeam, setLoadingTeam] = useState(true);
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [newContactName, setNewContactName] = useState("");
+  const [newContactEmail, setNewContactEmail] = useState("");
+  const [newContactPhone, setNewContactPhone] = useState("");
+  const [savingContact, setSavingContact] = useState(false);
+
+  useEffect(() => {
+    businessPartnerService
+      .getClientOptions()
+      .then(setClients)
+      .catch(() => toast({ title: "Error", description: "Failed to load clients", variant: "destructive" }))
+      .finally(() => setLoadingClients(false));
+
+    recruiterService
+      .getTeamMembers()
+      .then(setTeamMembers)
+      .catch(() => toast({ title: "Error", description: "Failed to load team members", variant: "destructive" }))
+      .finally(() => setLoadingTeam(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const formatTeamMemberName = (member: TeamMember) => {
+    const name = [member.recruiterProfile?.first_name, member.recruiterProfile?.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    return name || member.email;
+  };
+
   const form = useForm({
     shouldUnregister: false,
     defaultValues: {
       jobTitle: "",
-      customer: "",
+      businessPartnerId: "",
+      clientContactId: "",
+      primaryRecruiterId: "",
+      accountManagerId: "",
       jobDescription: "",
       externalJobDescription: "",
       jobType: "",
@@ -93,7 +144,6 @@ const AddNewJob = () => {
       startDate: "",
       endDate: "",
       applicationDeadline: "",
-      clientContact: "",
       clientJobId: "",
       jobStartDate: "",
       jobEndDate: "",
@@ -105,6 +155,58 @@ const AddNewJob = () => {
       documentsRequired: "",
     },
   });
+
+  const watchedBusinessPartnerId = useWatch({ control: form.control, name: "businessPartnerId" });
+
+  // Load the selected client's contacts whenever it changes (including on
+  // initial prefill in edit mode), and clear a stale contact selection when
+  // the recruiter switches to a different client.
+  const previousBusinessPartnerId = useRef<string>("");
+  useEffect(() => {
+    if (!watchedBusinessPartnerId) {
+      setContacts([]);
+      return;
+    }
+    if (previousBusinessPartnerId.current && previousBusinessPartnerId.current !== watchedBusinessPartnerId) {
+      form.setValue("clientContactId", "");
+    }
+    previousBusinessPartnerId.current = watchedBusinessPartnerId;
+
+    setLoadingContacts(true);
+    businessPartnerService
+      .getContacts(watchedBusinessPartnerId)
+      .then(setContacts)
+      .catch(() => toast({ title: "Error", description: "Failed to load client contacts", variant: "destructive" }))
+      .finally(() => setLoadingContacts(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedBusinessPartnerId]);
+
+  const handleAddContact = async () => {
+    if (!watchedBusinessPartnerId || !newContactName.trim()) return;
+    setSavingContact(true);
+    try {
+      const contact = await businessPartnerService.createContact(watchedBusinessPartnerId, {
+        name: newContactName.trim(),
+        email: newContactEmail.trim() || undefined,
+        phone: newContactPhone.trim() || undefined,
+      });
+      setContacts((prev) => [...prev, contact]);
+      form.setValue("clientContactId", contact.id);
+      setShowAddContact(false);
+      setNewContactName("");
+      setNewContactEmail("");
+      setNewContactPhone("");
+      toast({ title: "Contact added" });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to add contact",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingContact(false);
+    }
+  };
 
   const watchedCountry = useWatch({ control: form.control, name: "country" });
   const watchedState = useWatch({ control: form.control, name: "state" });
@@ -168,11 +270,13 @@ const AddNewJob = () => {
     }
   };
 
-  // The backend has no dedicated columns for Terms/Client step fields, so on
-  // create they get appended as labeled lines to external_description. When
+  // The backend has no dedicated columns for Terms step fields, so on create
+  // they get appended as labeled lines to external_description. When
   // editing, parse those lines back out so the form fields are prefilled and
   // the External Job Description shown to the user is free of this metadata
   // (otherwise saving would re-append a fresh, possibly conflicting block).
+  // "Client Contact" is recognized here only to strip legacy text left over
+  // from before that field had a dedicated client_contact_id column.
   const TERMS_FIELD_LABELS: Array<{ key: string; label: string }> = [
     { key: "taxTerms", label: "Tax Terms" },
     { key: "paymentTerms", label: "Payment Terms" },
@@ -203,7 +307,6 @@ const AddNewJob = () => {
       expensePaid: parsed.expensePaid === "Yes",
       spokenLanguages: parsed.spokenLanguages || "",
       documentsRequired: parsed.documentsRequired || "",
-      clientContact: parsed.clientContact || "",
       clientJobId: parsed.clientJobId || "",
     };
   };
@@ -225,7 +328,10 @@ const AddNewJob = () => {
         // Prefill form fields
         form.reset({
           jobTitle: job.title || "",
-          customer: job.company_name || "",
+          businessPartnerId: job.business_partner_id || "",
+          clientContactId: job.client_contact_id || "",
+          primaryRecruiterId: job.primary_recruiter_id || "",
+          accountManagerId: job.account_manager_id || "",
           jobDescription: job.description || "",
           externalJobDescription: parsedTerms.cleanDescription,
           jobType: mapJobTypeFromAPI(job.job_type),
@@ -277,7 +383,6 @@ const AddNewJob = () => {
           applicationDeadline: job.application_deadline
             ? job.application_deadline.slice(0, 10)
             : "",
-          clientContact: parsedTerms.clientContact,
           clientJobId: parsedTerms.clientJobId,
           jobStartDate: "",
           jobEndDate: "",
@@ -486,10 +591,10 @@ const AddNewJob = () => {
         return;
       }
 
-      if (!data.customer?.trim()) {
+      if (!data.businessPartnerId) {
         toast({
           title: "Validation Error",
-          description: "Company name is required",
+          description: "Client is required",
           variant: "destructive",
         });
         setIsSubmitting(false);
@@ -528,7 +633,7 @@ const AddNewJob = () => {
       const jobData: any = {
         title: data.jobTitle.trim(),
         description: (data.jobDescription || "").trim(), // Ensure it's a string
-        company_name: data.customer.trim(),
+        business_partner_id: data.businessPartnerId,
         location: data.location.trim(), // Required field
         job_type: mappedJobType, // Required field, already validated
         country: data.country?.trim() || "United States", // Always send country
@@ -536,6 +641,16 @@ const AddNewJob = () => {
         city: getTrimmedString(data.city),
         state: getTrimmedString(data.state),
       };
+
+      if (data.clientContactId) {
+        jobData.client_contact_id = data.clientContactId;
+      }
+      if (data.primaryRecruiterId) {
+        jobData.primary_recruiter_id = data.primaryRecruiterId;
+      }
+      if (data.accountManagerId) {
+        jobData.account_manager_id = data.accountManagerId;
+      }
 
       // Ensure description is not empty (backend requires it)
       if (!jobData.description) {
@@ -716,27 +831,13 @@ const AddNewJob = () => {
         }
       }
 
-      // Client fields - append to external_description to preserve the data
-      // These can be extracted later if backend adds dedicated fields
-      const trimmedClientContact = data.clientContact?.trim();
-      if (trimmedClientContact) {
-        jobData.client_contact = trimmedClientContact;
-      }
-
+      // Client Job ID has no dedicated backend column yet, so it's preserved
+      // by appending it to external_description (same approach as the Terms
+      // step fields above).
       const trimmedClientJobId = data.clientJobId?.trim();
       if (trimmedClientJobId) {
         jobData.client_job_id = trimmedClientJobId;
-      }
-
-      let clientInfo = "";
-      if (trimmedClientContact) {
-        clientInfo += `Client Contact: ${trimmedClientContact}\n`;
-      }
-      if (trimmedClientJobId) {
-        clientInfo += `Client Job ID: ${trimmedClientJobId}\n`;
-      }
-
-      if (clientInfo) {
+        const clientInfo = `Client Job ID: ${trimmedClientJobId}\n`;
         externalDescription = externalDescription
           ? `${externalDescription}\n\n${clientInfo}`.trim()
           : clientInfo.trim();
@@ -876,19 +977,149 @@ const AddNewJob = () => {
 
               <FormField
                 control={form.control}
-                name="customer"
+                name="businessPartnerId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-gray-700 font-medium">
-                      Company *
+                      Client *
                     </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g. TechCorp Inc"
-                        className="border-gray-200 focus:border-green-400"
-                        {...field}
-                      />
-                    </FormControl>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="border-gray-200 focus:border-green-400">
+                          <SelectValue
+                            placeholder={loadingClients ? "Loading clients..." : "Select client"}
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="bg-white">
+                        {clients.map((client) => (
+                          <SelectItem key={client.id} value={client.id}>
+                            {client.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!loadingClients && clients.length === 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        No clients yet —{" "}
+                        <button
+                          type="button"
+                          onClick={() => navigate("/dashboard/business-partners")}
+                          className="text-green-700 underline hover:text-green-800"
+                        >
+                          add one in Business Partners
+                        </button>
+                        .
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField
+                control={form.control}
+                name="clientContactId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-gray-700 font-medium">
+                      Client Contact
+                    </FormLabel>
+                    <Select
+                      onValueChange={(value) =>
+                        value === "__add__" ? setShowAddContact(true) : field.onChange(value)
+                      }
+                      value={field.value}
+                      disabled={!watchedBusinessPartnerId}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="border-gray-200 focus:border-green-400">
+                          <SelectValue
+                            placeholder={
+                              !watchedBusinessPartnerId
+                                ? "Select a client first"
+                                : loadingContacts
+                                ? "Loading contacts..."
+                                : "Select contact"
+                            }
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="bg-white">
+                        {contacts.map((contact) => (
+                          <SelectItem key={contact.id} value={contact.id}>
+                            {contact.name}
+                            {contact.title ? ` — ${contact.title}` : ""}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__add__" className="text-green-700 font-medium">
+                          <Plus className="h-3.5 w-3.5 inline mr-1" />
+                          Add new contact
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="primaryRecruiterId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-gray-700 font-medium">
+                      Primary Recruiter
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="border-gray-200 focus:border-green-400">
+                          <SelectValue
+                            placeholder={loadingTeam ? "Loading..." : "Select recruiter"}
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="bg-white">
+                        {teamMembers.map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {formatTeamMemberName(member)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField
+                control={form.control}
+                name="accountManagerId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-gray-700 font-medium">
+                      Account Manager
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="border-gray-200 focus:border-green-400">
+                          <SelectValue
+                            placeholder={loadingTeam ? "Loading..." : "Select account manager"}
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="bg-white">
+                        {teamMembers.map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {formatTeamMemberName(member)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1295,26 +1526,6 @@ const AddNewJob = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="clientContact"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-gray-700 font-medium">
-                      Client Contact
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g. John Smith"
-                        className="border-gray-200 focus:border-green-400"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
               <FormField
                 control={form.control}
                 name="clientJobId"
@@ -1728,7 +1939,7 @@ const AddNewJob = () => {
     ));
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -1865,6 +2076,56 @@ const AddNewJob = () => {
           </div>
         </form>
       </Form>
+
+      {/* Add Client Contact Dialog */}
+      <Dialog open={showAddContact} onOpenChange={setShowAddContact}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Client Contact</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-gray-700 font-medium mb-1 block">Name *</Label>
+              <Input
+                value={newContactName}
+                onChange={(e) => setNewContactName(e.target.value)}
+                placeholder="e.g. Jane Doe"
+                autoFocus
+              />
+            </div>
+            <div>
+              <Label className="text-gray-700 font-medium mb-1 block">Email</Label>
+              <Input
+                type="email"
+                value={newContactEmail}
+                onChange={(e) => setNewContactEmail(e.target.value)}
+                placeholder="jane@client.com"
+              />
+            </div>
+            <div>
+              <Label className="text-gray-700 font-medium mb-1 block">Phone</Label>
+              <Input
+                value={newContactPhone}
+                onChange={(e) => setNewContactPhone(e.target.value)}
+                placeholder="(555) 123-4567"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowAddContact(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!newContactName.trim() || savingContact}
+              onClick={handleAddContact}
+              className="bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white"
+            >
+              {savingContact ? "Adding..." : "Add Contact"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
