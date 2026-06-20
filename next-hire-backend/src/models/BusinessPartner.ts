@@ -286,6 +286,18 @@ BusinessPartner.init(
     tableName: "business_partners",
     timestamps: true,
     underscored: true,
+    hooks: {
+      // business_partner_number is NOT NULL, and Sequelize runs validation
+      // before beforeCreate - so it has to be filled in at beforeValidate,
+      // or the notNull check rejects the row before this ever runs.
+      beforeValidate: async (partner: BusinessPartner) => {
+        // Generate business_partner_number if not provided (e.g. "BP001")
+        if (!partner.business_partner_number) {
+          const count = await BusinessPartner.count();
+          partner.business_partner_number = `BP${String(count + 1).padStart(3, "0")}`;
+        }
+      },
+    },
     indexes: [
       {
         unique: true,

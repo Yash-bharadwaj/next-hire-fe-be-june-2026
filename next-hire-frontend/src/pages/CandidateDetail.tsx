@@ -60,6 +60,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DocumentsManager, Document } from "@/components/DocumentsManager";
@@ -1662,13 +1669,13 @@ const CandidateDetail = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Candidate Dialog */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Candidate Profile</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
+      {/* Edit Candidate Sheet */}
+      <Sheet open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0">
+          <SheetHeader className="px-6 py-4 border-b">
+            <SheetTitle>Edit Candidate Profile</SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-gray-700">First Name</Label>
@@ -1731,14 +1738,14 @@ const CandidateDetail = () => {
               <Input value={editForm.portfolio_url || ""} onChange={e => setEditForm(p => ({ ...p, portfolio_url: e.target.value }))} className="h-9 text-sm" placeholder="https://..." />
             </div>
           </div>
-          <DialogFooter className="gap-2">
+          <SheetFooter className="px-6 py-3 border-t gap-2">
             <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={editSaving}>Cancel</Button>
             <Button onClick={handleEditSave} disabled={editSaving} className="bg-green-600 hover:bg-green-700 text-white">
               {editSaving ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Saving...</> : "Save Changes"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       {/* Personalization Settings Dialog */}
       <CandidateDetailPersonalizationSettings

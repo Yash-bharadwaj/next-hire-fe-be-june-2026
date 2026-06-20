@@ -1,10 +1,11 @@
 import { Response } from "express";
 import { Op } from "sequelize";
 import fs from "fs/promises";
-import { Job, User, Recruiter, Submission, Candidate } from "../models";
+import { Job, User, Recruiter, Submission, Candidate, BusinessPartner } from "../models";
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import { likeOp } from "../utils/searchOperators";
 import {
   extractText,
   getEmbedding,
@@ -658,6 +659,39 @@ export const parseJobDescriptionAndCreateJob = asyncHandler(
       companyName = recruiterProfile?.company_name || "Unknown Company";
     }
 
+    // If the AI found a genuine client name in the document (as opposed to
+    // falling back to the recruiter's own agency name above), link the job
+    // to a matching Business Partner - creating one if it doesn't exist -
+    // so the client shows up immediately and the job's Client field is
+    // already filled in when it's opened for editing.
+    let business_partner_id: string | undefined;
+    if (parsed.company_name) {
+      const trimmedName = parsed.company_name.trim();
+      let client = await BusinessPartner.findOne({
+        where: { name: { [likeOp]: trimmedName } },
+      });
+      if (client) {
+        if (!client.is_client) {
+          await client.update({ is_client: true });
+        }
+      } else {
+        client = await BusinessPartner.create({
+          name: trimmedName,
+          is_lead: false,
+          is_client: true,
+          is_vendor: false,
+          status: "active",
+          source: "other",
+          priority: "medium",
+          created_by: userId!,
+          assigned_to: userId,
+          last_activity_at: new Date(),
+        });
+        logger.info(`Auto-created client "${trimmedName}" from parsed job description by user ${userId}`);
+      }
+      business_partner_id = client.id;
+    }
+
     const title = parsed.title || "Untitled Position";
 
     // Generate job ID like JOB-2024-001 (same scheme as createJob)
@@ -676,6 +710,7 @@ export const parseJobDescriptionAndCreateJob = asyncHandler(
       title,
       description: parsed.description,
       company_name: companyName,
+      business_partner_id,
       location: parsed.location || "Remote",
       city: parsed.city,
       state: parsed.state,

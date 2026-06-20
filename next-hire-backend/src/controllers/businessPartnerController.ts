@@ -6,13 +6,6 @@ import { User, Recruiter } from "../models";
 import { logger } from "../utils/logger";
 import { AuthenticatedRequest } from "../middleware/auth";
 
-// Helper function to generate business partner number
-const generateBusinessPartnerNumber = async (): Promise<string> => {
-  const count = await BusinessPartner.count();
-  const number = (count + 1).toString().padStart(3, "0");
-  return `BP${number}`;
-};
-
 // Helper function to include common associations
 const includeAssociations = [
   {
@@ -258,11 +251,7 @@ export const createBusinessPartner = async (req: AuthenticatedRequest, res: Resp
       });
     }
 
-    // Generate business partner number
-    const business_partner_number = await generateBusinessPartnerNumber();
-
     const businessPartner = await BusinessPartner.create({
-      business_partner_number,
       name,
       is_lead,
       is_client,
