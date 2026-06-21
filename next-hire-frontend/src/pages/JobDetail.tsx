@@ -307,7 +307,7 @@ const JobDetail = () => {
   };
 
   const kanbanColumns = [
-    { id: "new_candidate",   title: "New Candidates",          color: "bg-gray-50",   border: "border-gray-300" },
+    { id: "new_candidate",   title: "Pipeline",                color: "bg-gray-50",   border: "border-gray-300" },
     { id: "initial_scanning", title: "Initial Scanning",       color: "bg-blue-50",   border: "border-blue-300" },
     { id: "first_round",    title: "First Round",              color: "bg-purple-50", border: "border-purple-300" },
     { id: "technical_round", title: "Technical Manager Round", color: "bg-yellow-50", border: "border-yellow-300" },
@@ -590,12 +590,27 @@ const JobDetail = () => {
     });
   };
 
+  // Candidates already in this job's pipeline - shown as "Already added" in
+  // Manual Search instead of letting the user pick them and silently no-op,
+  // which read as "Add to Sourcing Funnel doesn't work" when they were
+  // actually already submitted from an earlier click.
+  const alreadySourcedCandidateIds = new Set(
+    (submissions as any[]).map((s) => s.candidate_id || s.candidate?.id).filter(Boolean)
+  );
+
   const handleAddToSourcingFunnel = async () => {
     if (selectedCandidates.size === 0) return;
     setSourcingLoading(true);
     try {
       const res = await recruiterService.sourceCandidates(job!.id, Array.from(selectedCandidates));
-      toast({ title: "Success", description: (res as any).message || "Candidates added to sourcing funnel" });
+      const { added = [], skipped = [] } = (res as any).data || {};
+      if (added.length > 0 && skipped.length === 0) {
+        toast({ title: "Added to pipeline", description: `${added.length} candidate(s) added to the sourcing funnel.` });
+      } else if (added.length > 0 && skipped.length > 0) {
+        toast({ title: "Added to pipeline", description: `${added.length} added; ${skipped.length} were already in the pipeline.` });
+      } else {
+        toast({ title: "Already in pipeline", description: "The selected candidate(s) are already in this job's sourcing funnel.", variant: "destructive" });
+      }
       setSelectedCandidates(new Set());
       setShowManualSearch(false);
       // Refresh submission stats
@@ -1816,63 +1831,75 @@ const JobDetail = () => {
               </div>
             ) : (
               <div className="space-y-3 py-4">
-                {filteredMatchResults.map((c: any) => (
-                  <div
-                    key={c.id}
-                    onClick={() => handleToggleCandidate(c.id)}
-                    className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-all ${
-                      selectedCandidates.has(c.id)
-                        ? "border-green-400 bg-green-50 shadow-sm"
-                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                    }`}
-                  >
-                    <Checkbox
-                      checked={selectedCandidates.has(c.id)}
-                      onCheckedChange={() => handleToggleCandidate(c.id)}
-                      className="mt-1 flex-shrink-0"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-semibold text-gray-800 text-sm">
-                            {c.first_name} {c.last_name}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {c.location || "—"} • {c.experience_years != null ? `${c.experience_years} yrs exp` : "—"}
-                          </p>
+                {filteredMatchResults.map((c: any) => {
+                  const isAlreadySourced = alreadySourcedCandidateIds.has(c.id);
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => !isAlreadySourced && handleToggleCandidate(c.id)}
+                      className={`flex items-start gap-3 p-4 border rounded-lg transition-all ${
+                        isAlreadySourced
+                          ? "border-gray-200 bg-gray-50 opacity-70 cursor-not-allowed"
+                          : selectedCandidates.has(c.id)
+                          ? "border-green-400 bg-green-50 shadow-sm cursor-pointer"
+                          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50 cursor-pointer"
+                      }`}
+                    >
+                      <Checkbox
+                        checked={selectedCandidates.has(c.id)}
+                        disabled={isAlreadySourced}
+                        onCheckedChange={() => handleToggleCandidate(c.id)}
+                        className="mt-1 flex-shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-semibold text-gray-800 text-sm">
+                              {c.first_name} {c.last_name}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {c.location || "—"} • {c.experience_years != null ? `${c.experience_years} yrs exp` : "—"}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                            {isAlreadySourced ? (
+                              <Badge className="text-xs font-bold bg-blue-100 text-blue-800 border-blue-200">
+                                Already in pipeline
+                              </Badge>
+                            ) : (
+                              <Badge
+                                className={`text-xs font-bold ${
+                                  (c.matchScore ?? 0) >= 75
+                                    ? "bg-green-100 text-green-800 border-green-200"
+                                    : (c.matchScore ?? 0) >= 50
+                                    ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                                    : "bg-gray-100 text-gray-700 border-gray-200"
+                                }`}
+                              >
+                                {Math.round(c.matchScore ?? 0)}% match
+                              </Badge>
+                            )}
+                            <span className="text-xs text-gray-400">
+                              Updated {c.updated_at ? new Date(c.updated_at).toLocaleDateString() : "—"}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          <Badge
-                            className={`text-xs font-bold ${
-                              (c.matchScore ?? 0) >= 75
-                                ? "bg-green-100 text-green-800 border-green-200"
-                                : (c.matchScore ?? 0) >= 50
-                                ? "bg-yellow-100 text-yellow-800 border-yellow-200"
-                                : "bg-gray-100 text-gray-700 border-gray-200"
-                            }`}
-                          >
-                            {Math.round(c.matchScore ?? 0)}% match
-                          </Badge>
-                          <span className="text-xs text-gray-400">
-                            Updated {c.updated_at ? new Date(c.updated_at).toLocaleDateString() : "—"}
-                          </span>
-                        </div>
+                        {c.matchReasoning && (
+                          <p className="text-xs text-gray-600 mt-1 line-clamp-2">{c.matchReasoning}</p>
+                        )}
+                        {c.skills && c.skills.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {c.skills.slice(0, 5).map((skill: string, i: number) => (
+                              <Badge key={i} variant="secondary" className="text-xs py-0">{skill}</Badge>
+                            ))}
+                            {c.skills.length > 5 && <Badge variant="secondary" className="text-xs py-0">+{c.skills.length - 5}</Badge>}
+                          </div>
+                        )}
                       </div>
-                      {c.matchReasoning && (
-                        <p className="text-xs text-gray-600 mt-1 line-clamp-2">{c.matchReasoning}</p>
-                      )}
-                      {c.skills && c.skills.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {c.skills.slice(0, 5).map((skill: string, i: number) => (
-                            <Badge key={i} variant="secondary" className="text-xs py-0">{skill}</Badge>
-                          ))}
-                          {c.skills.length > 5 && <Badge variant="secondary" className="text-xs py-0">+{c.skills.length - 5}</Badge>}
-                        </div>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </ScrollArea>
