@@ -37,7 +37,6 @@ const Dashboards = () => {
       {
         title: "Total Jobs",
         value: stats.overview.totalJobs?.toString() || "0",
-        change: "+12.5%", // This could be calculated from historical data
         icon: Briefcase,
         color: "from-green-400/30 via-green-500/20 to-green-600/30",
         iconColor: "text-green-700"
@@ -45,7 +44,6 @@ const Dashboards = () => {
       {
         title: "Active Placements",
         value: stats.overview.totalPlacements?.toString() || "0",
-        change: "+8.2%",
         icon: Target,
         color: "from-blue-400/30 via-blue-500/20 to-blue-600/30",
         iconColor: "text-blue-700"
@@ -53,7 +51,6 @@ const Dashboards = () => {
       {
         title: "Success Rate",
         value: `${successRate}%`,
-        change: "+2.1%",
         icon: TrendingUp,
         color: "from-purple-400/30 via-purple-500/20 to-purple-600/30",
         iconColor: "text-purple-700"
@@ -61,7 +58,6 @@ const Dashboards = () => {
       {
         title: "Total Submissions",
         value: stats.overview.totalSubmissions?.toString() || "0",
-        change: "+15%",
         icon: Users,
         color: "from-orange-400/30 via-orange-500/20 to-orange-600/30",
         iconColor: "text-orange-700"
@@ -199,9 +195,6 @@ const Dashboards = () => {
                 </CardHeader>
                 <CardContent className="relative pt-1">
                   <div className="text-2xl font-bold text-gray-800 font-roboto-slab mb-1">{metric.value}</div>
-                  <p className="text-xs text-green-600 font-roboto-slab font-medium">
-                    {metric.change} from last month
-                  </p>
                 </CardContent>
               </Card>
             );

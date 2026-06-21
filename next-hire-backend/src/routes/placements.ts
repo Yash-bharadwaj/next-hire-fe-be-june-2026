@@ -160,6 +160,14 @@ const placementIdValidation = [
   param("id").isUUID().withMessage("Valid placement ID is required"),
 ];
 
+// Accepts either the internal UUID or the human-readable placement_id (e.g. PL-2026-001),
+// since detail-page URLs use the human-readable ID.
+const getPlacementValidation = [
+  param("id")
+    .matches(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|PL-\d{4}-\d+)$/i)
+    .withMessage("Valid placement ID is required"),
+];
+
 const terminatePlacementValidation = [
   param("id").isUUID().withMessage("Valid placement ID is required"),
   body("termination_reason")
@@ -188,7 +196,7 @@ router.get("/", paginationValidation, validate, getPlacements);
 router.get("/stats", getPlacementStats);
 
 // Get placement by ID
-router.get("/:id", placementIdValidation, validate, getPlacementById);
+router.get("/:id", getPlacementValidation, validate, getPlacementById);
 
 // Create placement (recruiters only)
 router.post("/", createPlacementValidation, validate, createPlacement);

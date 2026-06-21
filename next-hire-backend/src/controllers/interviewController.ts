@@ -414,6 +414,82 @@ export const createInterview = asyncHandler(async (req: AuthRequest, res: Respon
   });
 });
 
+// Send a reminder email to the candidate about an upcoming interview
+export const sendInterviewReminder = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const userId = req.user?.userId;
+  const userRole = req.user?.role;
+
+  if (userRole !== "recruiter") {
+    throw createError("Only recruiters can send interview reminders", 403);
+  }
+
+  const interview = await Interview.findByPk(id, {
+    include: [
+      {
+        model: Submission,
+        as: "submission",
+        include: [
+          {
+            model: Job,
+            as: "job",
+            attributes: ["id", "title", "company_name", "created_by", "assigned_to"],
+          },
+          {
+            model: Candidate,
+            as: "candidate",
+            attributes: ["id", "first_name", "last_name"],
+            include: [{ model: User, as: "user", attributes: ["id", "email"] }],
+          },
+        ],
+      },
+    ],
+  });
+
+  if (!interview) {
+    throw createError("Interview not found", 404);
+  }
+
+  const job = interview.submission?.job;
+  if (job && job.created_by !== userId && job.assigned_to !== userId) {
+    throw createError("Access denied", 403);
+  }
+
+  if (interview.status !== "scheduled") {
+    throw createError("Reminders can only be sent for scheduled interviews", 400);
+  }
+
+  const candidateEmail = interview.submission?.candidate?.user?.email;
+  if (!candidateEmail) {
+    throw createError("Candidate does not have an email on file", 400);
+  }
+
+  const candidateName = interview.submission?.candidate?.first_name || "there";
+  const jobTitle = job?.title || "your position";
+  const scheduledAt = new Date(interview.scheduled_at).toLocaleString("en-US", {
+    dateStyle: "full",
+    timeStyle: "short",
+  });
+  const where = interview.meeting_link || interview.location;
+
+  const sent = await sendEmail({
+    to: candidateEmail,
+    subject: `Reminder: Upcoming interview for ${jobTitle}`,
+    text: `Hi ${candidateName},\n\nThis is a reminder that your ${interview.interview_type} interview for ${jobTitle} is scheduled for ${scheduledAt}.${
+      where ? `\n\n${interview.meeting_link ? "Meeting link" : "Location"}: ${where}` : ""
+    }\n\nSee you then!`,
+  });
+
+  if (!sent) {
+    throw createError("Failed to send reminder email", 502);
+  }
+
+  res.json({
+    success: true,
+    message: `Reminder sent to ${candidateEmail}`,
+  });
+});
+
 // Update interview
 export const updateInterview = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;

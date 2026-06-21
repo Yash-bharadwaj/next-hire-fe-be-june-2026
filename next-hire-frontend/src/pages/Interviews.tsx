@@ -54,6 +54,7 @@ import {
   Trash,
   Zap,
   ListChecks,
+  Bell,
   FileSpreadsheet,
   Video,
   Phone,
@@ -113,13 +114,14 @@ const Interviews = () => {
     refresh: refreshStats 
   } = useInterviewStats();
   
-  const { 
+  const {
     loading: managementLoading,
     updateInterview,
     deleteInterview,
     completeInterview,
     cancelInterview,
-    rescheduleInterview
+    rescheduleInterview,
+    sendReminder
   } = useInterviewManagement();
 
   // Filters
@@ -215,6 +217,10 @@ const Interviews = () => {
       refreshInterviews();
       refreshStats();
     }
+  };
+
+  const handleSendReminder = async (interviewId: string) => {
+    await sendReminder(interviewId);
   };
 
   const handleDeleteInterview = async (interviewId: string) => {
@@ -884,6 +890,12 @@ const Interviews = () => {
                                       <DropdownMenuItem onClick={() => handleCompleteInterview(interview.id)}>
                                         <CheckCircle className="w-4 h-4 mr-2" />
                                         Mark Complete
+                                      </DropdownMenuItem>
+                                    )}
+                                    {user?.role === 'recruiter' && interview.status === 'scheduled' && (
+                                      <DropdownMenuItem onClick={() => handleSendReminder(interview.id)}>
+                                        <Bell className="w-4 h-4 mr-2" />
+                                        Send Reminder
                                       </DropdownMenuItem>
                                     )}
                                     <DropdownMenuSeparator />

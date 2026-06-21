@@ -11,6 +11,7 @@ import {
   getInterviewStats,
   addInterviewNote,
   addInterviewAttachment,
+  sendInterviewReminder,
 } from "../controllers/interviewController";
 
 const router = Router();
@@ -135,6 +136,9 @@ router.put("/:id", updateInterviewValidation, validate, updateInterview);
 
 // Delete interview (recruiters only)
 router.delete("/:id", interviewIdValidation, validate, deleteInterview);
+
+// Send a reminder email to the candidate (recruiters only)
+router.post("/:id/send-reminder", interviewIdValidation, validate, sendInterviewReminder);
 
 // Notes
 router.post("/:id/notes", noteValidation, validate, addInterviewNote);

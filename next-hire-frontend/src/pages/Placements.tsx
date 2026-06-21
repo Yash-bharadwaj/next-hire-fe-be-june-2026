@@ -518,7 +518,7 @@ const Placements = () => {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            navigate(`/dashboard/placements/${row.id}`);
+            navigate(`/dashboard/placements/${row.placement_id || row.id}`);
           }}
           className="text-blue-600 hover:text-blue-800 hover:underline font-medium font-mono text-xs whitespace-nowrap"
         >
@@ -535,7 +535,7 @@ const Placements = () => {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/dashboard/placements/${row.id}`);
+              navigate(`/dashboard/placements/${row.placement_id || row.id}`);
             }}
             className="font-medium text-blue-600 hover:text-blue-800 hover:underline font-poppins text-xs whitespace-nowrap overflow-hidden text-ellipsis text-left flex-1"
             title={value}
@@ -553,7 +553,7 @@ const Placements = () => {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            navigate(`/dashboard/placements/${row.id}`);
+            navigate(`/dashboard/placements/${row.placement_id || row.id}`);
           }}
           className="text-blue-600 hover:text-blue-800 hover:underline font-poppins text-xs whitespace-nowrap overflow-hidden text-ellipsis text-left"
           title={value}
@@ -570,7 +570,7 @@ const Placements = () => {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            navigate(`/dashboard/placements/${row.id}`);
+            navigate(`/dashboard/placements/${row.placement_id || row.id}`);
           }}
           className="text-blue-600 hover:text-blue-800 hover:underline font-poppins text-xs whitespace-nowrap overflow-hidden text-ellipsis text-left"
           title={value}
@@ -807,7 +807,7 @@ const Placements = () => {
                 columns={columns}
                 pageSizeOptions={[10, 25, 50, 100]}
                 checkboxSelection
-                onRowClick={(row) => navigate(`/dashboard/placements/${row.id}`)}
+                onRowClick={(row) => navigate(`/dashboard/placements/${row.placement_id || row.id}`)}
                 initialFilters={{}}
               />
             ) : (

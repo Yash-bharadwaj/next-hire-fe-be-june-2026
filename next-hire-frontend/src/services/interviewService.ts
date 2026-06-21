@@ -185,6 +185,11 @@ class InterviewService {
     return response.data;
   }
 
+  async sendReminder(id: string): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.post(`${this.baseUrl}/${id}/send-reminder`);
+    return response.data;
+  }
+
   async addInterviewNote(id: string, note: string): Promise<{ success: boolean; data: { notes_history: any[] } }> {
     const response = await apiClient.post(`${this.baseUrl}/${id}/notes`, { note });
     return response.data;

@@ -57,11 +57,11 @@ const menuItems = [
     url: "/dashboard",
     icon: Home,
   },
-  //  {
-  //   title: "Dashboards",
-  //   url: "/dashboard/dashboards",
-  //   icon: BarChart3
-  // },
+  {
+    title: "Dashboards",
+    url: "/dashboard/dashboards",
+    icon: BarChart3,
+  },
   {
     title: "Jobs",
     url: "/dashboard/jobs",

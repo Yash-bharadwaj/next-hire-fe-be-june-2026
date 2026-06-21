@@ -183,6 +183,26 @@ export const useInterviewManagement = () => {
     }
   }, [user?.role]);
 
+  const sendReminder = useCallback(async (interviewId: string): Promise<boolean> => {
+    if (user?.role !== "recruiter") {
+      toast.error("Only recruiters can send interview reminders");
+      return false;
+    }
+
+    try {
+      setLoading(true);
+      const result = await interviewService.sendReminder(interviewId);
+      toast.success(result.message || "Reminder sent!");
+      return true;
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || "Failed to send reminder";
+      toast.error(errorMessage);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.role]);
+
   const completeInterview = useCallback(async (
     interviewId: string, 
     feedback?: string, 
@@ -223,6 +243,7 @@ export const useInterviewManagement = () => {
     completeInterview,
     cancelInterview,
     rescheduleInterview,
+    sendReminder,
   };
 };
 

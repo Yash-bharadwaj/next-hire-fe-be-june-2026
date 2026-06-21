@@ -177,7 +177,12 @@ export const getPlacementById = async (req: AuthenticatedRequest, res: Response)
       });
     }
 
-    const placement = await Placement.findByPk(id, {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      id
+    );
+
+    const placement = await Placement.findOne({
+      where: isUuid ? { id } : { placement_id: id },
       include: [
         {
           model: Job,
@@ -593,10 +598,13 @@ export const getPlacementStats = async (req: AuthenticatedRequest, res: Response
     const whereConditions: any = { recruiter_id: userId };
 
     // Check database dialect for date formatting
-    const isSQLite = sequelize.getDialect() === "sqlite";
-    const dateFormatFn = isSQLite
-      ? Sequelize.fn("strftime", "%Y-%m", Sequelize.col("created_at"))
-      : Sequelize.fn("DATE_FORMAT", Sequelize.col("created_at"), "%Y-%m");
+    const dialect = sequelize.getDialect();
+    const dateFormatFn =
+      dialect === "sqlite"
+        ? Sequelize.fn("strftime", "%Y-%m", Sequelize.col("created_at"))
+        : dialect === "postgres"
+        ? Sequelize.fn("to_char", Sequelize.col("created_at"), "YYYY-MM")
+        : Sequelize.fn("DATE_FORMAT", Sequelize.col("created_at"), "%Y-%m");
 
     const [
       totalPlacements,
