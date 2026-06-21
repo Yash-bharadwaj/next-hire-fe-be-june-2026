@@ -76,6 +76,9 @@ import {
   AlertTriangle,
   FileText,
   Briefcase as BriefcaseIcon,
+  LayoutGrid,
+  Upload,
+  Presentation,
 } from "lucide-react";
 import {
   submissionService,
@@ -119,6 +122,8 @@ const resolveFileUrl = (url?: string | null) => {
   if (url.startsWith("http://") || url.startsWith("https://")) return url;
   return `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
 };
+
+const tabTriggerClass = "data-[state=active]:bg-white data-[state=active]:shadow-sm";
 
 const SubmissionDetail = () => {
   const { id } = useParams();
@@ -626,15 +631,43 @@ const SubmissionDetail = () => {
       </div>
 
       <Tabs defaultValue="overview">
-        <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="matching">AI Matching</TabsTrigger>
-          <TabsTrigger value="notes">Notes</TabsTrigger>
-          {isRecruiter && <TabsTrigger value="tasks">Tasks</TabsTrigger>}
-          <TabsTrigger value="documents">Documents</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          {isRecruiter && <TabsTrigger value="profitability">Profitability</TabsTrigger>}
-          <TabsTrigger value="pitch">Pitch</TabsTrigger>
+        <TabsList className="flex-wrap h-auto bg-gray-100 p-1 rounded-lg gap-1">
+          <TabsTrigger value="overview" className={tabTriggerClass}>
+            <LayoutGrid className="w-4 h-4 mr-2" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="matching" className={tabTriggerClass}>
+            <Bot className="w-4 h-4 mr-2" />
+            AI Matching
+          </TabsTrigger>
+          <TabsTrigger value="notes" className={tabTriggerClass}>
+            <FileText className="w-4 h-4 mr-2" />
+            Notes
+          </TabsTrigger>
+          {isRecruiter && (
+            <TabsTrigger value="tasks" className={tabTriggerClass}>
+              <CheckSquare className="w-4 h-4 mr-2" />
+              Tasks
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="documents" className={tabTriggerClass}>
+            <Upload className="w-4 h-4 mr-2" />
+            Documents
+          </TabsTrigger>
+          <TabsTrigger value="timeline" className={tabTriggerClass}>
+            <Activity className="w-4 h-4 mr-2" />
+            Timeline
+          </TabsTrigger>
+          {isRecruiter && (
+            <TabsTrigger value="profitability" className={tabTriggerClass}>
+              <DollarSign className="w-4 h-4 mr-2" />
+              Profitability
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="pitch" className={tabTriggerClass}>
+            <Presentation className="w-4 h-4 mr-2" />
+            Pitch
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-4">

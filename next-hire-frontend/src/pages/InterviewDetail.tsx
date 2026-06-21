@@ -65,6 +65,8 @@ import {
   Clock4,
   Circle,
   XCircle,
+  Users,
+  Upload,
 } from "lucide-react";
 import { useInterviewDetail, useInterviewManagement } from "@/hooks/useInterviews";
 import { useToast } from "@/hooks/use-toast";
@@ -125,6 +127,9 @@ const roundStepStyle: Record<string, { circle: string; badge: string; Icon: type
 
 const formatDateTime = (iso?: string) => (iso ? format(new Date(iso), "PPP, p") : "Not set");
 const formatDateOnly = (iso?: string) => (iso ? format(new Date(iso), "PPP") : "—");
+
+const tabTriggerClass =
+  "data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-primary data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all duration-300";
 
 const InterviewDetail = () => {
   const { id } = useParams();
@@ -611,14 +616,35 @@ const InterviewDetail = () => {
       </Dialog>
 
       <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="applicant">Applicant</TabsTrigger>
-          <TabsTrigger value="client">Client</TabsTrigger>
-          <TabsTrigger value="rounds">Rounds</TabsTrigger>
-          <TabsTrigger value="notes">Notes</TabsTrigger>
-          <TabsTrigger value="todo">ToDo</TabsTrigger>
-          <TabsTrigger value="documents">Documents</TabsTrigger>
+        <TabsList className="flex-wrap h-auto bg-white shadow-lg rounded-xl p-1 gap-1">
+          <TabsTrigger value="overview" className={tabTriggerClass}>
+            <Briefcase className="w-4 h-4 mr-2" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="applicant" className={tabTriggerClass}>
+            <User className="w-4 h-4 mr-2" />
+            Applicant
+          </TabsTrigger>
+          <TabsTrigger value="client" className={tabTriggerClass}>
+            <Building className="w-4 h-4 mr-2" />
+            Client
+          </TabsTrigger>
+          <TabsTrigger value="rounds" className={tabTriggerClass}>
+            <Users className="w-4 h-4 mr-2" />
+            Rounds
+          </TabsTrigger>
+          <TabsTrigger value="notes" className={tabTriggerClass}>
+            <FileText className="w-4 h-4 mr-2" />
+            Notes
+          </TabsTrigger>
+          <TabsTrigger value="todo" className={tabTriggerClass}>
+            <CheckSquare className="w-4 h-4 mr-2" />
+            ToDo
+          </TabsTrigger>
+          <TabsTrigger value="documents" className={tabTriggerClass}>
+            <Upload className="w-4 h-4 mr-2" />
+            Documents
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-4">
