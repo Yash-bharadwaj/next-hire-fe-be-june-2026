@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -60,10 +60,16 @@ import {
   Search,
   UserCog,
   Bot,
+  CheckCircle2,
+  PlayCircle,
+  Clock4,
+  Circle,
+  XCircle,
 } from "lucide-react";
 import { useInterviewDetail, useInterviewManagement } from "@/hooks/useInterviews";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import { interviewService, InterviewStatus, InterviewType } from "@/services/interviewService";
 import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/recruiterService";
 import { ScheduleInterviewDialog } from "@/components/ScheduleInterviewDialog";
@@ -87,6 +93,34 @@ const typeIcons: Record<string, JSX.Element> = {
   in_person: <MapPin className="h-4 w-4" />,
   technical: <Video className="h-4 w-4" />,
   behavioral: <Video className="h-4 w-4" />,
+};
+
+const roundStepStyle: Record<string, { circle: string; badge: string; Icon: typeof CheckCircle2 }> = {
+  completed: {
+    circle: "bg-green-500 border-green-400 text-white",
+    badge: "bg-green-100 text-green-800 border-green-200",
+    Icon: CheckCircle2,
+  },
+  in_progress: {
+    circle: "bg-orange-500 border-orange-400 text-white animate-pulse",
+    badge: "bg-orange-100 text-orange-800 border-orange-200",
+    Icon: PlayCircle,
+  },
+  scheduled: {
+    circle: "bg-blue-500 border-blue-400 text-white",
+    badge: "bg-blue-100 text-blue-800 border-blue-200",
+    Icon: Clock4,
+  },
+  cancelled: {
+    circle: "bg-red-500 border-red-400 text-white",
+    badge: "bg-red-100 text-red-800 border-red-200",
+    Icon: XCircle,
+  },
+  no_show: {
+    circle: "bg-gray-400 border-gray-300 text-white",
+    badge: "bg-gray-100 text-gray-600 border-gray-200",
+    Icon: Circle,
+  },
 };
 
 const formatDateTime = (iso?: string) => (iso ? format(new Date(iso), "PPP, p") : "Not set");
@@ -687,6 +721,14 @@ const InterviewDetail = () => {
                   <a href={`tel:${candidate.phone}`} className="hover:underline">
                     {candidate.phone}
                   </a>
+                  <a
+                    href={`https://wa.me/${candidate.phone.replace(/\D/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-green-600 hover:underline text-xs ml-1"
+                  >
+                    WhatsApp
+                  </a>
                 </div>
               )}
               {candidate?.location && (
@@ -834,6 +876,71 @@ const InterviewDetail = () => {
         </TabsContent>
 
         <TabsContent value="rounds" className="space-y-6 mt-4">
+          {!roundsLoading && rounds.length > 0 && (
+            <Card className="border-0 shadow-lg bg-gradient-to-br from-orange-50 to-white">
+              <CardHeader>
+                <CardTitle className="text-xl bg-gradient-to-r from-orange-700 to-orange-600 bg-clip-text text-transparent">
+                  Interview Process Flow
+                </CardTitle>
+                <CardDescription>Track the progress of all interview rounds for this candidate</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                {(() => {
+                  const sortedRounds = [...rounds].sort(
+                    (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
+                  );
+                  const completedCount = sortedRounds.filter((r) => r.status === "completed").length;
+                  const progressWidth =
+                    sortedRounds.length > 1 ? (completedCount / (sortedRounds.length - 1)) * 100 : 0;
+                  return (
+                    <div className="relative">
+                      <div className="flex items-center justify-between relative">
+                        {sortedRounds.length > 1 && (
+                          <div className="absolute top-8 left-0 w-full h-0.5 bg-gray-200" />
+                        )}
+                        {sortedRounds.map((round) => {
+                          const style = roundStepStyle[round.status] || roundStepStyle.scheduled;
+                          const StepIcon = style.Icon;
+                          return (
+                            <div
+                              key={round.id}
+                              className="flex flex-col items-center relative z-10"
+                              style={{ width: `${100 / sortedRounds.length}%` }}
+                            >
+                              <div
+                                className={cn(
+                                  "w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all duration-300 border-4",
+                                  style.circle
+                                )}
+                              >
+                                <StepIcon className="w-8 h-8" />
+                              </div>
+                              <div className="text-center mt-4 px-2">
+                                <h4 className="font-semibold text-sm text-gray-800 mb-2 capitalize">
+                                  {round.interview_type.replace("_", " ")}
+                                </h4>
+                                <Badge className={cn("text-xs font-medium", style.badge)}>
+                                  {round.status.replace("_", " ")}
+                                </Badge>
+                                <p className="text-xs text-gray-500 mt-1">{formatDateOnly(round.scheduled_at)}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {sortedRounds.length > 1 && (
+                          <div
+                            className="absolute top-8 left-0 h-0.5 bg-green-400 transition-all duration-500 ease-in-out"
+                            style={{ width: `${progressWidth}%` }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-base">
