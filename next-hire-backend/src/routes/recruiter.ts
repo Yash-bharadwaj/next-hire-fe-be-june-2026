@@ -13,11 +13,15 @@ import {
   updateSubmissionStatus,
   addJobNote,
   addJobAttachment,
+  getJobProfitability,
+  updateJobProfitability,
   addSubmissionNote,
   addSubmissionAttachment,
   scheduleInterview,
   createTask,
   listTasks,
+  updateTask,
+  deleteTask,
   updateTaskStatus,
   sourceCandidates,
   listTeamMembers,
@@ -351,6 +355,7 @@ const listTasksValidation = [
     .optional()
     .isIn(["low", "medium", "high"])
     .withMessage("Invalid priority"),
+  query("job_id").optional().isUUID().withMessage("Valid job ID is required"),
 ];
 
 const updateTaskStatusValidation = [
@@ -358,6 +363,34 @@ const updateTaskStatusValidation = [
   body("status")
     .isIn(["pending", "in_progress", "completed", "cancelled"])
     .withMessage("Valid status is required"),
+];
+
+const updateTaskValidation = [
+  param("taskId").isUUID().withMessage("Valid task ID is required"),
+  body("title")
+    .optional()
+    .isLength({ min: 1, max: 200 })
+    .withMessage("Task title must be less than 200 characters"),
+  body("assigned_to")
+    .optional()
+    .isUUID()
+    .withMessage("Valid assigned user ID is required"),
+  body("priority")
+    .optional()
+    .isIn(["low", "medium", "high"])
+    .withMessage("Invalid priority"),
+  body("status")
+    .optional()
+    .isIn(["pending", "in_progress", "completed", "cancelled"])
+    .withMessage("Invalid status"),
+  body("due_date")
+    .optional()
+    .isISO8601()
+    .withMessage("Valid due date is required"),
+];
+
+const deleteTaskValidation = [
+  param("taskId").isUUID().withMessage("Valid task ID is required"),
 ];
 
 // Routes
@@ -388,6 +421,18 @@ router.post(
   jobDetailsValidation,
   validate,
   addJobAttachment
+);
+router.get(
+  "/jobs/:jobId/profitability",
+  jobDetailsValidation,
+  validate,
+  getJobProfitability
+);
+router.put(
+  "/jobs/:jobId/profitability",
+  jobDetailsValidation,
+  validate,
+  updateJobProfitability
 );
 
 // Source candidates into a job's sourcing funnel
@@ -450,5 +495,7 @@ router.put(
   validate,
   updateTaskStatus
 );
+router.put("/tasks/:taskId", updateTaskValidation, validate, updateTask);
+router.delete("/tasks/:taskId", deleteTaskValidation, validate, deleteTask);
 
 export default router;

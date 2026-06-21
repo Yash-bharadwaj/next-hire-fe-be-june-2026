@@ -16,6 +16,7 @@ import { CandidateSkill } from "./CandidateSkill";
 import { CandidateResume } from "./CandidateResume";
 import { BusinessPartner } from "./BusinessPartner";
 import { BusinessPartnerContact } from "./BusinessPartnerContact";
+import { JobProfitability } from "./JobProfitability";
 
 let associationsApplied = false;
 
@@ -84,6 +85,11 @@ export function applyAssociations() {
   Task.belongsTo(User, { foreignKey: "created_by", as: "creator" });
   Task.belongsTo(Job, { foreignKey: "job_id", as: "job" });
   Task.belongsTo(Submission, { foreignKey: "submission_id", as: "submission" });
+
+  // Job Profitability
+  Job.hasOne(JobProfitability, { foreignKey: "job_id", as: "profitability" });
+  JobProfitability.belongsTo(Job, { foreignKey: "job_id", as: "job" });
+  JobProfitability.belongsTo(User, { foreignKey: "updated_by", as: "updatedBy" });
 
   // Candidate Experience & Education
   Candidate.hasMany(Experience, {
@@ -160,5 +166,6 @@ export {
   CandidateResume,
   BusinessPartner,
   BusinessPartnerContact,
+  JobProfitability,
   sequelize,
 };

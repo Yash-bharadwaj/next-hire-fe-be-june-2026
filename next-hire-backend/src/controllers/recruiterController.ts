@@ -11,6 +11,7 @@ import {
   Placement,
   BusinessPartner,
   BusinessPartnerContact,
+  JobProfitability,
 } from "../models";
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthenticatedRequest } from "../middleware/auth";
@@ -30,7 +31,7 @@ const jobPersonInclude = (as: string) => ({
     {
       model: Recruiter,
       as: "recruiterProfile",
-      attributes: ["first_name", "last_name"],
+      attributes: ["first_name", "last_name", "phone"],
       required: false,
     },
   ],
@@ -613,6 +614,68 @@ export const addJobAttachment = asyncHandler(
   }
 );
 
+// Get a job's profitability breakdown (creates a zeroed-out row on first view)
+export const getJobProfitability = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { jobId } = req.params;
+    const userId = req.user?.userId;
+
+    const job = await Job.findByPk(jobId);
+    if (!job) {
+      throw createError("Job not found", 404);
+    }
+    if (!isJobStaff(job, userId)) {
+      throw createError("You do not have permission to view this job", 403);
+    }
+
+    let profitability = await JobProfitability.findOne({ where: { job_id: jobId } });
+    if (!profitability) {
+      profitability = await JobProfitability.create({ job_id: jobId, updated_by: userId });
+    }
+
+    res.json({
+      success: true,
+      data: { profitability },
+    });
+  }
+);
+
+// Create or update a job's profitability breakdown
+export const updateJobProfitability = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { jobId } = req.params;
+    const userId = req.user?.userId;
+    const { revenue, direct_cost, overheads, one_time_costs } = req.body;
+
+    const job = await Job.findByPk(jobId);
+    if (!job) {
+      throw createError("Job not found", 404);
+    }
+    if (!isJobStaff(job, userId)) {
+      throw createError("You do not have permission to update this job", 403);
+    }
+
+    let profitability = await JobProfitability.findOne({ where: { job_id: jobId } });
+    if (!profitability) {
+      profitability = await JobProfitability.create({ job_id: jobId, updated_by: userId });
+    }
+
+    await profitability.update({
+      revenue: revenue !== undefined ? revenue : profitability.revenue,
+      direct_cost: direct_cost !== undefined ? direct_cost : profitability.direct_cost,
+      overheads: overheads !== undefined ? overheads : profitability.overheads,
+      one_time_costs: one_time_costs !== undefined ? one_time_costs : profitability.one_time_costs,
+      updated_by: userId,
+    } as any);
+
+    res.json({
+      success: true,
+      message: "Profitability updated successfully",
+      data: { profitability },
+    });
+  }
+);
+
 // Source candidates into a job's sourcing funnel (recruiter-initiated)
 export const sourceCandidates = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -1138,6 +1201,16 @@ export const createTask = asyncHandler(
       submission_id,
     } = req.body;
 
+    if (job_id) {
+      const job = await Job.findByPk(job_id);
+      if (!job) {
+        throw createError("Job not found", 404);
+      }
+      if (!isJobStaff(job, userId)) {
+        throw createError("You do not have permission to add tasks to this job", 403);
+      }
+    }
+
     const task = await Task.create({
       title,
       description,
@@ -1149,10 +1222,14 @@ export const createTask = asyncHandler(
       submission_id,
     });
 
+    const createdTask = await Task.findByPk(task.id, {
+      include: [jobPersonInclude("assignee"), jobPersonInclude("creator")],
+    });
+
     res.status(201).json({
       success: true,
       message: "Task created successfully",
-      data: task,
+      data: createdTask,
     });
   }
 );
@@ -1167,6 +1244,7 @@ export const listTasks = asyncHandler(
       status,
       priority,
       assigned_to_me,
+      job_id,
     } = req.query;
 
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
@@ -1174,7 +1252,18 @@ export const listTasks = asyncHandler(
     // Build where conditions
     const whereConditions: any = {};
 
-    if (assigned_to_me === "true") {
+    if (job_id) {
+      // Job-scoped view (e.g. the job's ToDos tab): visible to everyone
+      // staffed on the job, not just the task's own assignee/creator.
+      const job = await Job.findByPk(job_id as string);
+      if (!job) {
+        throw createError("Job not found", 404);
+      }
+      if (!isJobStaff(job, userId)) {
+        throw createError("You do not have permission to view this job's tasks", 403);
+      }
+      whereConditions.job_id = job_id;
+    } else if (assigned_to_me === "true") {
       whereConditions.assigned_to = userId;
     } else {
       whereConditions[Op.or] = [
@@ -1194,16 +1283,8 @@ export const listTasks = asyncHandler(
     const { rows: tasks, count: total } = await Task.findAndCountAll({
       where: whereConditions,
       include: [
-        {
-          model: User,
-          as: "assignee",
-          attributes: ["id", "email"],
-        },
-        {
-          model: User,
-          as: "creator",
-          attributes: ["id", "email"],
-        },
+        jobPersonInclude("assignee"),
+        jobPersonInclude("creator"),
         {
           model: Job,
           as: "job",
@@ -1215,7 +1296,7 @@ export const listTasks = asyncHandler(
           attributes: ["id", "status"],
         },
       ],
-      order: [["created_at", "DESC"]],
+      order: [["due_date", "ASC"], ["created_at", "DESC"]],
       limit: parseInt(limit as string),
       offset,
     });
@@ -1233,6 +1314,75 @@ export const listTasks = asyncHandler(
           items_per_page: parseInt(limit as string),
         },
       },
+    });
+  }
+);
+
+// Update a task's mutable fields (title, description, assignee, priority, due date, status)
+export const updateTask = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { taskId } = req.params;
+    const userId = req.user?.userId;
+
+    const task = await Task.findByPk(taskId, { include: [{ model: Job, as: "job" }] });
+    if (!task) {
+      throw createError("Task not found", 404);
+    }
+
+    const canManage = task.job
+      ? isJobStaff(task.job, userId)
+      : task.assigned_to === userId || task.created_by === userId;
+    if (!canManage) {
+      throw createError("You do not have permission to update this task", 403);
+    }
+
+    const { title, description, assigned_to, priority, due_date, status } = req.body;
+
+    await task.update({
+      title: title !== undefined ? title : task.title,
+      description: description !== undefined ? description : task.description,
+      assigned_to: assigned_to !== undefined ? assigned_to : task.assigned_to,
+      priority: priority !== undefined ? priority : task.priority,
+      due_date: due_date !== undefined ? due_date : task.due_date,
+      status: status !== undefined ? status : task.status,
+      completed_at: status === "completed" ? new Date() : status !== undefined ? null : task.completed_at,
+    } as any);
+
+    const updatedTask = await Task.findByPk(taskId, {
+      include: [jobPersonInclude("assignee"), jobPersonInclude("creator")],
+    });
+
+    res.json({
+      success: true,
+      message: "Task updated successfully",
+      data: updatedTask,
+    });
+  }
+);
+
+// Delete a task
+export const deleteTask = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { taskId } = req.params;
+    const userId = req.user?.userId;
+
+    const task = await Task.findByPk(taskId, { include: [{ model: Job, as: "job" }] });
+    if (!task) {
+      throw createError("Task not found", 404);
+    }
+
+    const canManage = task.job
+      ? isJobStaff(task.job, userId)
+      : task.assigned_to === userId || task.created_by === userId;
+    if (!canManage) {
+      throw createError("You do not have permission to delete this task", 403);
+    }
+
+    await task.destroy();
+
+    res.json({
+      success: true,
+      message: "Task deleted successfully",
     });
   }
 );

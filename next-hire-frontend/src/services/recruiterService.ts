@@ -133,6 +133,7 @@ export interface TeamMember {
   recruiterProfile?: {
     first_name?: string;
     last_name?: string;
+    phone?: string;
   };
 }
 
@@ -238,6 +239,9 @@ export interface Task {
   created_by: string;
   created_at: string;
   updated_at: string;
+  assignee?: TeamMember;
+  creator?: TeamMember;
+  job?: { id: string; job_id: string; title: string };
 }
 
 export interface CreateTaskRequest {
@@ -250,8 +254,49 @@ export interface CreateTaskRequest {
   submission_id?: string;
 }
 
+export interface UpdateTaskRequest {
+  title?: string;
+  description?: string;
+  assigned_to?: string;
+  priority?: TaskPriority;
+  due_date?: string;
+  status?: TaskStatus;
+}
+
 export interface UpdateTaskStatusRequest {
   status: TaskStatus;
+}
+
+// Job profitability types
+export interface JobProfitability {
+  id: string;
+  job_id: string;
+  revenue: {
+    billRate: { rate: number; hours: number };
+    overTime: { rate: number; hours: number };
+    incentives: { amount: number };
+  };
+  direct_cost: {
+    payRate: { rate: number; hours: number };
+    otPayRate: { rate: number; hours: number };
+    discount: { amount: number };
+    vendorCommission: { amount: number };
+  };
+  overheads: {
+    recruiterCommission: number;
+    employeeBenefits: number;
+    perDiems: number;
+  };
+  one_time_costs: { label: string; amount: number }[];
+  updated_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SingleJobProfitabilityResponse {
+  success: boolean;
+  data: { profitability: JobProfitability };
+  message?: string;
 }
 
 // API Response types
@@ -545,6 +590,7 @@ class RecruiterService {
     limit?: number;
     status?: TaskStatus;
     priority?: TaskPriority;
+    job_id?: string;
   } = {}): Promise<TasksResponse> {
     try {
       const params = new URLSearchParams();
@@ -567,6 +613,62 @@ class RecruiterService {
   async updateTaskStatus(taskId: string, data: UpdateTaskStatusRequest): Promise<SingleTaskResponse> {
     try {
       const response = await apiClient.put<SingleTaskResponse>(`/recruiter/tasks/${taskId}/status`, data);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Update a task's fields (title, description, assignee, priority, due date, status)
+   */
+  async updateTask(taskId: string, data: UpdateTaskRequest): Promise<SingleTaskResponse> {
+    try {
+      const response = await apiClient.put<SingleTaskResponse>(`/recruiter/tasks/${taskId}`, data);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Delete a task
+   */
+  async deleteTask(taskId: string): Promise<ApiResponse> {
+    try {
+      const response = await apiClient.delete<ApiResponse>(`/recruiter/tasks/${taskId}`);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get a job's profitability breakdown
+   */
+  async getJobProfitability(jobId: string): Promise<SingleJobProfitabilityResponse> {
+    try {
+      const response = await apiClient.get<SingleJobProfitabilityResponse>(
+        `/recruiter/jobs/${jobId}/profitability`
+      );
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Update a job's profitability breakdown
+   */
+  async updateJobProfitability(
+    jobId: string,
+    data: Partial<Pick<JobProfitability, "revenue" | "direct_cost" | "overheads" | "one_time_costs">>
+  ): Promise<SingleJobProfitabilityResponse> {
+    try {
+      const response = await apiClient.put<SingleJobProfitabilityResponse>(
+        `/recruiter/jobs/${jobId}/profitability`,
+        data
+      );
       return response.data;
     } catch (error: any) {
       throw this.handleError(error);

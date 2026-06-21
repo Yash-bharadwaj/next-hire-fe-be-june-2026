@@ -104,6 +104,7 @@ import { Separator } from "@/components/ui/separator";
 import { ExpandableText } from "@/components/ExpandableText";
 import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { formatCompactRange } from "@/lib/format";
+import type { TeamMember, Task, TaskPriority, JobProfitability } from "@/services/recruiterService";
 
 // Local type definitions
 interface Document {
@@ -271,6 +272,255 @@ const JobDetail = () => {
 
   // ── Attachments state ──────────────────────────────────────────────────
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+
+  // ── Team tab state ─────────────────────────────────────────────────────
+  const [teamOptions, setTeamOptions] = useState<TeamMember[]>([]);
+  const [assigningRole, setAssigningRole] = useState<
+    "assigned_to" | "primary_recruiter_id" | "account_manager_id" | null
+  >(null);
+  const [assigningValue, setAssigningValue] = useState("");
+  const [savingAssignment, setSavingAssignment] = useState(false);
+
+  useEffect(() => {
+    if (user?.role !== "recruiter") return;
+    recruiterService
+      .getTeamMembers()
+      .then(setTeamOptions)
+      .catch(() => {});
+  }, [user?.role]);
+
+  const formatTeamMemberName = (member: TeamMember) => {
+    const name = [member.recruiterProfile?.first_name, member.recruiterProfile?.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    return name || member.email;
+  };
+
+  const handleSaveAssignment = async () => {
+    if (!id || !assigningRole) return;
+    setSavingAssignment(true);
+    try {
+      await recruiterService.updateJob(id, { [assigningRole]: assigningValue || undefined } as any);
+      toast({ title: "Team updated" });
+      setAssigningRole(null);
+      setAssigningValue("");
+      refresh();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to update assignment",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
+
+  // ── ToDos tab state ────────────────────────────────────────────────────
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksLoaded, setTasksLoaded] = useState(false);
+  const [taskStatusFilter, setTaskStatusFilter] = useState("all");
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDueDate, setNewTaskDueDate] = useState("");
+  const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
+  const [newTaskAssignee, setNewTaskAssignee] = useState("");
+  const [savingTask, setSavingTask] = useState(false);
+  const [reassigningTaskId, setReassigningTaskId] = useState<string | null>(null);
+
+  const fetchTasks = useCallback(async () => {
+    if (!id) return;
+    setTasksLoading(true);
+    try {
+      const res = await recruiterService.getTasks({ job_id: id, limit: 100 });
+      setTasks((res as any)?.data?.tasks || []);
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to load tasks",
+        variant: "destructive",
+      });
+    } finally {
+      setTasksLoading(false);
+      setTasksLoaded(true);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === "todos" && !tasksLoaded) {
+      fetchTasks();
+    }
+  }, [activeTab, tasksLoaded, fetchTasks]);
+
+  const filteredTasks = tasks.filter(
+    (t) => taskStatusFilter === "all" || t.status === taskStatusFilter
+  );
+
+  const handleAddTask = async () => {
+    if (!id || !newTaskTitle.trim()) return;
+    setSavingTask(true);
+    try {
+      await recruiterService.createTask({
+        title: newTaskTitle.trim(),
+        job_id: id,
+        priority: newTaskPriority,
+        due_date: newTaskDueDate || undefined,
+        assigned_to: newTaskAssignee || undefined,
+      });
+      toast({ title: "Task added" });
+      setNewTaskTitle("");
+      setNewTaskDueDate("");
+      setNewTaskPriority("medium");
+      setNewTaskAssignee("");
+      fetchTasks();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to add task",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
+  const handleToggleTask = async (task: Task) => {
+    try {
+      const nextStatus = task.status === "completed" ? "pending" : "completed";
+      await recruiterService.updateTask(task.id, { status: nextStatus });
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t))
+      );
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to update task",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRescheduleTask = async (taskId: string, dueDate: Date) => {
+    try {
+      await recruiterService.updateTask(taskId, { due_date: dueDate.toISOString() });
+      toast({ title: "Task rescheduled" });
+      fetchTasks();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to reschedule task",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleReassignTask = async (taskId: string, assigneeId: string) => {
+    try {
+      await recruiterService.updateTask(taskId, { assigned_to: assigneeId });
+      toast({ title: "Task reassigned" });
+      setReassigningTaskId(null);
+      fetchTasks();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to reassign task",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await recruiterService.deleteTask(taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to delete task",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // ── Profitability tab state ────────────────────────────────────────────
+  const [profitability, setProfitability] = useState<JobProfitability | null>(null);
+  const [profitabilityLoading, setProfitabilityLoading] = useState(false);
+  const [profitabilityLoaded, setProfitabilityLoaded] = useState(false);
+  const [savingProfitability, setSavingProfitability] = useState(false);
+
+  const fetchProfitability = useCallback(async () => {
+    if (!id) return;
+    setProfitabilityLoading(true);
+    try {
+      const res = await recruiterService.getJobProfitability(id);
+      setProfitability(res.data.profitability);
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to load profitability",
+        variant: "destructive",
+      });
+    } finally {
+      setProfitabilityLoading(false);
+      setProfitabilityLoaded(true);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === "profitability" && !profitabilityLoaded) {
+      fetchProfitability();
+    }
+  }, [activeTab, profitabilityLoaded, fetchProfitability]);
+
+  const updateProfitabilityDraft = (updater: (current: JobProfitability) => JobProfitability) => {
+    setProfitability((prev) => (prev ? updater(prev) : prev));
+  };
+
+  const handleSaveProfitability = async () => {
+    if (!id || !profitability) return;
+    setSavingProfitability(true);
+    try {
+      const res = await recruiterService.updateJobProfitability(id, {
+        revenue: profitability.revenue,
+        direct_cost: profitability.direct_cost,
+        overheads: profitability.overheads,
+        one_time_costs: profitability.one_time_costs,
+      });
+      setProfitability(res.data.profitability);
+      toast({ title: "Profitability saved" });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to save profitability",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingProfitability(false);
+    }
+  };
+
+  const profitabilityTotals = (() => {
+    if (!profitability) {
+      return { totalRevenue: 0, totalDirectCost: 0, totalOverheads: 0, totalOneTimeCosts: 0, netMargin: 0 };
+    }
+    const { revenue, direct_cost, overheads, one_time_costs } = profitability;
+    const totalRevenue =
+      revenue.billRate.rate * revenue.billRate.hours +
+      revenue.overTime.rate * revenue.overTime.hours +
+      revenue.incentives.amount;
+    const totalDirectCost =
+      direct_cost.payRate.rate * direct_cost.payRate.hours +
+      direct_cost.otPayRate.rate * direct_cost.otPayRate.hours +
+      direct_cost.discount.amount +
+      direct_cost.vendorCommission.amount;
+    const totalOverheads =
+      overheads.recruiterCommission + overheads.employeeBenefits + overheads.perDiems;
+    const totalOneTimeCosts = one_time_costs.reduce((sum, c) => sum + (c.amount || 0), 0);
+    const netMargin = totalRevenue - totalDirectCost - totalOverheads - totalOneTimeCosts;
+    return { totalRevenue, totalDirectCost, totalOverheads, totalOneTimeCosts, netMargin };
+  })();
 
   // Notes filter and sort state
   const [notesFilter, setNotesFilter] = useState("all");
@@ -1007,7 +1257,7 @@ const JobDetail = () => {
       <Card className="card-gradient border-green-200/50 shadow-lg">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="px-6 pt-6 pb-2">
-            <TabsList className={`grid w-full lg:w-auto bg-gradient-to-r from-green-50 to-blue-50 border border-green-200/50 ${user?.role === "recruiter" ? "grid-cols-6" : "grid-cols-5"}`}>
+            <TabsList className={`grid w-full lg:w-auto bg-gradient-to-r from-green-50 to-blue-50 border border-green-200/50 ${user?.role === "recruiter" ? "grid-cols-9" : "grid-cols-5"}`}>
               <TabsTrigger
                 value="overview"
                 className="text-xs font-medium data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-green-600 data-[state=active]:text-white"
@@ -1046,6 +1296,28 @@ const JobDetail = () => {
               >
                 Stats
               </TabsTrigger>
+              {user?.role === "recruiter" && (
+                <>
+                  <TabsTrigger
+                    value="todos"
+                    className="text-xs font-medium data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-green-600 data-[state=active]:text-white"
+                  >
+                    ToDos
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="team"
+                    className="text-xs font-medium data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-green-600 data-[state=active]:text-white"
+                  >
+                    Team
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="profitability"
+                    className="text-xs font-medium data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-green-600 data-[state=active]:text-white"
+                  >
+                    Profitability
+                  </TabsTrigger>
+                </>
+              )}
             </TabsList>
           </div>
 
@@ -1721,6 +1993,791 @@ const JobDetail = () => {
                 </Card>
               </div>
             </TabsContent>
+
+            {user?.role === "recruiter" && (
+              <TabsContent value="todos" className="space-y-6 mt-0">
+                <Card className="card-gradient border-green-200/50 shadow-lg">
+                  <CardHeader>
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <CardTitle className="text-xl bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
+                        Job Tasks
+                      </CardTitle>
+                      <div className="flex items-center gap-2">
+                        <Select value={taskStatusFilter} onValueChange={setTaskStatusFilter}>
+                          <SelectTrigger className="w-36 h-8 text-xs border-green-200">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Tasks</SelectItem>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="in_progress">In Progress</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Dialog open={showAddTask} onOpenChange={setShowAddTask}>
+                          <DialogTrigger asChild>
+                            <Button size="sm" className="bg-gradient-to-r from-green-500 to-green-600">
+                              <Plus className="w-4 h-4 mr-1" />
+                              Add Task
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Add Task</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-3">
+                              <Input
+                                placeholder="Task title"
+                                value={newTaskTitle}
+                                onChange={(e) => setNewTaskTitle(e.target.value)}
+                              />
+                              <div className="grid grid-cols-2 gap-3">
+                                <Input
+                                  type="date"
+                                  value={newTaskDueDate}
+                                  onChange={(e) => setNewTaskDueDate(e.target.value)}
+                                />
+                                <Select value={newTaskPriority} onValueChange={(v) => setNewTaskPriority(v as TaskPriority)}>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Priority" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="low">Low</SelectItem>
+                                    <SelectItem value="medium">Medium</SelectItem>
+                                    <SelectItem value="high">High</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <Select value={newTaskAssignee} onValueChange={setNewTaskAssignee}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Assign to (optional)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {teamOptions.map((member) => (
+                                    <SelectItem key={member.id} value={member.id}>
+                                      {formatTeamMemberName(member)}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2">
+                              <Button variant="outline" onClick={() => setShowAddTask(false)}>
+                                Cancel
+                              </Button>
+                              <Button
+                                onClick={async () => {
+                                  await handleAddTask();
+                                  setShowAddTask(false);
+                                }}
+                                disabled={!newTaskTitle.trim() || savingTask}
+                              >
+                                {savingTask ? "Adding..." : "Add Task"}
+                              </Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {tasksLoading ? (
+                      <div className="flex items-center justify-center py-10 text-gray-500">
+                        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                        Loading tasks...
+                      </div>
+                    ) : filteredTasks.length === 0 ? (
+                      <div className="text-center py-10 text-gray-500">
+                        <CheckSquare className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                        <p>No tasks for this job yet.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {filteredTasks.map((todo) => (
+                          <div
+                            key={todo.id}
+                            className="border border-green-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-center justify-between gap-3 flex-wrap">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <Checkbox
+                                  checked={todo.status === "completed"}
+                                  onCheckedChange={() => handleToggleTask(todo)}
+                                  className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                                />
+                                <div className="min-w-0">
+                                  <h4
+                                    className={`font-semibold truncate ${
+                                      todo.status === "completed" ? "line-through text-gray-500" : "text-gray-900"
+                                    }`}
+                                  >
+                                    {todo.title}
+                                  </h4>
+                                  <div className="flex items-center gap-3 text-sm text-gray-600">
+                                    <span>
+                                      Due: {todo.due_date ? new Date(todo.due_date).toLocaleDateString() : "—"}
+                                    </span>
+                                    {todo.assignee && (
+                                      <span>Assigned to: {formatTeamMemberName(todo.assignee)}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <Badge
+                                  className={`text-xs ${
+                                    todo.priority === "high"
+                                      ? "bg-red-100 text-red-800 border-red-200"
+                                      : todo.priority === "medium"
+                                      ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                                      : "bg-green-100 text-green-800 border-green-200"
+                                  }`}
+                                >
+                                  {todo.priority}
+                                </Badge>
+
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button size="sm" variant="outline" className="text-blue-600 hover:bg-blue-50">
+                                      <Calendar className="w-4 h-4" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0">
+                                    <CalendarComponent
+                                      mode="single"
+                                      selected={todo.due_date ? new Date(todo.due_date) : undefined}
+                                      onSelect={(date) => date && handleRescheduleTask(todo.id, date)}
+                                      initialFocus
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+
+                                <Dialog
+                                  open={reassigningTaskId === todo.id}
+                                  onOpenChange={(open) => setReassigningTaskId(open ? todo.id : null)}
+                                >
+                                  <DialogTrigger asChild>
+                                    <Button size="sm" variant="outline" className="text-purple-600 hover:bg-purple-50">
+                                      <User className="w-4 h-4" />
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent>
+                                    <DialogHeader>
+                                      <DialogTitle>Reassign Task</DialogTitle>
+                                    </DialogHeader>
+                                    <Select onValueChange={(v) => handleReassignTask(todo.id, v)}>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select assignee" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {teamOptions.map((member) => (
+                                          <SelectItem key={member.id} value={member.id}>
+                                            {formatTeamMemberName(member)}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </DialogContent>
+                                </Dialog>
+
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeleteTask(todo.id)}
+                                  className="text-red-600 hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
+
+            {user?.role === "recruiter" && (
+              <TabsContent value="team" className="space-y-6 mt-0">
+                <h3 className="text-xl font-semibold bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
+                  Team
+                </h3>
+                <div className="grid md:grid-cols-2 gap-6">
+                  {(
+                    [
+                      { key: "created_by", label: "Created By", person: job?.creator, editable: false },
+                      { key: "assigned_to", label: "Assigned To", person: job?.assignee, editable: true },
+                      { key: "primary_recruiter_id", label: "Primary Recruiter", person: job?.primaryRecruiter, editable: true },
+                      { key: "account_manager_id", label: "Account Manager", person: job?.accountManager, editable: true },
+                    ] as const
+                  ).map((role) => (
+                    <Card key={role.key} className="card-gradient border-green-200/50 shadow-lg">
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <p className="text-sm font-medium text-gray-500">{role.label}</p>
+                          {role.editable && (
+                            <Dialog
+                              open={assigningRole === role.key}
+                              onOpenChange={(open) => {
+                                setAssigningRole(open ? (role.key as any) : null);
+                                setAssigningValue(role.person?.id || "");
+                              }}
+                            >
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="border-green-300 text-green-700 hover:bg-green-50">
+                                  <Edit3 className="w-3 h-3 mr-1" />
+                                  Change
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Change {role.label}</DialogTitle>
+                                </DialogHeader>
+                                <Select value={assigningValue} onValueChange={setAssigningValue}>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select recruiter" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {teamOptions.map((member) => (
+                                      <SelectItem key={member.id} value={member.id}>
+                                        {formatTeamMemberName(member)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <div className="flex justify-end gap-2 pt-2">
+                                  <Button variant="outline" onClick={() => setAssigningRole(null)}>
+                                    Cancel
+                                  </Button>
+                                  <Button onClick={handleSaveAssignment} disabled={savingAssignment || !assigningValue}>
+                                    {savingAssignment ? "Saving..." : "Save"}
+                                  </Button>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          )}
+                        </div>
+                        {role.person ? (
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                              {formatTeamMemberName(role.person as any)
+                                .split(" ")
+                                .map((p) => p[0])
+                                .slice(0, 2)
+                                .join("")
+                                .toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-800">{formatTeamMemberName(role.person as any)}</p>
+                              <a href={`mailto:${role.person.email}`} className="text-sm text-blue-600 hover:underline">
+                                {role.person.email}
+                              </a>
+                              {(role.person as any)?.recruiterProfile?.phone && (
+                                <p className="text-sm text-gray-500">
+                                  {(role.person as any).recruiterProfile.phone}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-gray-400 text-sm">Not assigned</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+
+            {user?.role === "recruiter" && (
+              <TabsContent value="profitability" className="space-y-6 mt-0">
+                {profitabilityLoading || !profitability ? (
+                  <div className="flex items-center justify-center py-10 text-gray-500">
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                    Loading profitability...
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-xl font-semibold bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
+                        Profitability Analysis
+                      </h3>
+                      <Button className="button-gradient shadow-md" onClick={handleSaveProfitability} disabled={savingProfitability}>
+                        <Save className="w-4 h-4 mr-2" />
+                        {savingProfitability ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                      <Card className="card-gradient border-green-200/50 shadow-lg">
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl font-bold text-green-600">
+                            ${profitabilityTotals.totalRevenue.toLocaleString()}
+                          </div>
+                          <div className="text-sm text-gray-600">Total Revenue</div>
+                        </CardContent>
+                      </Card>
+                      <Card className="card-gradient border-red-200/50 shadow-lg">
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl font-bold text-red-600">
+                            ${profitabilityTotals.totalDirectCost.toLocaleString()}
+                          </div>
+                          <div className="text-sm text-gray-600">Total Direct Cost</div>
+                        </CardContent>
+                      </Card>
+                      <Card className="card-gradient border-orange-200/50 shadow-lg">
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl font-bold text-orange-600">
+                            ${profitabilityTotals.totalOverheads.toLocaleString()}
+                          </div>
+                          <div className="text-sm text-gray-600">Total Overheads</div>
+                        </CardContent>
+                      </Card>
+                      <Card className="card-gradient border-blue-200/50 shadow-lg">
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl font-bold text-blue-600">
+                            ${profitabilityTotals.totalOneTimeCosts.toLocaleString()}
+                          </div>
+                          <div className="text-sm text-gray-600">One Time Costs</div>
+                        </CardContent>
+                      </Card>
+                      <Card className="card-gradient border-purple-200/50 shadow-lg">
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl font-bold text-purple-600">
+                            ${profitabilityTotals.netMargin.toLocaleString()}
+                          </div>
+                          <div className="text-sm text-gray-600">Net Margin</div>
+                          <div className="text-xs text-purple-600 mt-1">
+                            {profitabilityTotals.totalRevenue > 0
+                              ? `${((profitabilityTotals.netMargin / profitabilityTotals.totalRevenue) * 100).toFixed(1)}% margin`
+                              : "—"}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <Card className="card-gradient border-green-200/50 shadow-lg">
+                      <CardHeader className="bg-gradient-to-r from-green-50 to-green-100 border-b border-green-200/50">
+                        <CardTitle className="text-lg bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-green-600" />
+                          Revenue
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead className="bg-green-50 border-b border-green-200/50">
+                              <tr>
+                                <th className="text-left p-3 font-semibold text-gray-700">Component</th>
+                                <th className="text-left p-3 font-semibold text-gray-700">Rate</th>
+                                <th className="text-left p-3 font-semibold text-gray-700">Hours</th>
+                                <th className="text-left p-3 font-semibold text-gray-700">Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="border-b border-green-100">
+                                <td className="p-3 font-medium">Bill Rate</td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.revenue.billRate.rate}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        revenue: {
+                                          ...p.revenue,
+                                          billRate: { ...p.revenue.billRate, rate: Number(e.target.value) },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.revenue.billRate.hours}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        revenue: {
+                                          ...p.revenue,
+                                          billRate: { ...p.revenue.billRate, hours: Number(e.target.value) },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td className="p-3 font-bold text-green-600">
+                                  ${(profitability.revenue.billRate.rate * profitability.revenue.billRate.hours).toLocaleString()}
+                                </td>
+                              </tr>
+                              <tr className="border-b border-green-100">
+                                <td className="p-3 font-medium">Overtime</td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.revenue.overTime.rate}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        revenue: {
+                                          ...p.revenue,
+                                          overTime: { ...p.revenue.overTime, rate: Number(e.target.value) },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.revenue.overTime.hours}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        revenue: {
+                                          ...p.revenue,
+                                          overTime: { ...p.revenue.overTime, hours: Number(e.target.value) },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td className="p-3 font-bold text-green-600">
+                                  ${(profitability.revenue.overTime.rate * profitability.revenue.overTime.hours).toLocaleString()}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="p-3 font-medium">Incentives</td>
+                                <td className="p-3 text-gray-400">—</td>
+                                <td className="p-3 text-gray-400">—</td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.revenue.incentives.amount}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        revenue: {
+                                          ...p.revenue,
+                                          incentives: { amount: Number(e.target.value) },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="card-gradient border-red-200/50 shadow-lg">
+                      <CardHeader className="bg-gradient-to-r from-red-50 to-red-100 border-b border-red-200/50">
+                        <CardTitle className="text-lg bg-gradient-to-r from-red-700 to-red-600 bg-clip-text text-transparent flex items-center gap-2">
+                          <DollarSign className="w-5 h-5 text-red-600" />
+                          Direct Cost
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead className="bg-red-50 border-b border-red-200/50">
+                              <tr>
+                                <th className="text-left p-3 font-semibold text-gray-700">Component</th>
+                                <th className="text-left p-3 font-semibold text-gray-700">Rate</th>
+                                <th className="text-left p-3 font-semibold text-gray-700">Hours</th>
+                                <th className="text-left p-3 font-semibold text-gray-700">Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="border-b border-red-100">
+                                <td className="p-3 font-medium">Pay Rate</td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.direct_cost.payRate.rate}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        direct_cost: {
+                                          ...p.direct_cost,
+                                          payRate: { ...p.direct_cost.payRate, rate: Number(e.target.value) },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.direct_cost.payRate.hours}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        direct_cost: {
+                                          ...p.direct_cost,
+                                          payRate: { ...p.direct_cost.payRate, hours: Number(e.target.value) },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td className="p-3 font-bold text-red-600">
+                                  ${(profitability.direct_cost.payRate.rate * profitability.direct_cost.payRate.hours).toLocaleString()}
+                                </td>
+                              </tr>
+                              <tr className="border-b border-red-100">
+                                <td className="p-3 font-medium">OT Pay Rate</td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.direct_cost.otPayRate.rate}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        direct_cost: {
+                                          ...p.direct_cost,
+                                          otPayRate: { ...p.direct_cost.otPayRate, rate: Number(e.target.value) },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.direct_cost.otPayRate.hours}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        direct_cost: {
+                                          ...p.direct_cost,
+                                          otPayRate: { ...p.direct_cost.otPayRate, hours: Number(e.target.value) },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td className="p-3 font-bold text-red-600">
+                                  ${(profitability.direct_cost.otPayRate.rate * profitability.direct_cost.otPayRate.hours).toLocaleString()}
+                                </td>
+                              </tr>
+                              <tr className="border-b border-red-100">
+                                <td className="p-3 font-medium">Discount</td>
+                                <td className="p-3 text-gray-400">—</td>
+                                <td className="p-3 text-gray-400">—</td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.direct_cost.discount.amount}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        direct_cost: { ...p.direct_cost, discount: { amount: Number(e.target.value) } },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="p-3 font-medium">Vendor Commission</td>
+                                <td className="p-3 text-gray-400">—</td>
+                                <td className="p-3 text-gray-400">—</td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.direct_cost.vendorCommission.amount}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        direct_cost: {
+                                          ...p.direct_cost,
+                                          vendorCommission: { amount: Number(e.target.value) },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="card-gradient border-orange-200/50 shadow-lg">
+                      <CardHeader className="bg-gradient-to-r from-orange-50 to-orange-100 border-b border-orange-200/50">
+                        <CardTitle className="text-lg bg-gradient-to-r from-orange-700 to-orange-600 bg-clip-text text-transparent flex items-center gap-2">
+                          <Briefcase className="w-5 h-5 text-orange-600" />
+                          Overheads
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead className="bg-orange-50 border-b border-orange-200/50">
+                              <tr>
+                                <th className="text-left p-3 font-semibold text-gray-700">Component</th>
+                                <th className="text-left p-3 font-semibold text-gray-700">Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="border-b border-orange-100">
+                                <td className="p-3 font-medium">Recruiter Commission</td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.overheads.recruiterCommission}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        overheads: { ...p.overheads, recruiterCommission: Number(e.target.value) },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                              <tr className="border-b border-orange-100">
+                                <td className="p-3 font-medium">Employee Benefits</td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.overheads.employeeBenefits}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        overheads: { ...p.overheads, employeeBenefits: Number(e.target.value) },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="p-3 font-medium">Per Diems</td>
+                                <td className="p-3">
+                                  <Input
+                                    type="number"
+                                    className="w-24"
+                                    value={profitability.overheads.perDiems}
+                                    onChange={(e) =>
+                                      updateProfitabilityDraft((p) => ({
+                                        ...p,
+                                        overheads: { ...p.overheads, perDiems: Number(e.target.value) },
+                                      }))
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="card-gradient border-blue-200/50 shadow-lg">
+                      <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 border-b border-blue-200/50">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-lg bg-gradient-to-r from-blue-700 to-blue-600 bg-clip-text text-transparent flex items-center gap-2">
+                            <Clock className="w-5 h-5 text-blue-600" />
+                            One-Time Costs
+                          </CardTitle>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              updateProfitabilityDraft((p) => ({
+                                ...p,
+                                one_time_costs: [...p.one_time_costs, { label: "New cost", amount: 0 }],
+                              }))
+                            }
+                          >
+                            <Plus className="w-4 h-4 mr-1" />
+                            Add Line
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        {profitability.one_time_costs.length === 0 ? (
+                          <p className="text-center text-gray-500 py-6">No one-time costs added.</p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <tbody>
+                                {profitability.one_time_costs.map((cost, idx) => (
+                                  <tr key={idx} className="border-b border-blue-100">
+                                    <td className="p-3">
+                                      <Input
+                                        value={cost.label}
+                                        onChange={(e) =>
+                                          updateProfitabilityDraft((p) => ({
+                                            ...p,
+                                            one_time_costs: p.one_time_costs.map((c, i) =>
+                                              i === idx ? { ...c, label: e.target.value } : c
+                                            ),
+                                          }))
+                                        }
+                                      />
+                                    </td>
+                                    <td className="p-3">
+                                      <Input
+                                        type="number"
+                                        className="w-32"
+                                        value={cost.amount}
+                                        onChange={(e) =>
+                                          updateProfitabilityDraft((p) => ({
+                                            ...p,
+                                            one_time_costs: p.one_time_costs.map((c, i) =>
+                                              i === idx ? { ...c, amount: Number(e.target.value) } : c
+                                            ),
+                                          }))
+                                        }
+                                      />
+                                    </td>
+                                    <td className="p-3">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-red-600 hover:bg-red-50"
+                                        onClick={() =>
+                                          updateProfitabilityDraft((p) => ({
+                                            ...p,
+                                            one_time_costs: p.one_time_costs.filter((_, i) => i !== idx),
+                                          }))
+                                        }
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
+              </TabsContent>
+            )}
           </div>
         </Tabs>
       </Card>

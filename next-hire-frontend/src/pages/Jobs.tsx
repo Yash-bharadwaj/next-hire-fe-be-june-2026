@@ -57,8 +57,12 @@ import {
   Sparkles,
   MoreHorizontal,
   ChevronDown,
-  UserCog,
-  Settings,
+  Share2,
+  UserCheck,
+  Activity,
+  Mail,
+  Bot,
+  RotateCcw,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useJobs, useJobManagement } from "@/hooks/useJobs";
@@ -697,17 +701,37 @@ const Jobs = () => {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 bg-white border border-gray-200 shadow-lg z-50">
               <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
-                <UserCog className="w-4 h-4 mr-2" />
-                Bulk Assign Recruiter
+                <Share2 className="w-4 h-4 mr-2" />
+                Post to Job Boards
+              </DropdownMenuItem>
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <UserCheck className="w-4 h-4 mr-2" />
+                Assign to recruiter
+              </DropdownMenuItem>
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <Activity className="w-4 h-4 mr-2" />
+                Change status
+              </DropdownMenuItem>
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Mark for deletion
+              </DropdownMenuItem>
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <Users className="w-4 h-4 mr-2" />
+                Send to Vendors
+              </DropdownMenuItem>
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <Mail className="w-4 h-4 mr-2" />
+                Send Hotlist email
+              </DropdownMenuItem>
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <Bot className="w-4 h-4 mr-2" />
+                AI Recruiter
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-gray-200" />
               <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
-                <UploadCloud className="w-4 h-4 mr-2" />
-                Import Jobs
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
-                <Settings className="w-4 h-4 mr-2" />
-                Job Settings
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Mass changes
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
