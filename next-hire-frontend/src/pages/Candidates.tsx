@@ -27,6 +27,13 @@ import {
 import { DataGrid } from "@/components/ui/data-grid";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
   Plus,
   User,
   Star,
@@ -42,6 +49,10 @@ import {
   UploadCloud,
   Sparkles,
   CheckCircle2,
+  MoreHorizontal,
+  ChevronDown,
+  UserCog,
+  Settings,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -540,6 +551,31 @@ const Candidates = () => {
             <Upload className="w-3 h-3 mr-1" />
             Parse Resume
           </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="text-xs">
+                <MoreHorizontal className="w-3 h-3 mr-1" />
+                Actions
+                <ChevronDown className="w-3 h-3 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 bg-white border border-gray-200 shadow-lg z-50">
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <UserCog className="w-4 h-4 mr-2" />
+                Bulk Assign Recruiter
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-gray-200" />
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <UploadCloud className="w-4 h-4 mr-2" />
+                Import Candidates
+              </DropdownMenuItem>
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <Settings className="w-4 h-4 mr-2" />
+                Candidate Settings
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button
             onClick={() => setShowAddDialog(true)}

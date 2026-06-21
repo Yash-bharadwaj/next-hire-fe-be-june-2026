@@ -31,6 +31,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
   Plus,
   Eye,
   Edit,
@@ -48,6 +55,10 @@ import {
   Upload,
   UploadCloud,
   Sparkles,
+  MoreHorizontal,
+  ChevronDown,
+  UserCog,
+  Settings,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useJobs, useJobManagement } from "@/hooks/useJobs";
@@ -676,6 +687,30 @@ const Jobs = () => {
             <Upload className="h-4 w-4" />
             <span>Parse Job Description</span>
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="flex items-center space-x-2">
+                <MoreHorizontal className="h-4 w-4" />
+                <span>Actions</span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 bg-white border border-gray-200 shadow-lg z-50">
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <UserCog className="w-4 h-4 mr-2" />
+                Bulk Assign Recruiter
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-gray-200" />
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <UploadCloud className="w-4 h-4 mr-2" />
+                Import Jobs
+              </DropdownMenuItem>
+              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                <Settings className="w-4 h-4 mr-2" />
+                Job Settings
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             onClick={() => navigate("/dashboard/jobs/new")}
             className="flex items-center space-x-2"
