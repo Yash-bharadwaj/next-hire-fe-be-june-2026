@@ -19,21 +19,42 @@ export interface Interview {
   created_by: string;
   created_at: string;
   updated_at: string;
+  attachments?: { url: string; name: string; by?: string; at: string }[];
+  notes_history?: { note: string; by?: string; at: string }[];
   submission?: {
     id: string;
     status: string;
+    ai_score?: number;
+    expected_salary?: number;
+    cover_letter?: string;
     job?: {
       id: string;
       job_id: string;
       title: string;
       company_name: string;
+      location?: string;
+      job_type?: string;
+      salary_min?: number;
+      salary_max?: number;
+      bill_rate_min?: number;
+      bill_rate_max?: number;
+      client?: { id: string; name: string; primary_email?: string; primary_phone?: string };
+      clientContact?: { id: string; name: string; title?: string; email?: string; phone?: string };
     };
     candidate?: {
       id: string;
       first_name: string;
       last_name: string;
-      email: string;
       phone?: string;
+      location?: string;
+      experience_years?: number;
+      skills?: string[];
+      linkedin_url?: string;
+      portfolio_url?: string;
+      resume_url?: string;
+      current_salary?: number;
+      expected_salary?: number;
+      user?: { id: string; email: string };
     };
   };
   interviewer?: {
@@ -62,6 +83,7 @@ export interface InterviewFilters {
   date_from?: string;
   date_to?: string;
   search?: string;
+  submission_id?: string;
 }
 
 export interface CreateInterviewRequest {
@@ -160,6 +182,19 @@ class InterviewService {
 
   async deleteInterview(id: string): Promise<{ success: boolean; message: string }> {
     const response = await apiClient.delete(`${this.baseUrl}/${id}`);
+    return response.data;
+  }
+
+  async addInterviewNote(id: string, note: string): Promise<{ success: boolean; data: { notes_history: any[] } }> {
+    const response = await apiClient.post(`${this.baseUrl}/${id}/notes`, { note });
+    return response.data;
+  }
+
+  async addInterviewAttachment(
+    id: string,
+    data: { url: string; name?: string }
+  ): Promise<{ success: boolean; data: { attachments: any[] } }> {
+    const response = await apiClient.post(`${this.baseUrl}/${id}/attachments`, data);
     return response.data;
   }
 

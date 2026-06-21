@@ -356,6 +356,7 @@ const listTasksValidation = [
     .isIn(["low", "medium", "high"])
     .withMessage("Invalid priority"),
   query("job_id").optional().isUUID().withMessage("Valid job ID is required"),
+  query("submission_id").optional().isUUID().withMessage("Valid submission ID is required"),
 ];
 
 const updateTaskStatusValidation = [

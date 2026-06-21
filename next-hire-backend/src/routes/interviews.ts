@@ -9,6 +9,8 @@ import {
   updateInterview,
   deleteInterview,
   getInterviewStats,
+  addInterviewNote,
+  addInterviewAttachment,
 } from "../controllers/interviewController";
 
 const router = Router();
@@ -39,6 +41,21 @@ const paginationValidation = [
     .optional()
     .isISO8601()
     .withMessage("Invalid date format for date_to"),
+  query("submission_id")
+    .optional()
+    .isUUID()
+    .withMessage("Valid submission ID is required"),
+];
+
+const noteValidation = [
+  param("id").isUUID().withMessage("Valid interview ID is required"),
+  body("note").trim().notEmpty().withMessage("Note text is required"),
+];
+
+const attachmentValidation = [
+  param("id").isUUID().withMessage("Valid interview ID is required"),
+  body("url").trim().notEmpty().withMessage("Attachment URL is required"),
+  body("name").optional().isString(),
 ];
 
 const createInterviewValidation = [
@@ -118,5 +135,11 @@ router.put("/:id", updateInterviewValidation, validate, updateInterview);
 
 // Delete interview (recruiters only)
 router.delete("/:id", interviewIdValidation, validate, deleteInterview);
+
+// Notes
+router.post("/:id/notes", noteValidation, validate, addInterviewNote);
+
+// Attachments (URL-based)
+router.post("/:id/attachments", attachmentValidation, validate, addInterviewAttachment);
 
 export default router;

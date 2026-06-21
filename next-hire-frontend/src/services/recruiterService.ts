@@ -591,6 +591,7 @@ class RecruiterService {
     status?: TaskStatus;
     priority?: TaskPriority;
     job_id?: string;
+    submission_id?: string;
   } = {}): Promise<TasksResponse> {
     try {
       const params = new URLSearchParams();

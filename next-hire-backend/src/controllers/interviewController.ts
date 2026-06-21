@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { Op } from "sequelize";
-import { Interview, Submission, Job, Candidate, User, Recruiter } from "../models";
+import { Interview, Submission, Job, Candidate, User, Recruiter, BusinessPartner, BusinessPartnerContact } from "../models";
+import { isJobStaff } from "../utils/jobPermissions";
 import { sequelize } from "../config/database";
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthRequest } from "../middleware/auth";
@@ -20,6 +21,7 @@ export const getInterviews = asyncHandler(async (req: AuthRequest, res: Response
     date_from,
     date_to,
     search,
+    submission_id,
   } = req.query;
 
   const offset = (Number(page) - 1) * Number(limit);
@@ -33,6 +35,10 @@ export const getInterviews = asyncHandler(async (req: AuthRequest, res: Response
 
   if (interview_type) {
     whereConditions.interview_type = interview_type;
+  }
+
+  if (submission_id) {
+    whereConditions.submission_id = submission_id;
   }
 
   if (date_from && date_to) {
@@ -50,9 +56,18 @@ export const getInterviews = asyncHandler(async (req: AuthRequest, res: Response
   }
 
   // Role-based filtering
+  const andConditions: any[] = [];
   if (userRole === "recruiter") {
-    // Recruiters see interviews for their jobs
-    whereConditions["$submission.job.created_by$"] = userId;
+    // Recruiters see interviews for jobs they're staffed on (created,
+    // assigned, or in a primary recruiter / account manager role)
+    andConditions.push({
+      [Op.or]: [
+        { "$submission.job.created_by$": userId },
+        { "$submission.job.assigned_to$": userId },
+        { "$submission.job.primary_recruiter_id$": userId },
+        { "$submission.job.account_manager_id$": userId },
+      ],
+    });
   } else if (userRole === "candidate") {
     // Candidates see their own interviews
     whereConditions["$submission.candidate.user_id$"] = userId;
@@ -115,11 +130,17 @@ export const getInterviews = asyncHandler(async (req: AuthRequest, res: Response
 
   // Add search functionality
   if (search) {
-    whereConditions[Op.or] = [
-      { "$submission.job.title$": { [Op.iLike]: `%${search}%` } },
-      { "$submission.candidate.first_name$": { [Op.iLike]: `%${search}%` } },
-      { "$submission.candidate.last_name$": { [Op.iLike]: `%${search}%` } },
-    ];
+    andConditions.push({
+      [Op.or]: [
+        { "$submission.job.title$": { [Op.iLike]: `%${search}%` } },
+        { "$submission.candidate.first_name$": { [Op.iLike]: `%${search}%` } },
+        { "$submission.candidate.last_name$": { [Op.iLike]: `%${search}%` } },
+      ],
+    });
+  }
+
+  if (andConditions.length > 0) {
+    whereConditions[Op.and] = andConditions;
   }
 
   const { count, rows: interviews } = await Interview.findAndCountAll({
@@ -167,12 +188,34 @@ export const getInterviewById = asyncHandler(async (req: AuthRequest, res: Respo
           {
             model: Job,
             as: "job",
-            attributes: ["id", "job_id", "title", "company_name", "location", "created_by", "assigned_to"],
+            attributes: [
+              "id", "job_id", "title", "company_name", "location",
+              "job_type", "salary_min", "salary_max", "bill_rate_min", "bill_rate_max",
+              "created_by", "assigned_to",
+            ],
+            include: [
+              {
+                model: BusinessPartner,
+                as: "client",
+                attributes: ["id", "name", "primary_email", "primary_phone"],
+                required: false,
+              },
+              {
+                model: BusinessPartnerContact,
+                as: "clientContact",
+                attributes: ["id", "name", "title", "email", "phone"],
+                required: false,
+              },
+            ],
           },
           {
             model: Candidate,
             as: "candidate",
-            attributes: ["id", "first_name", "last_name", "phone", "user_id"],
+            attributes: [
+              "id", "first_name", "last_name", "phone", "user_id", "location",
+              "experience_years", "skills", "linkedin_url", "portfolio_url",
+              "resume_url", "current_salary", "expected_salary",
+            ],
             include: [
               { model: User, as: "user", attributes: ["id", "email"] },
             ],
@@ -485,6 +528,70 @@ export const updateInterview = asyncHandler(async (req: AuthRequest, res: Respon
     success: true,
     data: { interview: updatedInterview },
     message: "Interview updated successfully",
+  });
+});
+
+// Add a note to an interview (recruiters who staff the underlying job)
+export const addInterviewNote = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const { note } = req.body;
+  const userId = req.user?.userId;
+  const userRole = req.user?.role;
+
+  if (userRole !== "recruiter") {
+    throw createError("Only recruiters can add interview notes", 403);
+  }
+
+  const interview = await Interview.findByPk(id, {
+    include: [{ model: Submission, as: "submission", include: [{ model: Job, as: "job" }] }],
+  });
+  if (!interview) {
+    throw createError("Interview not found", 404);
+  }
+  if (!isJobStaff(interview.submission?.job, userId)) {
+    throw createError("You do not have permission to update this interview", 403);
+  }
+
+  const history = (interview as any).notes_history || [];
+  history.push({ note, by: userId, at: new Date().toISOString() });
+  await interview.update({ notes_history: history, notes: note } as any);
+
+  res.json({
+    success: true,
+    message: "Note added successfully",
+    data: { notes_history: history },
+  });
+});
+
+// Add a URL-based attachment to an interview
+export const addInterviewAttachment = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const { url, name } = req.body;
+  const userId = req.user?.userId;
+  const userRole = req.user?.role;
+
+  if (userRole !== "recruiter") {
+    throw createError("Only recruiters can add interview attachments", 403);
+  }
+
+  const interview = await Interview.findByPk(id, {
+    include: [{ model: Submission, as: "submission", include: [{ model: Job, as: "job" }] }],
+  });
+  if (!interview) {
+    throw createError("Interview not found", 404);
+  }
+  if (!isJobStaff(interview.submission?.job, userId)) {
+    throw createError("You do not have permission to update this interview", 403);
+  }
+
+  const attachments = (interview as any).attachments || [];
+  attachments.push({ url, name: name || url, by: userId, at: new Date().toISOString() });
+  await interview.update({ attachments } as any);
+
+  res.json({
+    success: true,
+    message: "Attachment added successfully",
+    data: { attachments },
   });
 });
 

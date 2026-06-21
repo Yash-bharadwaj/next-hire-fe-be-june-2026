@@ -1211,6 +1211,18 @@ export const createTask = asyncHandler(
       }
     }
 
+    if (submission_id) {
+      const submission = await Submission.findByPk(submission_id, {
+        include: [{ model: Job, as: "job" }],
+      });
+      if (!submission) {
+        throw createError("Submission not found", 404);
+      }
+      if (!isJobStaff(submission.job, userId)) {
+        throw createError("You do not have permission to add tasks to this submission", 403);
+      }
+    }
+
     const task = await Task.create({
       title,
       description,
@@ -1245,6 +1257,7 @@ export const listTasks = asyncHandler(
       priority,
       assigned_to_me,
       job_id,
+      submission_id,
     } = req.query;
 
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
@@ -1263,6 +1276,19 @@ export const listTasks = asyncHandler(
         throw createError("You do not have permission to view this job's tasks", 403);
       }
       whereConditions.job_id = job_id;
+    } else if (submission_id) {
+      // Submission-scoped view (e.g. the interview's ToDo tab): visible to
+      // everyone staffed on the underlying job.
+      const submission = await Submission.findByPk(submission_id as string, {
+        include: [{ model: Job, as: "job" }],
+      });
+      if (!submission) {
+        throw createError("Submission not found", 404);
+      }
+      if (!isJobStaff(submission.job, userId)) {
+        throw createError("You do not have permission to view this submission's tasks", 403);
+      }
+      whereConditions.submission_id = submission_id;
     } else if (assigned_to_me === "true") {
       whereConditions.assigned_to = userId;
     } else {
@@ -1324,13 +1350,19 @@ export const updateTask = asyncHandler(
     const { taskId } = req.params;
     const userId = req.user?.userId;
 
-    const task = await Task.findByPk(taskId, { include: [{ model: Job, as: "job" }] });
+    const task = await Task.findByPk(taskId, {
+      include: [
+        { model: Job, as: "job" },
+        { model: Submission, as: "submission", include: [{ model: Job, as: "job" }] },
+      ],
+    });
     if (!task) {
       throw createError("Task not found", 404);
     }
 
-    const canManage = task.job
-      ? isJobStaff(task.job, userId)
+    const governingJob = task.job || task.submission?.job;
+    const canManage = governingJob
+      ? isJobStaff(governingJob, userId)
       : task.assigned_to === userId || task.created_by === userId;
     if (!canManage) {
       throw createError("You do not have permission to update this task", 403);
@@ -1366,13 +1398,19 @@ export const deleteTask = asyncHandler(
     const { taskId } = req.params;
     const userId = req.user?.userId;
 
-    const task = await Task.findByPk(taskId, { include: [{ model: Job, as: "job" }] });
+    const task = await Task.findByPk(taskId, {
+      include: [
+        { model: Job, as: "job" },
+        { model: Submission, as: "submission", include: [{ model: Job, as: "job" }] },
+      ],
+    });
     if (!task) {
       throw createError("Task not found", 404);
     }
 
-    const canManage = task.job
-      ? isJobStaff(task.job, userId)
+    const governingJob = task.job || task.submission?.job;
+    const canManage = governingJob
+      ? isJobStaff(governingJob, userId)
       : task.assigned_to === userId || task.created_by === userId;
     if (!canManage) {
       throw createError("You do not have permission to delete this task", 403);

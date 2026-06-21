@@ -17,6 +17,8 @@ export interface InterviewAttributes {
   notes?: string;
   rating?: number; // 1-5 rating
   feedback?: string;
+  attachments?: any;
+  notes_history?: any;
   created_by: string;
   created_at?: Date;
   updated_at?: Date;
@@ -45,6 +47,8 @@ export class Interview
   public notes?: string;
   public rating?: number;
   public feedback?: string;
+  public attachments?: any;
+  public notes_history?: any;
   public created_by!: string;
 
   // Timestamps
@@ -131,6 +135,40 @@ Interview.init(
     feedback: {
       type: DataTypes.TEXT,
       allowNull: true,
+    },
+    attachments: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: "[]",
+      get() {
+        const value = this.getDataValue("attachments") as unknown as string;
+        if (!value) return [];
+        try {
+          return JSON.parse(value);
+        } catch {
+          return [];
+        }
+      },
+      set(value: any[]) {
+        this.setDataValue("attachments", JSON.stringify(value || []) as any);
+      },
+    },
+    notes_history: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: "[]",
+      get() {
+        const value = this.getDataValue("notes_history") as unknown as string;
+        if (!value) return [];
+        try {
+          return JSON.parse(value);
+        } catch {
+          return [];
+        }
+      },
+      set(value: any[]) {
+        this.setDataValue("notes_history", JSON.stringify(value || []) as any);
+      },
     },
     created_by: {
       type: DataTypes.UUID,
