@@ -4,6 +4,64 @@ export type BusinessPartnerStatus = "active" | "prospect" | "inactive" | "on_hol
 export type BusinessPartnerSource = "referral" | "website" | "cold_call" | "trade_show" | "linkedin" | "email_campaign" | "other";
 export type BusinessPartnerPriority = "low" | "medium" | "high";
 export type CompanySize = "startup" | "small" | "medium" | "large" | "enterprise";
+export type BusinessPartnerNoteCategory = "technical" | "behavioral" | "feedback" | "general";
+export type BusinessPartnerDocumentType = "PDF" | "DOC" | "DOCX" | "IMG" | "OTHER";
+
+export interface BusinessPartnerNote {
+  id: string;
+  title: string;
+  content: string;
+  category: BusinessPartnerNoteCategory;
+  isPrivate: boolean;
+  tags: string[];
+  author: string;
+  by?: string;
+  at: string;
+  edited_at?: string;
+}
+
+export interface BusinessPartnerDocument {
+  id: string;
+  url: string;
+  name: string;
+  document_type: BusinessPartnerDocumentType;
+  size?: number;
+  valid_from: string;
+  valid_to?: string;
+  by?: string;
+  at: string;
+}
+
+export interface BusinessPartnerDetailStats {
+  activeJobs: number;
+  totalJobs: number;
+  totalPlacements: number;
+  totalContacts: number;
+  revenueGenerated: number;
+}
+
+export interface BusinessPartnerActivityItem {
+  id: string;
+  type: "job" | "placement" | "contact";
+  description: string;
+  at: string;
+}
+
+export interface BusinessPartnerRevenueTrendPoint {
+  month: string;
+  placements: number;
+  revenue: number;
+}
+
+export interface BusinessPartnerJob {
+  id: string;
+  job_id: string;
+  title: string;
+  status: string;
+  job_type?: string;
+  location?: string;
+  created_at: string;
+}
 
 export interface BusinessPartner {
   id: string;
@@ -46,15 +104,17 @@ export interface BusinessPartner {
   logo_url?: string;
   notes?: string;
   tags?: string[];
-  
+  notes_history?: BusinessPartnerNote[];
+  attachments?: BusinessPartnerDocument[];
+
   // Tracking
   created_by: string;
   assigned_to?: string;
   last_activity_at?: string;
-  
+
   created_at: string;
   updated_at: string;
-  
+
   // Associations
   creator?: {
     id: string;
@@ -268,6 +328,80 @@ class BusinessPartnerService {
   ): Promise<BusinessPartnerContact> {
     const response = await apiClient.post(`${this.baseUrl}/${businessPartnerId}/contacts`, data);
     return response.data.data.contact;
+  }
+
+  async updateContact(
+    businessPartnerId: string,
+    contactId: string,
+    data: Partial<CreateBusinessPartnerContactRequest>
+  ): Promise<BusinessPartnerContact> {
+    const response = await apiClient.put(`${this.baseUrl}/${businessPartnerId}/contacts/${contactId}`, data);
+    return response.data.data.contact;
+  }
+
+  async deleteContact(businessPartnerId: string, contactId: string): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.delete(`${this.baseUrl}/${businessPartnerId}/contacts/${contactId}`);
+    return response.data;
+  }
+
+  async getDetailStats(id: string): Promise<{ success: boolean; data: BusinessPartnerDetailStats }> {
+    const response = await apiClient.get(`${this.baseUrl}/${id}/detail-stats`);
+    return response.data;
+  }
+
+  async getActivity(id: string): Promise<{ success: boolean; data: { activity: BusinessPartnerActivityItem[] } }> {
+    const response = await apiClient.get(`${this.baseUrl}/${id}/activity`);
+    return response.data;
+  }
+
+  async getRevenueTrend(id: string): Promise<{ success: boolean; data: { trend: BusinessPartnerRevenueTrendPoint[] } }> {
+    const response = await apiClient.get(`${this.baseUrl}/${id}/revenue-trend`);
+    return response.data;
+  }
+
+  async getJobs(id: string): Promise<{ success: boolean; data: { jobs: BusinessPartnerJob[] } }> {
+    const response = await apiClient.get(`${this.baseUrl}/${id}/jobs`);
+    return response.data;
+  }
+
+  async addNote(
+    id: string,
+    data: { title?: string; content: string; category?: BusinessPartnerNoteCategory; isPrivate?: boolean; tags?: string[] }
+  ): Promise<{ success: boolean; data: { notes_history: BusinessPartnerNote[] } }> {
+    const response = await apiClient.post(`${this.baseUrl}/${id}/notes`, data);
+    return response.data;
+  }
+
+  async updateNote(
+    id: string,
+    noteId: string,
+    data: { title?: string; content?: string; category?: BusinessPartnerNoteCategory; isPrivate?: boolean; tags?: string[] }
+  ): Promise<{ success: boolean; data: { notes_history: BusinessPartnerNote[] } }> {
+    const response = await apiClient.put(`${this.baseUrl}/${id}/notes/${noteId}`, data);
+    return response.data;
+  }
+
+  async deleteNote(id: string, noteId: string): Promise<{ success: boolean; data: { notes_history: BusinessPartnerNote[] } }> {
+    const response = await apiClient.delete(`${this.baseUrl}/${id}/notes/${noteId}`);
+    return response.data;
+  }
+
+  async addAttachment(
+    id: string,
+    data: { file?: File; url?: string; name?: string; document_type?: BusinessPartnerDocumentType; valid_from?: string; valid_to?: string }
+  ): Promise<{ success: boolean; data: { attachments: BusinessPartnerDocument[] } }> {
+    const formData = new FormData();
+    if (data.file) formData.append("file", data.file);
+    if (data.url) formData.append("url", data.url);
+    if (data.name) formData.append("name", data.name);
+    if (data.document_type) formData.append("document_type", data.document_type);
+    if (data.valid_from) formData.append("valid_from", data.valid_from);
+    if (data.valid_to) formData.append("valid_to", data.valid_to);
+    const response = await apiClient.upload<{ attachments: BusinessPartnerDocument[] }>(
+      `${this.baseUrl}/${id}/attachments`,
+      formData
+    );
+    return response.data as { success: boolean; data: { attachments: BusinessPartnerDocument[] } };
   }
 
   // Helper methods

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { body, param, query } from "express-validator";
 import { auth } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { generalDocumentUpload } from "../middleware/upload";
 import {
   getBusinessPartners,
   getBusinessPartnerById,
@@ -9,8 +10,18 @@ import {
   updateBusinessPartner,
   deleteBusinessPartner,
   getBusinessPartnerStats,
+  getBusinessPartnerDetailStats,
+  getBusinessPartnerActivity,
+  getBusinessPartnerRevenueTrend,
+  getBusinessPartnerJobs,
   getBusinessPartnerContacts,
   createBusinessPartnerContact,
+  updateBusinessPartnerContact,
+  deleteBusinessPartnerContact,
+  addBusinessPartnerNote,
+  updateBusinessPartnerNote,
+  deleteBusinessPartnerNote,
+  addBusinessPartnerAttachment,
 } from "../controllers/businessPartnerController";
 
 const router = Router();
@@ -116,6 +127,59 @@ const createContactValidation = [
   body("is_primary").optional().isBoolean().withMessage("is_primary must be a boolean"),
 ];
 
+const updateContactValidation = [
+  param("id").isUUID().withMessage("Valid business partner ID is required"),
+  param("contactId").isUUID().withMessage("Valid contact ID is required"),
+  body("name").optional().notEmpty().withMessage("Contact name cannot be empty"),
+  body("title").optional().isString(),
+  body("email").optional().isEmail().withMessage("Valid email is required"),
+  body("phone").optional().isString(),
+  body("is_primary").optional().isBoolean().withMessage("is_primary must be a boolean"),
+];
+
+const contactIdValidation = [
+  param("id").isUUID().withMessage("Valid business partner ID is required"),
+  param("contactId").isUUID().withMessage("Valid contact ID is required"),
+];
+
+const noteCategories = ["technical", "behavioral", "feedback", "general"];
+
+const addNoteValidation = [
+  param("id").isUUID().withMessage("Valid business partner ID is required"),
+  body("content").trim().notEmpty().withMessage("Note content is required"),
+  body("title").optional().isString(),
+  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
+  body("isPrivate").optional().isBoolean(),
+  body("tags").optional().isArray().withMessage("Tags must be an array"),
+];
+
+const updateNoteValidation = [
+  param("id").isUUID().withMessage("Valid business partner ID is required"),
+  param("noteId").notEmpty().withMessage("Valid note ID is required"),
+  body("content").optional().trim().notEmpty().withMessage("Note content cannot be empty"),
+  body("title").optional().isString(),
+  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
+  body("isPrivate").optional().isBoolean(),
+  body("tags").optional().isArray().withMessage("Tags must be an array"),
+];
+
+const noteIdValidation = [
+  param("id").isUUID().withMessage("Valid business partner ID is required"),
+  param("noteId").notEmpty().withMessage("Valid note ID is required"),
+];
+
+const attachmentValidation = [
+  param("id").isUUID().withMessage("Valid business partner ID is required"),
+  body("url").optional().trim().notEmpty().withMessage("Attachment URL cannot be empty"),
+  body("name").optional().isString(),
+  body("document_type")
+    .optional()
+    .isIn(["PDF", "DOC", "DOCX", "IMG", "OTHER"])
+    .withMessage("Invalid document type"),
+  body("valid_from").optional().isISO8601().withMessage("Valid 'valid from' date required"),
+  body("valid_to").optional().isISO8601().withMessage("Valid 'valid to' date required"),
+];
+
 const paginationValidation = [
   query("page")
     .optional()
@@ -186,5 +250,29 @@ router.get("/:id/contacts", businessPartnerIdValidation, validate, getBusinessPa
 
 // Add a contact to a business partner (Recruiters only)
 router.post("/:id/contacts", createContactValidation, validate, createBusinessPartnerContact);
+
+// Edit/delete a contact (Recruiters only)
+router.put("/:id/contacts/:contactId", updateContactValidation, validate, updateBusinessPartnerContact);
+router.delete("/:id/contacts/:contactId", contactIdValidation, validate, deleteBusinessPartnerContact);
+
+// Real per-partner metrics, activity feed, and revenue trend
+router.get("/:id/detail-stats", businessPartnerIdValidation, validate, getBusinessPartnerDetailStats);
+router.get("/:id/activity", businessPartnerIdValidation, validate, getBusinessPartnerActivity);
+router.get("/:id/revenue-trend", businessPartnerIdValidation, validate, getBusinessPartnerRevenueTrend);
+router.get("/:id/jobs", businessPartnerIdValidation, validate, getBusinessPartnerJobs);
+
+// Notes
+router.post("/:id/notes", addNoteValidation, validate, addBusinessPartnerNote);
+router.put("/:id/notes/:noteId", updateNoteValidation, validate, updateBusinessPartnerNote);
+router.delete("/:id/notes/:noteId", noteIdValidation, validate, deleteBusinessPartnerNote);
+
+// Documents (uploaded file or pasted URL)
+router.post(
+  "/:id/attachments",
+  generalDocumentUpload.single("file"),
+  attachmentValidation,
+  validate,
+  addBusinessPartnerAttachment
+);
 
 export default router;

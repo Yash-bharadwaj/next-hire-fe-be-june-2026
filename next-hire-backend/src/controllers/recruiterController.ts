@@ -1588,6 +1588,7 @@ export const createTask = asyncHandler(
       due_date,
       job_id,
       submission_id,
+      business_partner_id,
     } = req.body;
 
     if (job_id) {
@@ -1612,6 +1613,16 @@ export const createTask = asyncHandler(
       }
     }
 
+    if (business_partner_id) {
+      const partner = await BusinessPartner.findByPk(business_partner_id);
+      if (!partner) {
+        throw createError("Business partner not found", 404);
+      }
+      if (partner.created_by !== userId && partner.assigned_to !== userId) {
+        throw createError("You do not have permission to add tasks to this business partner", 403);
+      }
+    }
+
     const task = await Task.create({
       title,
       description,
@@ -1621,6 +1632,7 @@ export const createTask = asyncHandler(
       due_date,
       job_id,
       submission_id,
+      business_partner_id,
     });
 
     const createdTask = await Task.findByPk(task.id, {
@@ -1647,6 +1659,7 @@ export const listTasks = asyncHandler(
       assigned_to_me,
       job_id,
       submission_id,
+      business_partner_id,
     } = req.query;
 
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
@@ -1678,6 +1691,17 @@ export const listTasks = asyncHandler(
         throw createError("You do not have permission to view this submission's tasks", 403);
       }
       whereConditions.submission_id = submission_id;
+    } else if (business_partner_id) {
+      // Business partner-scoped view (e.g. the client's To dos tab): visible
+      // to whoever created or manages that partner record.
+      const partner = await BusinessPartner.findByPk(business_partner_id as string);
+      if (!partner) {
+        throw createError("Business partner not found", 404);
+      }
+      if (partner.created_by !== userId && partner.assigned_to !== userId) {
+        throw createError("You do not have permission to view this partner's tasks", 403);
+      }
+      whereConditions.business_partner_id = business_partner_id;
     } else if (assigned_to_me === "true") {
       whereConditions.assigned_to = userId;
     } else {
@@ -1709,6 +1733,11 @@ export const listTasks = asyncHandler(
           model: Submission,
           as: "submission",
           attributes: ["id", "status"],
+        },
+        {
+          model: BusinessPartner,
+          as: "businessPartner",
+          attributes: ["id", "business_partner_number", "name"],
         },
       ],
       order: [["due_date", "ASC"], ["created_at", "DESC"]],

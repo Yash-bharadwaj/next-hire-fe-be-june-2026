@@ -1,9 +1,21 @@
-import React, { useState, useEffect } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import React, { useState, useEffect, useCallback } from "react";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -28,11 +40,9 @@ import {
   Clock,
   Tag,
   Briefcase,
-  MessageSquare,
   Settings,
   Search,
   ChevronDown,
-  Bot,
   UserCog,
   CheckSquare,
   StickyNote,
@@ -42,6 +52,7 @@ import {
   Loader2,
   AlertCircle,
   Trash2,
+  Sparkles,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -54,6 +65,8 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line } from "recharts";
 import BusinessPartnerDetailPersonalizationSettings from "@/components/BusinessPartnerDetailPersonalizationSettings";
 import BusinessPartnerFormDialog from "@/components/BusinessPartnerFormDialog";
+import { NotesPanel } from "@/components/NotesPanel";
+import { DocumentsPanel } from "@/components/DocumentsPanel";
 import {
   useBusinessPartner,
   useBusinessPartnerManagement,
@@ -61,7 +74,27 @@ import {
 import {
   businessPartnerService,
   UpdateBusinessPartnerRequest,
+  BusinessPartnerContact,
+  BusinessPartnerDetailStats,
+  BusinessPartnerActivityItem,
+  BusinessPartnerRevenueTrendPoint,
+  BusinessPartnerJob,
 } from "@/services/businessPartnerService";
+import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/recruiterService";
+
+const formatTeamMemberName = (member: TeamMember) => {
+  const name = [member.recruiterProfile?.first_name, member.recruiterProfile?.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return name || member.email;
+};
+
+const activityIcon = (type: BusinessPartnerActivityItem["type"]) => {
+  if (type === "job") return Briefcase;
+  if (type === "placement") return Users;
+  return User;
+};
 
 const BusinessPartnerDetail = () => {
   const { id } = useParams();
@@ -83,6 +116,227 @@ const BusinessPartnerDetail = () => {
 
   const { businessPartner: partner, loading, error, refresh } = useBusinessPartner(id || "");
   const { updateBusinessPartner, deleteBusinessPartner } = useBusinessPartnerManagement();
+
+  // ── Real per-partner stats / activity / revenue trend / jobs ───────────
+  const [detailStats, setDetailStats] = useState<BusinessPartnerDetailStats | null>(null);
+  const [activity, setActivity] = useState<BusinessPartnerActivityItem[]>([]);
+  const [revenueTrend, setRevenueTrend] = useState<BusinessPartnerRevenueTrendPoint[]>([]);
+  const [partnerJobs, setPartnerJobs] = useState<BusinessPartnerJob[]>([]);
+
+  const fetchDetailStats = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await businessPartnerService.getDetailStats(id);
+      setDetailStats(res.data);
+    } catch {
+      // stat cards just stay empty on failure
+    }
+  }, [id]);
+
+  const fetchActivity = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await businessPartnerService.getActivity(id);
+      setActivity(res.data.activity);
+    } catch {
+      // empty timeline on failure
+    }
+  }, [id]);
+
+  const fetchRevenueTrend = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await businessPartnerService.getRevenueTrend(id);
+      setRevenueTrend(res.data.trend);
+    } catch {
+      // empty chart on failure
+    }
+  }, [id]);
+
+  const fetchPartnerJobs = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await businessPartnerService.getJobs(id);
+      setPartnerJobs(res.data.jobs);
+    } catch {
+      // empty list on failure
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchDetailStats();
+    fetchActivity();
+    fetchRevenueTrend();
+    fetchPartnerJobs();
+  }, [fetchDetailStats, fetchActivity, fetchRevenueTrend, fetchPartnerJobs]);
+
+  // ── Contacts ─────────────────────────────────────────────────────────────
+  const [contacts, setContacts] = useState<BusinessPartnerContact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [editingContact, setEditingContact] = useState<BusinessPartnerContact | null>(null);
+  const [contactForm, setContactForm] = useState({ name: "", title: "", email: "", phone: "", is_primary: false });
+  const [savingContact, setSavingContact] = useState(false);
+
+  const fetchContacts = useCallback(async () => {
+    if (!id) return;
+    setContactsLoading(true);
+    try {
+      const data = await businessPartnerService.getContacts(id);
+      setContacts(data);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to load contacts");
+    } finally {
+      setContactsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchContacts();
+  }, [fetchContacts]);
+
+  const openAddContact = () => {
+    setContactForm({ name: "", title: "", email: "", phone: "", is_primary: false });
+    setShowAddContact(true);
+  };
+
+  const openEditContact = (contact: BusinessPartnerContact) => {
+    setContactForm({
+      name: contact.name,
+      title: contact.title || "",
+      email: contact.email || "",
+      phone: contact.phone || "",
+      is_primary: contact.is_primary,
+    });
+    setEditingContact(contact);
+  };
+
+  const handleSaveContact = async () => {
+    if (!id || !contactForm.name.trim()) return;
+    setSavingContact(true);
+    try {
+      if (editingContact) {
+        await businessPartnerService.updateContact(id, editingContact.id, contactForm);
+        toast.success("Contact updated");
+        setEditingContact(null);
+      } else {
+        await businessPartnerService.createContact(id, contactForm);
+        toast.success("Contact added");
+        setShowAddContact(false);
+      }
+      fetchContacts();
+      fetchDetailStats();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to save contact");
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
+  const handleDeleteContact = async (contact: BusinessPartnerContact) => {
+    if (!id) return;
+    if (!window.confirm(`Delete contact ${contact.name}?`)) return;
+    try {
+      await businessPartnerService.deleteContact(id, contact.id);
+      toast.success("Contact deleted");
+      fetchContacts();
+      fetchDetailStats();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to delete contact");
+    }
+  };
+
+  // ── To dos (Tasks scoped to this business partner) ──────────────────────
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [teamOptions, setTeamOptions] = useState<TeamMember[]>([]);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDueDate, setNewTaskDueDate] = useState("");
+  const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
+  const [newTaskAssignee, setNewTaskAssignee] = useState("");
+  const [savingTask, setSavingTask] = useState(false);
+
+  const fetchTasks = useCallback(async () => {
+    if (!id) return;
+    setTasksLoading(true);
+    try {
+      const res = await recruiterService.getTasks({ business_partner_id: id, limit: 100 });
+      setTasks(res.data.tasks || []);
+    } catch {
+      // empty state handles failures gracefully
+    } finally {
+      setTasksLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  useEffect(() => {
+    recruiterService.getTeamMembers().then(setTeamOptions).catch(() => {});
+  }, []);
+
+  const handleAddTask = async () => {
+    if (!id || !newTaskTitle.trim()) return;
+    setSavingTask(true);
+    try {
+      await recruiterService.createTask({
+        title: newTaskTitle.trim(),
+        business_partner_id: id,
+        priority: newTaskPriority,
+        due_date: newTaskDueDate || undefined,
+        assigned_to: newTaskAssignee || undefined,
+      });
+      toast.success("Task added");
+      setNewTaskTitle("");
+      setNewTaskDueDate("");
+      setNewTaskPriority("medium");
+      setNewTaskAssignee("");
+      setShowAddTask(false);
+      fetchTasks();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to add task");
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
+  const handleToggleTask = async (task: Task) => {
+    const nextStatus = task.status === "completed" ? "pending" : "completed";
+    try {
+      await recruiterService.updateTask(task.id, { status: nextStatus });
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to update task");
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await recruiterService.deleteTask(taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to delete task");
+    }
+  };
+
+  // ── Change Assignment (reassign account manager) ────────────────────────
+  const [showChangeAssignment, setShowChangeAssignment] = useState(false);
+  const [reassignUserId, setReassignUserId] = useState("");
+  const [savingAssignment, setSavingAssignment] = useState(false);
+
+  const handleChangeAssignment = async () => {
+    if (!id || !reassignUserId) return;
+    setSavingAssignment(true);
+    const result = await updateBusinessPartner(id, { assigned_to: reassignUserId });
+    setSavingAssignment(false);
+    if (result) {
+      setShowChangeAssignment(false);
+      refresh();
+    }
+  };
 
   // Load personalization settings and event listener
   useEffect(() => {
@@ -144,6 +398,27 @@ const BusinessPartnerDetail = () => {
     }
   };
 
+  const handleEmail = () => {
+    if (!partner?.primary_email) {
+      toast.error("No email address on file for this partner");
+      return;
+    }
+    window.location.href = `mailto:${partner.primary_email}`;
+  };
+
+  const handleShare = async () => {
+    if (!partner) return;
+    const text = [
+      partner.name,
+      partner.business_partner_number,
+      partner.primary_email,
+      partner.primary_phone,
+      partner.website,
+    ].filter(Boolean).join("\n");
+    await navigator.clipboard.writeText(text);
+    toast.success("Contact info copied to clipboard");
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -168,69 +443,16 @@ const BusinessPartnerDetail = () => {
     );
   }
 
-  // Mock additional data for demonstration
   const partnerStats = [
-    { label: "Active Jobs", value: "12", icon: Briefcase, color: "text-blue-600" },
-    { label: "Total Placements", value: "45", icon: Users, color: "text-green-600" },
-    { label: "Revenue Generated", value: "$125K", icon: DollarSign, color: "text-purple-600" },
-    { label: "Avg. Response Time", value: "2.5h", icon: Clock, color: "text-orange-600" }
-  ];
-
-  const recentActivities = [
-    { id: 1, type: "placement", description: "New placement for Senior Developer position", time: "2 hours ago", icon: Users },
-    { id: 2, type: "communication", description: "Email exchange regarding job requirements", time: "1 day ago", icon: Mail },
-    { id: 3, type: "meeting", description: "Quarterly business review meeting", time: "3 days ago", icon: Calendar },
-    { id: 4, type: "contract", description: "Contract renewal discussion", time: "1 week ago", icon: FileText }
-  ];
-
-  const partnerDomain = partner.domain || "example.com";
-  const contacts = [
-    { id: 1, name: "John Smith", role: "Account Manager", email: "john.smith@" + partnerDomain, phone: "+1 (555) 123-4567" },
-    { id: 2, name: "Sarah Johnson", role: "HR Director", email: "sarah.johnson@" + partnerDomain, phone: "+1 (555) 123-4568" }
-  ];
-
-  // Mock data for new tabs
-  const todos = [
-    { id: 1, task: "Follow up on contract renewal", priority: "High", dueDate: "2024-07-25", completed: false },
-    { id: 2, task: "Schedule quarterly review meeting", priority: "Medium", dueDate: "2024-07-30", completed: true },
-    { id: 3, task: "Update contact information", priority: "Low", dueDate: "2024-08-05", completed: false }
-  ];
-
-  const documents = [
-    { id: 1, name: "Master Service Agreement", type: "Contract", uploadDate: "2024-06-15", size: "2.3 MB" },
-    { id: 2, name: "Partnership Proposal", type: "Proposal", uploadDate: "2024-06-10", size: "1.8 MB" },
-    { id: 3, name: "Compliance Certificate", type: "Certificate", uploadDate: "2024-05-20", size: "856 KB" }
-  ];
-
-  const notes = [
-    { id: 1, content: "Great partnership potential. Strong technical team.", author: "John Doe", date: "2024-06-20", type: "Meeting Note" },
-    { id: 2, content: "Discussed expanding our relationship to include more service areas.", author: "Jane Smith", date: "2024-06-18", type: "Call Note" },
-    { id: 3, content: "Client showed interest in AI-powered solutions.", author: "Mike Johnson", date: "2024-06-15", type: "General Note" }
-  ];
-
-  const newsData = [
-    { id: 1, date: "2024-07-28", headline: "TechCorp Announces New AI Initiative", summary: "Company launches comprehensive artificial intelligence program", link: "https://techcorp.com/news/ai-initiative" },
-    { id: 2, date: "2024-07-25", headline: "Q2 Financial Results Released", summary: "Strong quarterly performance with 15% growth in revenue", link: "https://techcorp.com/news/q2-results" },
-    { id: 3, date: "2024-07-20", headline: "Partnership with Global Tech Leader", summary: "Strategic alliance formed to expand market presence", link: "https://techcorp.com/news/partnership" }
-  ];
-
-  // Chart data for client snapshot
-  const revenueData = [
-    { month: 'Jan', revenue: 12000 },
-    { month: 'Feb', revenue: 15000 },
-    { month: 'Mar', revenue: 18000 },
-    { month: 'Apr', revenue: 22000 },
-    { month: 'May', revenue: 25000 },
-    { month: 'Jun', revenue: 28000 }
-  ];
-
-  const placementData = [
-    { month: 'Jan', placements: 5 },
-    { month: 'Feb', placements: 8 },
-    { month: 'Mar', placements: 12 },
-    { month: 'Apr', placements: 15 },
-    { month: 'May', placements: 18 },
-    { month: 'Jun', placements: 22 }
+    { label: "Active Jobs", value: String(detailStats?.activeJobs ?? "—"), icon: Briefcase, color: "text-blue-600" },
+    { label: "Total Placements", value: String(detailStats?.totalPlacements ?? "—"), icon: Users, color: "text-green-600" },
+    {
+      label: "Revenue Generated",
+      value: detailStats ? `$${detailStats.revenueGenerated.toLocaleString()}` : "—",
+      icon: DollarSign,
+      color: "text-purple-600",
+    },
+    { label: "Total Contacts", value: String(detailStats?.totalContacts ?? "—"), icon: User, color: "text-orange-600" },
   ];
 
   return (
@@ -239,10 +461,10 @@ const BusinessPartnerDetail = () => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-500 font-medium">
-            Business Partner ID: #{partner.id}
+            Business Partner ID: {partner.business_partner_number}
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <div className={`flex items-center transition-all duration-300 ease-in-out ${
             isSearchExpanded ? 'w-64' : 'w-10'
@@ -278,6 +500,9 @@ const BusinessPartnerDetail = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
           <div>
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-bold text-gray-900 font-roboto-slab">{partner.name}</h1>
@@ -291,13 +516,13 @@ const BusinessPartnerDetail = () => {
             <p className="text-gray-600 font-roboto-slab">Partner ID: {partner.business_partner_number}</p>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="border-blue-200 hover:bg-blue-50">
+          <Button variant="outline" size="sm" className="border-blue-200 hover:bg-blue-50" onClick={handleEmail}>
             <Mail className="w-4 h-4 mr-2" />
             Email
           </Button>
-          <Button variant="outline" size="sm" className="border-green-200 hover:bg-green-50">
+          <Button variant="outline" size="sm" className="border-green-200 hover:bg-green-50" onClick={handleShare}>
             <Share2 className="w-4 h-4 mr-2" />
             Share
           </Button>
@@ -318,24 +543,19 @@ const BusinessPartnerDetail = () => {
                 Edit Partner
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-gray-200" />
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
                 onClick={() => setActiveTab("whats-new")}
               >
                 <Newspaper className="w-4 h-4 mr-2" />
                 What's New
               </DropdownMenuItem>
-              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
-                <Search className="w-4 h-4 mr-2" />
-                Manual Search
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+              <DropdownMenuItem
+                className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                onClick={() => setShowChangeAssignment(true)}
+              >
                 <UserCog className="w-4 h-4 mr-2" />
                 Change Assignment
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
-                <Bot className="w-4 h-4 mr-2" />
-                Assign to AI Agent
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -346,13 +566,9 @@ const BusinessPartnerDetail = () => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-white border-gray-200">
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setIsPersonalizationOpen(true)}>
                 <Settings className="w-4 h-4 mr-2" />
                 Manage Settings
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Star className="w-4 h-4 mr-2" />
-                Add to Favorites
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -551,20 +767,24 @@ const BusinessPartnerDetail = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {recentActivities.map((activity) => {
-                  const IconComponent = activity.icon;
-                  return (
-                    <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                      <IconComponent className="w-4 h-4 text-gray-500 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">{activity.description}</p>
-                        <p className="text-xs text-gray-500">{activity.time}</p>
+              {activity.length === 0 ? (
+                <p className="text-sm text-gray-500 py-4 text-center">No activity recorded yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {activity.map((item) => {
+                    const IconComponent = activityIcon(item.type);
+                    return (
+                      <div key={item.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                        <IconComponent className="w-4 h-4 text-gray-500 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">{item.description}</p>
+                          <p className="text-xs text-gray-500">{new Date(item.at).toLocaleString()}</p>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -577,54 +797,75 @@ const BusinessPartnerDetail = () => {
                   <Users className="w-5 h-5 text-blue-600" />
                   Contact Directory
                 </div>
-                <Button size="sm" className="button-gradient text-white">
+                <Button size="sm" className="button-gradient text-white" onClick={openAddContact}>
                   <User className="w-4 h-4 mr-2" />
                   Add Contact
                 </Button>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {contacts.map((contact) => (
-                  <Card key={contact.id} className="border border-gray-200">
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{contact.name}</h3>
-                          <p className="text-sm text-gray-600">{contact.role}</p>
-                          <div className="flex items-center gap-4 mt-2">
-                            <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline text-sm flex items-center gap-1">
-                              <Mail className="w-3 h-3" />
-                              {contact.email}
-                            </a>
-                            <a href={`tel:${contact.phone}`} className="text-green-600 hover:underline text-sm flex items-center gap-1">
-                              <Phone className="w-3 h-3" />
-                              {contact.phone}
-                            </a>
+              {contactsLoading ? (
+                <div className="flex items-center justify-center py-10 text-gray-500">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                  Loading contacts...
+                </div>
+              ) : contacts.length === 0 ? (
+                <p className="text-sm text-gray-500 py-8 text-center">No contacts yet. Add the first one.</p>
+              ) : (
+                <div className="space-y-4">
+                  {contacts.map((contact) => (
+                    <Card key={contact.id} className="border border-gray-200">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-gray-900">{contact.name}</h3>
+                              {contact.is_primary && (
+                                <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">Primary</Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-600">{contact.title}</p>
+                            <div className="flex items-center gap-4 mt-2">
+                              {contact.email && (
+                                <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline text-sm flex items-center gap-1">
+                                  <Mail className="w-3 h-3" />
+                                  {contact.email}
+                                </a>
+                              )}
+                              {contact.phone && (
+                                <a href={`tel:${contact.phone}`} className="text-green-600 hover:underline text-sm flex items-center gap-1">
+                                  <Phone className="w-3 h-3" />
+                                  {contact.phone}
+                                </a>
+                              )}
+                            </div>
                           </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="bg-white border-gray-200">
+                              <DropdownMenuItem onClick={() => openEditContact(contact)}>
+                                <Edit className="w-4 h-4 mr-2" />
+                                Edit Contact
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-red-600 focus:text-red-600"
+                                onClick={() => handleDeleteContact(contact)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete Contact
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-white border-gray-200">
-                            <DropdownMenuItem>
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit Contact
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <MessageSquare className="w-4 h-4 mr-2" />
-                              Send Message
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -638,27 +879,31 @@ const BusinessPartnerDetail = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
-                {recentActivities.map((activity, index) => {
-                  const IconComponent = activity.icon;
-                  return (
-                    <div key={activity.id} className="relative">
-                      {index !== recentActivities.length - 1 && (
-                        <div className="absolute left-4 top-8 w-0.5 h-16 bg-gray-200"></div>
-                      )}
-                      <div className="flex items-start gap-4">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                          <IconComponent className="w-4 h-4 text-blue-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900">{activity.description}</p>
-                          <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
+              {activity.length === 0 ? (
+                <p className="text-sm text-gray-500 py-8 text-center">No activity recorded yet.</p>
+              ) : (
+                <div className="space-y-6">
+                  {activity.map((item, index) => {
+                    const IconComponent = activityIcon(item.type);
+                    return (
+                      <div key={item.id} className="relative">
+                        {index !== activity.length - 1 && (
+                          <div className="absolute left-4 top-8 w-0.5 h-16 bg-gray-200"></div>
+                        )}
+                        <div className="flex items-start gap-4">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                            <IconComponent className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{item.description}</p>
+                            <p className="text-xs text-gray-500 mt-1">{new Date(item.at).toLocaleString()}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -671,129 +916,136 @@ const BusinessPartnerDetail = () => {
                   <CheckSquare className="w-5 h-5 text-blue-600" />
                   To Do List
                 </div>
-                <Button size="sm" className="button-gradient text-white">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Task
-                </Button>
+                <Dialog open={showAddTask} onOpenChange={setShowAddTask}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="button-gradient text-white">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Task
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Task</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <Input
+                        placeholder="Task title"
+                        value={newTaskTitle}
+                        onChange={(e) => setNewTaskTitle(e.target.value)}
+                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input
+                          type="date"
+                          value={newTaskDueDate}
+                          onChange={(e) => setNewTaskDueDate(e.target.value)}
+                        />
+                        <Select value={newTaskPriority} onValueChange={(v) => setNewTaskPriority(v as TaskPriority)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Priority" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Select value={newTaskAssignee} onValueChange={setNewTaskAssignee}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Assign to (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {teamOptions.map((member) => (
+                            <SelectItem key={member.id} value={member.id}>
+                              {formatTeamMemberName(member)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setShowAddTask(false)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={handleAddTask} disabled={!newTaskTitle.trim() || savingTask}>
+                        {savingTask ? "Adding..." : "Add Task"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {todos.map((todo) => (
-                  <div key={todo.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                    <div className="flex items-center gap-3">
-                      <input 
-                        type="checkbox" 
-                        checked={todo.completed}
-                        className="w-4 h-4 text-blue-600 rounded"
-                        readOnly
-                      />
-                      <div>
-                        <p className={`font-medium ${todo.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                          {todo.task}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant={todo.priority === 'High' ? 'destructive' : todo.priority === 'Medium' ? 'default' : 'secondary'}>
-                            {todo.priority}
-                          </Badge>
-                          <span className="text-xs text-gray-500">Due: {todo.dueDate}</span>
+              {tasksLoading ? (
+                <div className="flex items-center justify-center py-10 text-gray-500">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                  Loading tasks...
+                </div>
+              ) : tasks.length === 0 ? (
+                <p className="text-sm text-gray-500 py-8 text-center">No tasks for this partner yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {tasks.map((todo) => (
+                    <div key={todo.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+                      <div className="flex items-center gap-3">
+                        <Checkbox checked={todo.status === "completed"} onCheckedChange={() => handleToggleTask(todo)} />
+                        <div>
+                          <p className={`font-medium ${todo.status === "completed" ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                            {todo.title}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant={todo.priority === 'high' ? 'destructive' : todo.priority === 'medium' ? 'default' : 'secondary'}>
+                              {todo.priority}
+                            </Badge>
+                            <span className="text-xs text-gray-500">
+                              Due: {todo.due_date ? new Date(todo.due_date).toLocaleDateString() : "—"}
+                            </span>
+                            {todo.assignee && (
+                              <span className="text-xs text-gray-500">Assigned to: {formatTeamMemberName(todo.assignee)}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => handleDeleteTask(todo.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
-                    <Button variant="ghost" size="sm">
-                      <MoreHorizontal className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-6">
-          <Card className="border-gray-200">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-purple-600" />
-                  Documents
-                </div>
-                <Button size="sm" className="button-gradient text-white">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Upload Document
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {documents.map((doc) => (
-                  <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                    <div className="flex items-center gap-3">
-                      <FileText className="w-8 h-8 text-blue-600" />
-                      <div>
-                        <p className="font-medium text-gray-900">{doc.name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="outline">{doc.type}</Badge>
-                          <span className="text-xs text-gray-500">
-                            {doc.uploadDate} • {doc.size}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm">
-                        <ExternalLink className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <DocumentsPanel
+            title="Partner Documents"
+            documents={partner.attachments || []}
+            onUpload={async (data) => {
+              await businessPartnerService.addAttachment(partner.id, data);
+              refresh();
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="notes" className="space-y-6">
-          <Card className="border-gray-200">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <StickyNote className="w-5 h-5 text-yellow-600" />
-                  Notes
-                </div>
-                <Button size="sm" className="button-gradient text-white">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Note
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {notes.map((note) => (
-                  <Card key={note.id} className="border border-gray-200">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <p className="text-gray-900 mb-2">{note.content}</p>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">{note.type}</Badge>
-                            <span className="text-xs text-gray-500">
-                              by {note.author} on {note.date}
-                            </span>
-                          </div>
-                        </div>
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <NotesPanel
+            title="Partner Notes"
+            description="Notes and feedback about this business relationship"
+            notes={partner.notes_history || []}
+            onAdd={async (data) => {
+              await businessPartnerService.addNote(partner.id, data);
+              refresh();
+            }}
+            onUpdate={async (noteId, data) => {
+              await businessPartnerService.updateNote(partner.id, noteId, data);
+              refresh();
+            }}
+            onDelete={async (noteId) => {
+              await businessPartnerService.deleteNote(partner.id, noteId);
+              refresh();
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="snapshot" className="space-y-6">
@@ -804,24 +1056,29 @@ const BusinessPartnerDetail = () => {
                   <BarChart3 className="w-5 h-5 text-blue-600" />
                   Revenue Trend
                 </CardTitle>
+                <p className="text-xs text-gray-500">Last 6 months, from real placements for this client</p>
               </CardHeader>
               <CardContent>
-                <ChartContainer config={{ revenue: { label: "Revenue", color: "hsl(220, 70%, 50%)" } }}>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <LineChart data={revenueData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Line 
-                        type="monotone" 
-                        dataKey="revenue" 
-                        stroke="hsl(220, 70%, 50%)" 
-                        strokeWidth={2}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
+                {revenueTrend.length === 0 ? (
+                  <p className="text-sm text-gray-500 py-10 text-center">No placement revenue recorded yet.</p>
+                ) : (
+                  <ChartContainer config={{ revenue: { label: "Revenue", color: "hsl(220, 70%, 50%)" } }}>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <LineChart data={revenueTrend}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                        <Line
+                          type="monotone"
+                          dataKey="revenue"
+                          stroke="hsl(220, 70%, 50%)"
+                          strokeWidth={2}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                )}
               </CardContent>
             </Card>
 
@@ -831,46 +1088,24 @@ const BusinessPartnerDetail = () => {
                   <Users className="w-5 h-5 text-green-600" />
                   Placement Metrics
                 </CardTitle>
+                <p className="text-xs text-gray-500">Last 6 months, from real placements for this client</p>
               </CardHeader>
               <CardContent>
-                <ChartContainer config={{ placements: { label: "Placements", color: "hsl(150, 70%, 50%)" } }}>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={placementData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="placements" fill="hsl(150, 70%, 50%)" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="border-gray-200">
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-blue-600">85%</div>
-                <div className="text-sm text-gray-600">Client Satisfaction</div>
-              </CardContent>
-            </Card>
-            <Card className="border-gray-200">
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-green-600">12</div>
-                <div className="text-sm text-gray-600">Active Projects</div>
-              </CardContent>
-            </Card>
-            <Card className="border-gray-200">
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-purple-600">$2.1M</div>
-                <div className="text-sm text-gray-600">Total Contract Value</div>
-              </CardContent>
-            </Card>
-            <Card className="border-gray-200">
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-orange-600">98%</div>
-                <div className="text-sm text-gray-600">On-time Delivery</div>
+                {revenueTrend.length === 0 ? (
+                  <p className="text-sm text-gray-500 py-10 text-center">No placements recorded yet.</p>
+                ) : (
+                  <ChartContainer config={{ placements: { label: "Placements", color: "hsl(150, 70%, 50%)" } }}>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={revenueTrend}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                        <Bar dataKey="placements" fill="hsl(150, 70%, 50%)" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -881,40 +1116,49 @@ const BusinessPartnerDetail = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Newspaper className="w-5 h-5 text-red-600" />
-                What's New - Latest News
+                What's New - Recent Job Postings
               </CardTitle>
+              <p className="text-xs text-gray-500">Real jobs this client has posted with us, most recent first</p>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Headline</TableHead>
-                    <TableHead>Summary</TableHead>
-                    <TableHead>Link</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {newsData.map((news) => (
-                    <TableRow key={news.id}>
-                      <TableCell className="font-medium">{news.date}</TableCell>
-                      <TableCell>{news.headline}</TableCell>
-                      <TableCell className="text-gray-600">{news.summary}</TableCell>
-                      <TableCell>
-                        <a 
-                          href={news.link} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          View
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      </TableCell>
+              {partnerJobs.length === 0 ? (
+                <p className="text-sm text-gray-500 py-8 text-center">No job postings from this client yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Posted</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Location</TableHead>
+                      <TableHead></TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {partnerJobs.map((job) => (
+                      <TableRow key={job.id}>
+                        <TableCell className="font-medium">{new Date(job.created_at).toLocaleDateString()}</TableCell>
+                        <TableCell>{job.title}</TableCell>
+                        <TableCell className="text-gray-600 capitalize">{job.job_type?.replace(/_/g, " ") || "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize">{job.status}</Badge>
+                        </TableCell>
+                        <TableCell className="text-gray-600">{job.location || "—"}</TableCell>
+                        <TableCell>
+                          <Link
+                            to={`/dashboard/jobs/${job.id}`}
+                            className="text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            View
+                            <ExternalLink className="w-3 h-3" />
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -940,6 +1184,88 @@ const BusinessPartnerDetail = () => {
         initialData={partner}
         onSubmit={handleUpdatePartner}
       />
+
+      {/* Add/Edit Contact Dialog */}
+      <Dialog
+        open={showAddContact || !!editingContact}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowAddContact(false);
+            setEditingContact(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingContact ? "Edit Contact" : "Add Contact"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Name</Label>
+              <Input value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} />
+            </div>
+            <div>
+              <Label>Title</Label>
+              <Input value={contactForm.title} onChange={(e) => setContactForm({ ...contactForm, title: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Email</Label>
+                <Input type="email" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} />
+              </div>
+              <div>
+                <Label>Phone</Label>
+                <Input value={contactForm.phone} onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="is-primary"
+                checked={contactForm.is_primary}
+                onCheckedChange={(checked) => setContactForm({ ...contactForm, is_primary: !!checked })}
+              />
+              <Label htmlFor="is-primary">Primary contact</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowAddContact(false); setEditingContact(null); }}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveContact} disabled={!contactForm.name.trim() || savingContact}>
+              {savingContact ? "Saving..." : editingContact ? "Save Changes" : "Add Contact"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Assignment Dialog */}
+      <Dialog open={showChangeAssignment} onOpenChange={setShowChangeAssignment}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Assignment</DialogTitle>
+          </DialogHeader>
+          <Select value={reassignUserId} onValueChange={setReassignUserId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select an account manager" />
+            </SelectTrigger>
+            <SelectContent>
+              {teamOptions.map((member) => (
+                <SelectItem key={member.id} value={member.id}>
+                  {formatTeamMemberName(member)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowChangeAssignment(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleChangeAssignment} disabled={!reassignUserId || savingAssignment}>
+              {savingAssignment ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

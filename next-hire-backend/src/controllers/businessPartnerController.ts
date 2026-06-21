@@ -1,10 +1,16 @@
 import { Response } from "express";
-import { Op } from "sequelize";
+import { Op, Sequelize } from "sequelize";
+import { randomUUID } from "crypto";
 import { BusinessPartner } from "../models/BusinessPartner";
 import { BusinessPartnerContact } from "../models/BusinessPartnerContact";
-import { User, Recruiter } from "../models";
+import { User, Recruiter, Job, Placement, sequelize } from "../models";
 import { logger } from "../utils/logger";
 import { AuthenticatedRequest } from "../middleware/auth";
+import { formatUserName, prepareNotesAndAttachmentsForResponse } from "../utils/notesAndAttachments";
+
+// A recruiter can act on a business partner they created or were assigned to manage.
+const canManagePartner = (partner: BusinessPartner, userId?: string): boolean =>
+  !!userId && (partner.created_by === userId || partner.assigned_to === userId);
 
 // Helper function to include common associations
 const includeAssociations = [
@@ -189,9 +195,11 @@ export const getBusinessPartnerById = async (req: AuthenticatedRequest, res: Res
       });
     }
 
+    const businessPartnerData = await prepareNotesAndAttachmentsForResponse(businessPartner, userRole);
+
     res.status(200).json({
       success: true,
-      data: { businessPartner },
+      data: { businessPartner: businessPartnerData },
     });
   } catch (error) {
     logger.error("Error fetching business partner:", error);
@@ -590,5 +598,417 @@ export const createBusinessPartnerContact = async (
       success: false,
       message: "Failed to add contact",
     });
+  }
+};
+
+// Edit a contact
+export const updateBusinessPartnerContact = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id, contactId } = req.params;
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+
+    if (!userId || userRole !== "recruiter") {
+      return res.status(403).json({ success: false, message: "Only recruiters can edit business partner contacts" });
+    }
+
+    const contact = await BusinessPartnerContact.findOne({ where: { id: contactId, business_partner_id: id } });
+    if (!contact) {
+      return res.status(404).json({ success: false, message: "Contact not found" });
+    }
+
+    const { name, title, email, phone, is_primary } = req.body;
+    await contact.update({
+      name: name !== undefined ? name : contact.name,
+      title: title !== undefined ? title : contact.title,
+      email: email !== undefined ? email : contact.email,
+      phone: phone !== undefined ? phone : contact.phone,
+      is_primary: is_primary !== undefined ? is_primary : contact.is_primary,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Contact updated successfully",
+      data: { contact },
+    });
+  } catch (error) {
+    logger.error("Error updating business partner contact:", error);
+    res.status(500).json({ success: false, message: "Failed to update contact" });
+  }
+};
+
+// Delete a contact
+export const deleteBusinessPartnerContact = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id, contactId } = req.params;
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+
+    if (!userId || userRole !== "recruiter") {
+      return res.status(403).json({ success: false, message: "Only recruiters can delete business partner contacts" });
+    }
+
+    const contact = await BusinessPartnerContact.findOne({ where: { id: contactId, business_partner_id: id } });
+    if (!contact) {
+      return res.status(404).json({ success: false, message: "Contact not found" });
+    }
+
+    await contact.destroy();
+
+    res.status(200).json({ success: true, message: "Contact deleted successfully" });
+  } catch (error) {
+    logger.error("Error deleting business partner contact:", error);
+    res.status(500).json({ success: false, message: "Failed to delete contact" });
+  }
+};
+
+// Recent job postings raised by this client - the real equivalent of the
+// reference UI's fabricated "What's New" news feed.
+export const getBusinessPartnerJobs = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const businessPartner = await BusinessPartner.findByPk(id);
+    if (!businessPartner) {
+      return res.status(404).json({ success: false, message: "Business partner not found" });
+    }
+
+    const jobs = await Job.findAll({
+      where: { business_partner_id: id },
+      attributes: ["id", "job_id", "title", "status", "job_type", "location", "created_at"],
+      order: [["created_at", "DESC"]],
+      limit: 20,
+    });
+
+    res.status(200).json({ success: true, data: { jobs } });
+  } catch (error) {
+    logger.error("Error fetching business partner jobs:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch business partner jobs" });
+  }
+};
+
+// Real per-partner metrics, derived from this partner's actual jobs/placements/contacts
+// rather than the hardcoded demo numbers the reference UI used.
+export const getBusinessPartnerDetailStats = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    const businessPartner = await BusinessPartner.findByPk(id);
+    if (!businessPartner) {
+      return res.status(404).json({ success: false, message: "Business partner not found" });
+    }
+
+    const [activeJobs, totalJobs, totalContacts, placements] = await Promise.all([
+      Job.count({ where: { business_partner_id: id, status: "active" } }),
+      Job.count({ where: { business_partner_id: id } }),
+      BusinessPartnerContact.count({ where: { business_partner_id: id } }),
+      Placement.findAll({
+        include: [{ model: Job, as: "job", where: { business_partner_id: id }, attributes: [] }],
+        attributes: ["id", "salary", "commission_amount"],
+      }),
+    ]);
+
+    const totalPlacements = placements.length;
+    const revenueGenerated = placements.reduce(
+      (sum, p) => sum + (Number((p as any).commission_amount) || Number((p as any).salary) || 0),
+      0
+    );
+
+    res.status(200).json({
+      success: true,
+      data: { activeJobs, totalJobs, totalPlacements, totalContacts, revenueGenerated },
+    });
+  } catch (error) {
+    logger.error("Error fetching business partner detail stats:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch business partner stats" });
+  }
+};
+
+// A real activity feed for this partner, merged from jobs created, placements
+// made, and contacts added - replacing the reference UI's hardcoded timeline.
+export const getBusinessPartnerActivity = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const businessPartner = await BusinessPartner.findByPk(id);
+    if (!businessPartner) {
+      return res.status(404).json({ success: false, message: "Business partner not found" });
+    }
+
+    const [jobs, placements, contacts] = await Promise.all([
+      Job.findAll({
+        where: { business_partner_id: id },
+        attributes: ["id", "job_id", "title", "created_at"],
+        order: [["created_at", "DESC"]],
+        limit: 10,
+      }),
+      Placement.findAll({
+        include: [{ model: Job, as: "job", where: { business_partner_id: id }, attributes: ["title"] }],
+        attributes: ["id", "placement_id", "created_at"],
+        order: [["created_at", "DESC"]],
+        limit: 10,
+      }),
+      BusinessPartnerContact.findAll({
+        where: { business_partner_id: id },
+        attributes: ["id", "name", "created_at"],
+        order: [["created_at", "DESC"]],
+        limit: 10,
+      }),
+    ]);
+
+    const activity = [
+      ...jobs.map((j) => ({
+        id: `job-${j.id}`,
+        type: "job" as const,
+        description: `New job posted: ${j.title}`,
+        at: j.created_at,
+      })),
+      ...placements.map((p: any) => ({
+        id: `placement-${p.id}`,
+        type: "placement" as const,
+        description: `New placement made for ${p.job?.title || "a role"}`,
+        at: p.created_at,
+      })),
+      ...contacts.map((c) => ({
+        id: `contact-${c.id}`,
+        type: "contact" as const,
+        description: `New contact added: ${c.name}`,
+        at: c.created_at,
+      })),
+    ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 15);
+
+    res.status(200).json({ success: true, data: { activity } });
+  } catch (error) {
+    logger.error("Error fetching business partner activity:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch business partner activity" });
+  }
+};
+
+// Real monthly placement/revenue trend for this partner's jobs (last 6 months),
+// replacing the reference UI's hardcoded chart data.
+export const getBusinessPartnerRevenueTrend = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const businessPartner = await BusinessPartner.findByPk(id);
+    if (!businessPartner) {
+      return res.status(404).json({ success: false, message: "Business partner not found" });
+    }
+
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    const dialect = sequelize.getDialect();
+    const monthExpr =
+      dialect === "sqlite"
+        ? Sequelize.fn("strftime", "%Y-%m", Sequelize.col("Placement.created_at"))
+        : dialect === "postgres"
+        ? Sequelize.fn("to_char", Sequelize.col("Placement.created_at"), "YYYY-MM")
+        : Sequelize.fn("DATE_FORMAT", Sequelize.col("Placement.created_at"), "%Y-%m");
+
+    const placements = await Placement.findAll({
+      include: [{ model: Job, as: "job", where: { business_partner_id: id }, attributes: [] }],
+      attributes: [
+        [monthExpr, "month"],
+        [Sequelize.literal("COUNT(*)"), "placements"],
+        [Sequelize.literal('SUM(COALESCE("commission_amount", "salary", 0))'), "revenue"],
+      ],
+      where: { created_at: { [Op.gte]: sixMonthsAgo } },
+      group: [monthExpr as any],
+      order: [[monthExpr as any, "ASC"]],
+      raw: true,
+    });
+
+    const trend = (placements as any[]).map((row) => ({
+      month: row.month,
+      placements: Number(row.placements) || 0,
+      revenue: Number(row.revenue) || 0,
+    }));
+
+    res.status(200).json({ success: true, data: { trend } });
+  } catch (error) {
+    logger.error("Error fetching business partner revenue trend:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch revenue trend" });
+  }
+};
+
+// Add a note to a business partner
+export const addBusinessPartnerNote = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { title, content, category, isPrivate, tags } = req.body;
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+
+    if (!userId || userRole !== "recruiter") {
+      return res.status(403).json({ success: false, message: "Only recruiters can add notes" });
+    }
+
+    const businessPartner = await BusinessPartner.findByPk(id);
+    if (!businessPartner) {
+      return res.status(404).json({ success: false, message: "Business partner not found" });
+    }
+    if (!canManagePartner(businessPartner, userId)) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    const authorName = await formatUserName(userId);
+    const history = (businessPartner as any).notes_history || [];
+    const entry = {
+      id: randomUUID(),
+      title: (title || "").trim(),
+      content: content.trim(),
+      category: category || "general",
+      isPrivate: !!isPrivate,
+      tags: Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string" && t.trim()) : [],
+      author: authorName,
+      by: userId,
+      at: new Date().toISOString(),
+    };
+    history.push(entry);
+    await businessPartner.update({ notes_history: history, last_activity_at: new Date() } as any);
+
+    res.json({ success: true, message: "Note added successfully", data: { notes_history: history } });
+  } catch (error) {
+    logger.error("Error adding business partner note:", error);
+    res.status(500).json({ success: false, message: "Failed to add note" });
+  }
+};
+
+// Edit an existing note
+export const updateBusinessPartnerNote = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id, noteId } = req.params;
+    const { title, content, category, isPrivate, tags } = req.body;
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+
+    if (!userId || userRole !== "recruiter") {
+      return res.status(403).json({ success: false, message: "Only recruiters can edit notes" });
+    }
+
+    const businessPartner = await BusinessPartner.findByPk(id);
+    if (!businessPartner) {
+      return res.status(404).json({ success: false, message: "Business partner not found" });
+    }
+    if (!canManagePartner(businessPartner, userId)) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    const history = (businessPartner as any).notes_history || [];
+    const noteIndex = history.findIndex((n: any) => n.id === noteId);
+    if (noteIndex === -1) {
+      return res.status(404).json({ success: false, message: "Note not found" });
+    }
+
+    const existing = history[noteIndex];
+    history[noteIndex] = {
+      ...existing,
+      title: title !== undefined ? title.trim() : existing.title,
+      content: content !== undefined ? content.trim() : existing.content,
+      category: category !== undefined ? category : existing.category,
+      isPrivate: isPrivate !== undefined ? !!isPrivate : existing.isPrivate,
+      tags: Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string" && t.trim()) : existing.tags,
+      edited_at: new Date().toISOString(),
+    };
+
+    await businessPartner.update({ notes_history: history } as any);
+
+    res.json({ success: true, message: "Note updated successfully", data: { notes_history: history } });
+  } catch (error) {
+    logger.error("Error updating business partner note:", error);
+    res.status(500).json({ success: false, message: "Failed to update note" });
+  }
+};
+
+// Delete a note
+export const deleteBusinessPartnerNote = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id, noteId } = req.params;
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+
+    if (!userId || userRole !== "recruiter") {
+      return res.status(403).json({ success: false, message: "Only recruiters can delete notes" });
+    }
+
+    const businessPartner = await BusinessPartner.findByPk(id);
+    if (!businessPartner) {
+      return res.status(404).json({ success: false, message: "Business partner not found" });
+    }
+    if (!canManagePartner(businessPartner, userId)) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    const history = (businessPartner as any).notes_history || [];
+    const noteIndex = history.findIndex((n: any) => n.id === noteId);
+    if (noteIndex === -1) {
+      return res.status(404).json({ success: false, message: "Note not found" });
+    }
+
+    history.splice(noteIndex, 1);
+    await businessPartner.update({ notes_history: history } as any);
+
+    res.json({ success: true, message: "Note deleted successfully", data: { notes_history: history } });
+  } catch (error) {
+    logger.error("Error deleting business partner note:", error);
+    res.status(500).json({ success: false, message: "Failed to delete note" });
+  }
+};
+
+// Add a document to a business partner - either an uploaded file or a pasted URL
+export const addBusinessPartnerAttachment = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, document_type, valid_from, valid_to } = req.body;
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+
+    if (!userId || userRole !== "recruiter") {
+      return res.status(403).json({ success: false, message: "Only recruiters can add attachments" });
+    }
+
+    const businessPartner = await BusinessPartner.findByPk(id);
+    if (!businessPartner) {
+      return res.status(404).json({ success: false, message: "Business partner not found" });
+    }
+    if (!canManagePartner(businessPartner, userId)) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    let url: string;
+    let size: number | undefined;
+    const file = (req as any).file;
+    if (file) {
+      const serverBase = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
+      url = `${serverBase}/uploads/documents_tmp/${file.filename}`;
+      size = file.size;
+    } else if (req.body.url) {
+      url = req.body.url;
+    } else {
+      return res.status(400).json({ success: false, message: "A file or url is required" });
+    }
+
+    const attachments = (businessPartner as any).attachments || [];
+    attachments.push({
+      id: randomUUID(),
+      url,
+      name: name || file?.originalname || url,
+      document_type: document_type || "OTHER",
+      size,
+      valid_from: valid_from || new Date().toISOString(),
+      valid_to: valid_to || undefined,
+      by: userId,
+      at: new Date().toISOString(),
+    });
+    await businessPartner.update({ attachments, last_activity_at: new Date() } as any);
+
+    res.json({ success: true, message: "Document uploaded successfully", data: { attachments } });
+  } catch (error) {
+    logger.error("Error adding business partner attachment:", error);
+    res.status(500).json({ success: false, message: "Failed to add attachment" });
   }
 };

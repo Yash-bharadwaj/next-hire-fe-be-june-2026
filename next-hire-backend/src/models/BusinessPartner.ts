@@ -43,12 +43,14 @@ export interface BusinessPartnerAttributes {
   logo_url?: string;
   notes?: string;
   tags?: string; // JSON array as string for SQLite
-  
+  notes_history?: any;
+  attachments?: any;
+
   // Tracking
   created_by: string; // User ID
   assigned_to?: string; // User ID of account manager
   last_activity_at?: Date;
-  
+
   created_at?: Date;
   updated_at?: Date;
 }
@@ -101,7 +103,9 @@ export class BusinessPartner
   public logo_url?: string;
   public notes?: string;
   public tags?: string;
-  
+  public notes_history?: any;
+  public attachments?: any;
+
   public created_by!: string;
   public assigned_to?: string;
   public last_activity_at?: Date;
@@ -258,6 +262,40 @@ BusinessPartner.init(
       type: DataTypes.TEXT,
       allowNull: true,
       defaultValue: "[]",
+    },
+    notes_history: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: "[]",
+      get() {
+        const value = this.getDataValue("notes_history") as unknown as string;
+        if (!value) return [];
+        try {
+          return JSON.parse(value);
+        } catch {
+          return [];
+        }
+      },
+      set(value: any[]) {
+        this.setDataValue("notes_history", JSON.stringify(value || []));
+      },
+    },
+    attachments: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: "[]",
+      get() {
+        const value = this.getDataValue("attachments") as unknown as string;
+        if (!value) return [];
+        try {
+          return JSON.parse(value);
+        } catch {
+          return [];
+        }
+      },
+      set(value: any[]) {
+        this.setDataValue("attachments", JSON.stringify(value || []));
+      },
     },
     created_by: {
       type: DataTypes.UUID,

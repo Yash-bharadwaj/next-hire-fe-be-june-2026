@@ -248,12 +248,14 @@ export interface Task {
   due_date?: string;
   job_id?: string;
   submission_id?: string;
+  business_partner_id?: string;
   created_by: string;
   created_at: string;
   updated_at: string;
   assignee?: TeamMember;
   creator?: TeamMember;
   job?: { id: string; job_id: string; title: string };
+  businessPartner?: { id: string; business_partner_number: string; name: string };
 }
 
 export interface CreateTaskRequest {
@@ -264,6 +266,7 @@ export interface CreateTaskRequest {
   due_date?: string;
   job_id?: string;
   submission_id?: string;
+  business_partner_id?: string;
 }
 
 export interface UpdateTaskRequest {
@@ -685,6 +688,7 @@ class RecruiterService {
     priority?: TaskPriority;
     job_id?: string;
     submission_id?: string;
+    business_partner_id?: string;
   } = {}): Promise<TasksResponse> {
     try {
       const params = new URLSearchParams();

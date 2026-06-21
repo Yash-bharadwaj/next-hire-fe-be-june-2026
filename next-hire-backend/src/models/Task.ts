@@ -3,6 +3,7 @@ import { sequelize } from "../config/database";
 import { User } from "./User";
 import { Job } from "./Job";
 import { Submission } from "./Submission";
+import { BusinessPartner } from "./BusinessPartner";
 
 export interface TaskAttributes {
   id: string;
@@ -15,6 +16,7 @@ export interface TaskAttributes {
   due_date?: Date;
   job_id?: string; // Optional link to job
   submission_id?: string; // Optional link to submission
+  business_partner_id?: string; // Optional link to a business partner (client)
   completed_at?: Date;
   created_at?: Date;
   updated_at?: Date;
@@ -40,6 +42,7 @@ export class Task
   public due_date?: Date;
   public job_id?: string;
   public submission_id?: string;
+  public business_partner_id?: string;
   public completed_at?: Date;
 
   // Timestamps
@@ -51,6 +54,7 @@ export class Task
   public creator?: User;
   public job?: Job;
   public submission?: Submission;
+  public businessPartner?: BusinessPartner;
 }
 
 Task.init(
@@ -119,6 +123,15 @@ Task.init(
       },
       onDelete: "SET NULL",
     },
+    business_partner_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: BusinessPartner,
+        key: "id",
+      },
+      onDelete: "SET NULL",
+    },
     completed_at: {
       type: DataTypes.DATE,
       allowNull: true,
@@ -159,6 +172,9 @@ Task.init(
       },
       {
         fields: ["submission_id"],
+      },
+      {
+        fields: ["business_partner_id"],
       },
     ],
   }

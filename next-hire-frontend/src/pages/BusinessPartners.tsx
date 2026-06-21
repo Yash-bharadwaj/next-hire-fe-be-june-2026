@@ -1,8 +1,18 @@
 import React, { useState } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataGrid } from "@/components/ui/data-grid";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,13 +42,13 @@ import {
   Import,
   PenTool,
   Bot,
-  RotateCcw,
   ExternalLink,
   Pencil,
   Loader2,
   AlertCircle,
   RefreshCw,
   X,
+  Sheet,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -46,7 +56,9 @@ import {
   useBusinessPartnerStats,
   useBusinessPartnerManagement,
 } from "@/hooks/useBusinessPartners";
-import { businessPartnerService, CreateBusinessPartnerRequest } from "@/services/businessPartnerService";
+import { businessPartnerService, CreateBusinessPartnerRequest, BusinessPartnerStatus } from "@/services/businessPartnerService";
+import { downloadCsv, type CsvColumn } from "@/utils/csv";
+import { downloadPdf, downloadExcel, exportToGoogleSheets } from "@/utils/exportData";
 import { useAuth } from "@/contexts/AuthContext";
 import BusinessPartnerFormDialog from "@/components/BusinessPartnerFormDialog";
 
@@ -70,11 +82,15 @@ const BusinessPartners = () => {
     refresh: refreshStats
   } = useBusinessPartnerStats();
 
-  const { createBusinessPartner, deleteBusinessPartner } = useBusinessPartnerManagement();
+  const { createBusinessPartner, deleteBusinessPartner, updateBusinessPartner } = useBusinessPartnerManagement();
 
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({});
   const [activeCardFilter, setActiveCardFilter] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showUpdateStatus, setShowUpdateStatus] = useState(false);
+  const [statusUpdatePartnerId, setStatusUpdatePartnerId] = useState("");
+  const [statusUpdateValue, setStatusUpdateValue] = useState<BusinessPartnerStatus | "">("");
+  const [savingStatusUpdate, setSavingStatusUpdate] = useState(false);
   const [selectedPartners, setSelectedPartners] = useState<any[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
@@ -109,6 +125,102 @@ const BusinessPartners = () => {
       }
     } finally {
       setBulkDeleting(false);
+    }
+  };
+
+  const exportColumns: CsvColumn<any>[] = [
+    { header: "BP #", accessor: (p) => p.business_partner_number },
+    { header: "Company Name", accessor: (p) => p.name },
+    { header: "Type", accessor: (p) => businessPartnerService.getPartnerType(p) },
+    { header: "Status", accessor: (p) => businessPartnerService.getStatusLabel(p.status) },
+    { header: "Location", accessor: (p) => [p.city, p.state].filter(Boolean).join(", ") },
+    { header: "Email", accessor: (p) => p.primary_email || "" },
+    { header: "Phone", accessor: (p) => p.primary_phone || "" },
+    { header: "Website", accessor: (p) => p.website || "" },
+    { header: "Source", accessor: (p) => businessPartnerService.getSourceLabel(p.source) },
+    { header: "Created", accessor: (p) => businessPartnerService.formatDate(p.created_at) },
+  ];
+
+  const exportTimestamp = () => new Date().toISOString().replace(/[:.]/g, "-");
+
+  const handleExportCsv = () => {
+    if (!businessPartners.length) {
+      toast.error("No business partners to export");
+      return;
+    }
+    downloadCsv(`business-partners-export-${exportTimestamp()}.csv`, businessPartners, exportColumns);
+    toast.success("Business partners exported as CSV");
+  };
+
+  const handleExportPdf = () => {
+    if (!businessPartners.length) {
+      toast.error("No business partners to export");
+      return;
+    }
+    downloadPdf(`business-partners-export-${exportTimestamp()}.pdf`, "Business Partners", businessPartners, exportColumns);
+    toast.success("Business partners exported as PDF");
+  };
+
+  const handleExportExcel = () => {
+    if (!businessPartners.length) {
+      toast.error("No business partners to export");
+      return;
+    }
+    downloadExcel(`business-partners-export-${exportTimestamp()}.xlsx`, "Business Partners", businessPartners, exportColumns);
+    toast.success("Business partners exported as Excel");
+  };
+
+  const handleExportGoogleSheets = async () => {
+    if (!businessPartners.length) {
+      toast.error("No business partners to export");
+      return;
+    }
+    try {
+      await exportToGoogleSheets(businessPartners, exportColumns);
+      toast.success("Business partner data copied — paste (Cmd/Ctrl+V) into the new sheet");
+    } catch {
+      toast.error("Couldn't copy to clipboard. Try CSV or Excel export instead.");
+    }
+  };
+
+  // "Share contacts": copies the selected partners' (or, with none selected,
+  // every currently loaded partner's) contact details to the clipboard.
+  const handleShareContacts = async () => {
+    const targets = selectedPartners.length > 0 ? selectedPartners : businessPartners;
+    if (!targets.length) {
+      toast.error("No business partners to share");
+      return;
+    }
+    const text = targets
+      .map((p: any) => [p.name, p.primary_email, p.primary_phone].filter(Boolean).join(" · "))
+      .join("\n");
+    await navigator.clipboard.writeText(text);
+    toast.success(`Copied contact info for ${targets.length} partner${targets.length > 1 ? "s" : ""}`);
+  };
+
+  // "Send bulk email": opens the user's mail client addressed to every
+  // selected (or currently loaded) partner with a known email address.
+  const handleSendBulkEmail = () => {
+    const targets = selectedPartners.length > 0 ? selectedPartners : businessPartners;
+    const emails = targets.map((p: any) => p.primary_email).filter(Boolean);
+    if (!emails.length) {
+      toast.error("None of the targeted partners have an email on file");
+      return;
+    }
+    window.location.href = `mailto:?bcc=${emails.join(",")}`;
+  };
+
+  const handleApplyStatusUpdate = async () => {
+    if (!statusUpdatePartnerId || !statusUpdateValue) return;
+    setSavingStatusUpdate(true);
+    const result = await updateBusinessPartner(statusUpdatePartnerId, { status: statusUpdateValue });
+    setSavingStatusUpdate(false);
+    if (result) {
+      setShowUpdateStatus(false);
+      setStatusUpdatePartnerId("");
+      setStatusUpdateValue("");
+      refresh();
+      refreshStats();
     }
   };
 
@@ -416,21 +528,25 @@ const BusinessPartners = () => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-white border-gray-200 z-50">
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportCsv}>
+                <FileText className="w-4 h-4 mr-2" />
+                Export as CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportPdf}>
                 <FileText className="w-4 h-4 mr-2" />
                 Export as PDF
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportExcel}>
                 <FileSpreadsheet className="w-4 h-4 mr-2" />
                 Export as Excel
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <FileSpreadsheet className="w-4 h-4 mr-2" />
+              <DropdownMenuItem onClick={handleExportGoogleSheets}>
+                <Sheet className="w-4 h-4 mr-2" />
                 Export to Google Sheets
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="border-blue-200 hover:bg-blue-50 hover:border-blue-300 text-xs flex-1 sm:flex-none px-2 sm:px-3">
@@ -439,18 +555,19 @@ const BusinessPartners = () => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-white border-gray-200 z-50">
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={handleShareContacts}>
                 <Share2 className="w-4 h-4 mr-2" />
-                Share contacts
+                Share contacts{selectedPartners.length > 0 ? ` (${selectedPartners.length})` : ""}
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={handleSendBulkEmail}>
                 <Mail className="w-4 h-4 mr-2" />
-                Send bulk email
+                Send bulk email{selectedPartners.length > 0 ? ` (${selectedPartners.length})` : ""}
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowUpdateStatus(true)}>
                 <UserCheck className="w-4 h-4 mr-2" />
                 Update status
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleBulkDelete}
                 disabled={selectedPartners.length === 0 || bulkDeleting}
@@ -458,11 +575,6 @@ const BusinessPartners = () => {
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Bulk delete{selectedPartners.length > 0 ? ` (${selectedPartners.length})` : ""}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Mass changes
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -603,6 +715,54 @@ const BusinessPartners = () => {
         mode="create"
         onSubmit={handleCreatePartner}
       />
+
+      {/* Bulk Update Status Dialog */}
+      <Dialog open={showUpdateStatus} onOpenChange={setShowUpdateStatus}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Partner Status</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="mb-1 block">Business Partner</Label>
+              <Select value={statusUpdatePartnerId} onValueChange={setStatusUpdatePartnerId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a partner" />
+                </SelectTrigger>
+                <SelectContent>
+                  {businessPartners.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} ({p.business_partner_number})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1 block">New Status</Label>
+              <Select value={statusUpdateValue} onValueChange={(v) => setStatusUpdateValue(v as BusinessPartnerStatus)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="prospect">Prospect</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="on_hold">On Hold</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUpdateStatus(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleApplyStatusUpdate} disabled={!statusUpdatePartnerId || !statusUpdateValue || savingStatusUpdate}>
+              {savingStatusUpdate ? "Saving..." : "Update Status"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

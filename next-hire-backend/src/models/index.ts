@@ -86,6 +86,7 @@ export function applyAssociations() {
   Task.belongsTo(User, { foreignKey: "created_by", as: "creator" });
   Task.belongsTo(Job, { foreignKey: "job_id", as: "job" });
   Task.belongsTo(Submission, { foreignKey: "submission_id", as: "submission" });
+  Task.belongsTo(BusinessPartner, { foreignKey: "business_partner_id", as: "businessPartner" });
 
   // Job Profitability
   Job.hasOne(JobProfitability, { foreignKey: "job_id", as: "profitability" });

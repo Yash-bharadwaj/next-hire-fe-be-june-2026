@@ -380,6 +380,10 @@ const createTaskValidation = [
     .optional()
     .isUUID()
     .withMessage("Valid submission ID is required"),
+  body("business_partner_id")
+    .optional()
+    .isUUID()
+    .withMessage("Valid business partner ID is required"),
 ];
 
 const listTasksValidation = [
@@ -401,6 +405,7 @@ const listTasksValidation = [
     .withMessage("Invalid priority"),
   query("job_id").optional().isUUID().withMessage("Valid job ID is required"),
   query("submission_id").optional().isUUID().withMessage("Valid submission ID is required"),
+  query("business_partner_id").optional().isUUID().withMessage("Valid business partner ID is required"),
 ];
 
 const updateTaskStatusValidation = [
