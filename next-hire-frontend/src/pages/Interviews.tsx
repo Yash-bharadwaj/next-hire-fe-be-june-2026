@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +69,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { useInterviews, useInterviewStats, useInterviewManagement } from "@/hooks/useInterviews";
 import { interviewService, InterviewStatus, InterviewType } from "@/services/interviewService";
+import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/recruiterService";
 import { useAuth } from "@/contexts/AuthContext";
 import { downloadCsv } from "@/utils/csv";
 
@@ -273,105 +274,157 @@ const Interviews = () => {
     }
   };
   
-  // Todo state
-  const [todos, setTodos] = useState([
-    { id: 1, title: "Prepare interview questions for React position", completed: false, dueDate: "2024-01-28", priority: "high", assignee: "Mike Johnson" },
-    { id: 2, title: "Review candidate profiles for upcoming interviews", completed: false, dueDate: "2024-01-29", priority: "medium", assignee: "Sarah Wilson" },
-    { id: 3, title: "Schedule follow-up interviews", completed: true, dueDate: "2024-01-27", priority: "low", assignee: "John Smith" },
-    { id: 4, title: "Send interview reminders to panel members", completed: false, dueDate: "2024-01-30", priority: "high", assignee: "Lisa Chen" }
-  ]);
-  
+  // Todo state - tasks created with no job_id/submission_id (general todos),
+  // backed by the same real Task model used by Interview/Submission ToDo tabs.
+  const [todos, setTodos] = useState<Task[]>([]);
+  const [todosLoading, setTodosLoading] = useState(false);
+  const [teamOptions, setTeamOptions] = useState<TeamMember[]>([]);
+
+  const formatTeamMemberName = (member?: TeamMember) => {
+    if (!member) return "Unassigned";
+    const name = [member.recruiterProfile?.first_name, member.recruiterProfile?.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    return name || member.email;
+  };
+
+  const fetchTodos = useCallback(async () => {
+    setTodosLoading(true);
+    try {
+      const res = await recruiterService.getTasks({ limit: 100 });
+      setTodos((res as any)?.data?.tasks || []);
+    } catch {
+      // empty state handles failures gracefully
+    } finally {
+      setTodosLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTodos();
+    recruiterService.getTeamMembers().then(setTeamOptions).catch(() => {});
+  }, [fetchTodos]);
+
   const [newTodo, setNewTodo] = useState("");
-  const [newTodoPriority, setNewTodoPriority] = useState("medium");
+  const [newTodoPriority, setNewTodoPriority] = useState<TaskPriority>("medium");
   const [newTodoAssignee, setNewTodoAssignee] = useState("");
   const [todoSearch, setTodoSearch] = useState("");
   const [todoFilter, setTodoFilter] = useState("all");
   const [todoSort, setTodoSort] = useState("dueDate");
-  const [rescheduleData, setRescheduleData] = useState<{todoId: number | null, newDate: Date | undefined}>({todoId: null, newDate: undefined});
-  const [reassignData, setReassignData] = useState<{todoId: number | null, newAssignee: string}>({todoId: null, newAssignee: ""});
-
-  // Mock users data for todo assignees (in production, fetch from API)
-  const usersData = {
-    users: [
-      { id: "1", name: user?.name || "Current User" },
-      { id: "2", name: "Sarah Johnson" },
-      { id: "3", name: "Mike Chen" },
-      { id: "4", name: "Emily Davis" },
-      { id: "5", name: "Alex Wilson" },
-    ]
-  };
+  const [rescheduleData, setRescheduleData] = useState<{todoId: string | null, newDate: Date | undefined}>({todoId: null, newDate: undefined});
+  const [reassignData, setReassignData] = useState<{todoId: string | null, newAssignee: string}>({todoId: null, newAssignee: ""});
 
   // Todo functions
-  const handleAddTodo = () => {
-    if (newTodo.trim()) {
-      const todoItem = {
-        id: todos.length + 1,
-        title: newTodo,
-        completed: false,
-        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        priority: newTodoPriority as "high" | "medium" | "low",
-        assignee: newTodoAssignee
-      };
-      setTodos([...todos, todoItem]);
+  const handleAddTodo = async () => {
+    if (!newTodo.trim()) return;
+    try {
+      await recruiterService.createTask({
+        title: newTodo.trim(),
+        priority: newTodoPriority,
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        assigned_to: newTodoAssignee || undefined,
+      });
       setNewTodo("");
       setNewTodoAssignee("");
       toast({ title: "Todo added", description: "New todo item has been added successfully." });
+      fetchTodos();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to add todo",
+        variant: "destructive",
+      });
     }
   };
 
-  const toggleTodo = (todoId: number) => {
-    setTodos(todos.map(item => item.id === todoId ? { ...item, completed: !item.completed } : item));
+  const toggleTodo = async (todoId: string) => {
+    const todo = todos.find((t) => t.id === todoId);
+    if (!todo) return;
+    const nextStatus = todo.status === "completed" ? "pending" : "completed";
+    try {
+      await recruiterService.updateTask(todoId, { status: nextStatus });
+      setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, status: nextStatus } : t)));
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to update todo",
+        variant: "destructive",
+      });
+    }
   };
 
-  const deleteTodo = (todoId: number) => {
-    setTodos(todos.filter(item => item.id !== todoId));
-    toast({ title: "Todo deleted", description: "Todo item has been removed." });
+  const deleteTodo = async (todoId: string) => {
+    try {
+      await recruiterService.deleteTask(todoId);
+      setTodos((prev) => prev.filter((t) => t.id !== todoId));
+      toast({ title: "Todo deleted", description: "Todo item has been removed." });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to delete todo",
+        variant: "destructive",
+      });
+    }
   };
 
   const getFilteredAndSortedTodos = () => {
     let filtered = todos.filter(todo => {
-      const matchesFilter = todoFilter === "all" || 
-        (todoFilter === "completed" && todo.completed) ||
-        (todoFilter === "pending" && !todo.completed) ||
+      const matchesFilter = todoFilter === "all" ||
+        (todoFilter === "completed" && todo.status === "completed") ||
+        (todoFilter === "pending" && todo.status !== "completed") ||
         todo.priority === todoFilter;
-      const matchesSearch = todoSearch === "" || 
+      const matchesSearch = todoSearch === "" ||
         todo.title.toLowerCase().includes(todoSearch.toLowerCase()) ||
-        (todo.assignee && todo.assignee.toLowerCase().includes(todoSearch.toLowerCase()));
+        formatTeamMemberName(todo.assignee).toLowerCase().includes(todoSearch.toLowerCase());
       return matchesFilter && matchesSearch;
     });
 
     return filtered.sort((a, b) => {
       switch (todoSort) {
         case "dueDate":
-          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-        case "priority":
+          return new Date(a.due_date || 0).getTime() - new Date(b.due_date || 0).getTime();
+        case "priority": {
           const priorityOrder = { high: 3, medium: 2, low: 1 };
           return priorityOrder[b.priority] - priorityOrder[a.priority];
+        }
         case "assignee":
-          return (a.assignee || "").localeCompare(b.assignee || "");
+          return formatTeamMemberName(a.assignee).localeCompare(formatTeamMemberName(b.assignee));
         default:
           return 0;
       }
     });
   };
 
-  const handleReschedule = (todoId: number) => {
-    if (rescheduleData.newDate) {
-      setTodos(todos.map(todo => 
-        todo.id === todoId ? { ...todo, dueDate: format(rescheduleData.newDate!, "yyyy-MM-dd") } : todo
-      ));
-      setRescheduleData({todoId: null, newDate: undefined});
+  const handleReschedule = async (todoId: string) => {
+    if (!rescheduleData.newDate) return;
+    try {
+      await recruiterService.updateTask(todoId, { due_date: rescheduleData.newDate.toISOString() });
+      setRescheduleData({ todoId: null, newDate: undefined });
       toast({ title: "Todo rescheduled", description: "Due date has been updated successfully." });
+      fetchTodos();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to reschedule todo",
+        variant: "destructive",
+      });
     }
   };
 
-  const handleReassign = (todoId: number) => {
-    if (reassignData.newAssignee) {
-      setTodos(todos.map(todo => 
-        todo.id === todoId ? { ...todo, assignee: reassignData.newAssignee } : todo
-      ));
-      setReassignData({todoId: null, newAssignee: ""});
+  const handleReassign = async (todoId: string) => {
+    if (!reassignData.newAssignee) return;
+    try {
+      await recruiterService.updateTask(todoId, { assigned_to: reassignData.newAssignee });
+      setReassignData({ todoId: null, newAssignee: "" });
       toast({ title: "Todo reassigned", description: "Assignee has been updated successfully." });
+      fetchTodos();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to reassign todo",
+        variant: "destructive",
+      });
     }
   };
 
@@ -1002,12 +1055,12 @@ const Interviews = () => {
               <div className="flex justify-between items-center text-sm mt-2">
                 <div className="flex gap-4">
                   <span className="text-green-600">Total: {todos.length}</span>
-                  <span className="text-blue-600">Completed: {todos.filter(item => item.completed).length}</span>
-                  <span className="text-orange-600">Pending: {todos.filter(item => !item.completed).length}</span>
+                  <span className="text-blue-600">Completed: {todos.filter(item => item.status === "completed").length}</span>
+                  <span className="text-orange-600">Pending: {todos.filter(item => item.status !== "completed").length}</span>
                 </div>
               </div>
             </CardHeader>
-            
+
             <CardContent className="p-6 space-y-4">
               {/* Search and Filter Controls */}
               <div className="flex gap-3 flex-wrap">
@@ -1068,9 +1121,9 @@ const Interviews = () => {
                     <SelectValue placeholder="Assign to..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {usersData.users.map((user) => (
-                      <SelectItem key={user.id} value={user.name}>
-                        {user.name}
+                    {teamOptions.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        {formatTeamMemberName(member)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1079,22 +1132,30 @@ const Interviews = () => {
 
               {/* Todo List */}
               <div className="space-y-3">
-                {getFilteredAndSortedTodos().map((todo) => (
+                {todosLoading ? (
+                  <div className="flex items-center justify-center py-10 text-gray-500">
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                    Loading todos...
+                  </div>
+                ) : getFilteredAndSortedTodos().length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">No todos found.</p>
+                ) : (
+                getFilteredAndSortedTodos().map((todo) => (
                   <div key={todo.id} className="border border-green-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3 flex-1">
                         <Checkbox
-                          checked={todo.completed}
+                          checked={todo.status === "completed"}
                           onCheckedChange={() => toggleTodo(todo.id)}
                           className="mt-1"
                         />
                         <div className="flex-1">
-                          <h4 className={`font-semibold ${todo.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                          <h4 className={`font-semibold ${todo.status === "completed" ? 'line-through text-gray-500' : 'text-gray-900'}`}>
                             {todo.title}
                           </h4>
                           <div className="flex gap-4 text-sm text-gray-600 mt-1">
-                            <span>Due: {todo.dueDate}</span>
-                            {todo.assignee && <span>Assigned to: {todo.assignee}</span>}
+                            <span>Due: {todo.due_date ? format(new Date(todo.due_date), "PPP") : "—"}</span>
+                            {todo.assignee && <span>Assigned to: {formatTeamMemberName(todo.assignee)}</span>}
                           </div>
                         </div>
                       </div>
@@ -1165,9 +1226,9 @@ const Interviews = () => {
                                   <SelectValue placeholder="Select new assignee..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {usersData.users.map((user) => (
-                                    <SelectItem key={user.id} value={user.name}>
-                                      {user.name}
+                                  {teamOptions.map((member) => (
+                                    <SelectItem key={member.id} value={member.id}>
+                                      {formatTeamMemberName(member)}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -1187,7 +1248,8 @@ const Interviews = () => {
                       </div>
                     </div>
                   </div>
-                ))}
+                ))
+                )}
               </div>
             </CardContent>
           </Card>
