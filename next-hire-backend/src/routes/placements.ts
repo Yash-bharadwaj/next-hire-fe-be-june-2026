@@ -2,6 +2,7 @@ import { Router } from "express";
 import { body, param, query } from "express-validator";
 import { auth } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { generalDocumentUpload } from "../middleware/upload";
 import {
   getPlacements,
   getPlacementById,
@@ -11,6 +12,10 @@ import {
   getPlacementStats,
   terminatePlacement,
   updateOnboardingStatus,
+  addPlacementNote,
+  updatePlacementNote,
+  deletePlacementNote,
+  addPlacementAttachment,
 } from "../controllers/placementController";
 
 const router = Router();
@@ -186,6 +191,44 @@ const onboardingStatusValidation = [
     .withMessage("Invalid onboarding status"),
 ];
 
+const noteCategories = ["technical", "behavioral", "feedback", "general"];
+
+const addNoteValidation = [
+  param("id").isUUID().withMessage("Valid placement ID is required"),
+  body("content").trim().notEmpty().withMessage("Note content is required"),
+  body("title").optional().isString(),
+  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
+  body("isPrivate").optional().isBoolean(),
+  body("tags").optional().isArray().withMessage("Tags must be an array"),
+];
+
+const updateNoteValidation = [
+  param("id").isUUID().withMessage("Valid placement ID is required"),
+  param("noteId").notEmpty().withMessage("Valid note ID is required"),
+  body("content").optional().trim().notEmpty().withMessage("Note content cannot be empty"),
+  body("title").optional().isString(),
+  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
+  body("isPrivate").optional().isBoolean(),
+  body("tags").optional().isArray().withMessage("Tags must be an array"),
+];
+
+const noteIdValidation = [
+  param("id").isUUID().withMessage("Valid placement ID is required"),
+  param("noteId").notEmpty().withMessage("Valid note ID is required"),
+];
+
+const attachmentValidation = [
+  param("id").isUUID().withMessage("Valid placement ID is required"),
+  body("url").optional().trim().notEmpty().withMessage("Attachment URL cannot be empty"),
+  body("name").optional().isString(),
+  body("document_type")
+    .optional()
+    .isIn(["PDF", "DOC", "DOCX", "IMG", "OTHER"])
+    .withMessage("Invalid document type"),
+  body("valid_from").optional().isISO8601().withMessage("Valid 'valid from' date required"),
+  body("valid_to").optional().isISO8601().withMessage("Valid 'valid to' date required"),
+];
+
 // All routes require authentication
 router.use(auth);
 
@@ -212,5 +255,19 @@ router.patch("/:id/terminate", terminatePlacementValidation, validate, terminate
 
 // Update onboarding status (recruiters only)
 router.patch("/:id/onboarding", onboardingStatusValidation, validate, updateOnboardingStatus);
+
+// Notes
+router.post("/:id/notes", addNoteValidation, validate, addPlacementNote);
+router.put("/:id/notes/:noteId", updateNoteValidation, validate, updatePlacementNote);
+router.delete("/:id/notes/:noteId", noteIdValidation, validate, deletePlacementNote);
+
+// Documents (uploaded file or pasted URL)
+router.post(
+  "/:id/attachments",
+  generalDocumentUpload.single("file"),
+  attachmentValidation,
+  validate,
+  addPlacementAttachment
+);
 
 export default router;

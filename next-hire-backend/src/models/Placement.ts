@@ -49,7 +49,11 @@ export interface PlacementAttributes {
   // Renewal tracking (for contracts)
   renewal_date?: Date;
   renewal_status?: "pending" | "renewed" | "not_renewed";
-  
+
+  // Notes & documents
+  notes_history?: any;
+  attachments?: any;
+
   created_by: string;
   created_at?: Date;
   updated_at?: Date;
@@ -98,7 +102,10 @@ export class Placement
   
   public renewal_date?: Date;
   public renewal_status?: "pending" | "renewed" | "not_renewed";
-  
+
+  public notes_history?: any;
+  public attachments?: any;
+
   public created_by!: string;
   public readonly created_at!: Date;
   public readonly updated_at!: Date;
@@ -180,6 +187,14 @@ Placement.init(
     salary: {
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
+      // node-postgres returns DECIMAL columns as strings (to avoid precision
+      // loss on values beyond JS's safe integer range), which silently breaks
+      // "+" arithmetic on the frontend (string concatenation instead of
+      // addition). Coercing to a number here fixes it for every consumer.
+      get() {
+        const value = this.getDataValue("salary") as unknown as string | number;
+        return value == null ? value : parseFloat(value as string);
+      },
     },
     salary_currency: {
       type: DataTypes.STRING(3),
@@ -189,14 +204,26 @@ Placement.init(
     billing_rate: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
+      get() {
+        const value = this.getDataValue("billing_rate") as unknown as string | number;
+        return value == null ? value : parseFloat(value as string);
+      },
     },
     commission_amount: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
+      get() {
+        const value = this.getDataValue("commission_amount") as unknown as string | number;
+        return value == null ? value : parseFloat(value as string);
+      },
     },
     commission_percentage: {
       type: DataTypes.DECIMAL(5, 2),
       allowNull: true,
+      get() {
+        const value = this.getDataValue("commission_percentage") as unknown as string | number;
+        return value == null ? value : parseFloat(value as string);
+      },
     },
     status: {
       type: DataTypes.ENUM("active", "completed", "terminated", "on_hold"),
@@ -260,6 +287,40 @@ Placement.init(
     renewal_status: {
       type: DataTypes.ENUM("pending", "renewed", "not_renewed"),
       allowNull: true,
+    },
+    notes_history: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: "[]",
+      get() {
+        const value = this.getDataValue("notes_history") as unknown as string;
+        if (!value) return [];
+        try {
+          return JSON.parse(value);
+        } catch {
+          return [];
+        }
+      },
+      set(value: any[]) {
+        this.setDataValue("notes_history", JSON.stringify(value || []));
+      },
+    },
+    attachments: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: "[]",
+      get() {
+        const value = this.getDataValue("attachments") as unknown as string;
+        if (!value) return [];
+        try {
+          return JSON.parse(value);
+        } catch {
+          return [];
+        }
+      },
+      set(value: any[]) {
+        this.setDataValue("attachments", JSON.stringify(value || []));
+      },
     },
     created_by: {
       type: DataTypes.UUID,

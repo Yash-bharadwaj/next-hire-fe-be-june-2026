@@ -5,6 +5,33 @@ export type PlacementType = "permanent" | "contract" | "temporary" | "temp_to_pe
 export type WorkArrangement = "onsite" | "remote" | "hybrid";
 export type OnboardingStatus = "pending" | "in_progress" | "completed";
 export type RenewalStatus = "pending" | "renewed" | "not_renewed";
+export type PlacementNoteCategory = "technical" | "behavioral" | "feedback" | "general";
+export type PlacementDocumentType = "PDF" | "DOC" | "DOCX" | "IMG" | "OTHER";
+
+export interface PlacementNote {
+  id: string;
+  title: string;
+  content: string;
+  category: PlacementNoteCategory;
+  isPrivate: boolean;
+  tags: string[];
+  author: string;
+  by?: string;
+  at: string;
+  edited_at?: string;
+}
+
+export interface PlacementDocument {
+  id: string;
+  url: string;
+  name: string;
+  document_type: PlacementDocumentType;
+  size?: number;
+  valid_from: string;
+  valid_to?: string;
+  by?: string;
+  at: string;
+}
 
 export interface Placement {
   id: string;
@@ -47,28 +74,40 @@ export interface Placement {
   created_by: string;
   created_at: string;
   updated_at: string;
-  
+
+  notes_history?: PlacementNote[];
+  attachments?: PlacementDocument[];
+
   // Associations
   job?: {
     id: string;
     job_id: string;
     title: string;
+    description?: string;
     company_name: string;
     location?: string;
     job_type?: string;
     salary_min?: number;
     salary_max?: number;
     salary_currency?: string;
+    bill_rate_min?: number;
+    bill_rate_max?: number;
+    client?: { id: string; name: string; primary_email?: string; primary_phone?: string };
+    clientContact?: { id: string; name: string; title?: string; email?: string; phone?: string };
   };
   candidate?: {
     id: string;
     candidate_id?: string;
     first_name: string;
     last_name: string;
-    email: string;
     phone?: string;
     location?: string;
     experience_years?: number;
+    skills?: string[];
+    linkedin_url?: string;
+    portfolio_url?: string;
+    resume_url?: string;
+    user?: { id: string; email: string };
   };
   submission?: {
     id: string;
@@ -76,7 +115,9 @@ export interface Placement {
     status: string;
     submitted_at: string;
     ai_score?: number;
+    ai_reasoning?: string;
     notes?: string;
+    job_id?: string;
   };
   recruiter?: {
     id: string;
@@ -253,6 +294,49 @@ class PlacementService {
   async getPlacementStats(): Promise<PlacementStatsResponse> {
     const response = await apiClient.get(`${this.baseUrl}/stats`);
     return response.data;
+  }
+
+  async addPlacementNote(
+    id: string,
+    data: { title?: string; content: string; category?: PlacementNoteCategory; isPrivate?: boolean; tags?: string[] }
+  ): Promise<{ success: boolean; data: { notes_history: PlacementNote[] } }> {
+    const response = await apiClient.post(`${this.baseUrl}/${id}/notes`, data);
+    return response.data;
+  }
+
+  async updatePlacementNote(
+    id: string,
+    noteId: string,
+    data: { title?: string; content?: string; category?: PlacementNoteCategory; isPrivate?: boolean; tags?: string[] }
+  ): Promise<{ success: boolean; data: { notes_history: PlacementNote[] } }> {
+    const response = await apiClient.put(`${this.baseUrl}/${id}/notes/${noteId}`, data);
+    return response.data;
+  }
+
+  async deletePlacementNote(
+    id: string,
+    noteId: string
+  ): Promise<{ success: boolean; data: { notes_history: PlacementNote[] } }> {
+    const response = await apiClient.delete(`${this.baseUrl}/${id}/notes/${noteId}`);
+    return response.data;
+  }
+
+  async addPlacementAttachment(
+    id: string,
+    data: { file?: File; url?: string; name?: string; document_type?: PlacementDocumentType; valid_from?: string; valid_to?: string }
+  ): Promise<{ success: boolean; data: { attachments: PlacementDocument[] } }> {
+    const formData = new FormData();
+    if (data.file) formData.append("file", data.file);
+    if (data.url) formData.append("url", data.url);
+    if (data.name) formData.append("name", data.name);
+    if (data.document_type) formData.append("document_type", data.document_type);
+    if (data.valid_from) formData.append("valid_from", data.valid_from);
+    if (data.valid_to) formData.append("valid_to", data.valid_to);
+    const response = await apiClient.upload<{ attachments: PlacementDocument[] }>(
+      `${this.baseUrl}/${id}/attachments`,
+      formData
+    );
+    return response.data as { success: boolean; data: { attachments: PlacementDocument[] } };
   }
 
   // Helper methods

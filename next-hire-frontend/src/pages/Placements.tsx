@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Plus,
   Calendar,
   Trophy,
@@ -29,6 +35,8 @@ import {
   CheckCircle,
   Clock,
   FileSpreadsheet,
+  FileText,
+  Sheet,
   Pencil,
   TrendingUp,
   Target,
@@ -38,6 +46,8 @@ import {
   Loader2,
   AlertCircle,
   X,
+  ChevronDown,
+  Settings,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { usePlacements, usePlacementStats, usePlacementManagement } from "@/hooks/usePlacements";
@@ -54,7 +64,9 @@ import {
 import { jobService, Job } from "@/services/jobService";
 import { submissionService, Submission } from "@/services/submissionService";
 import { useAuth } from "@/contexts/AuthContext";
-import { downloadCsv } from "@/utils/csv";
+import { downloadCsv, type CsvColumn } from "@/utils/csv";
+import { downloadPdf, downloadExcel, exportToGoogleSheets, downloadReportPdf, type ReportStat } from "@/utils/exportData";
+import { CompanyFilter } from "@/components/CompanyFilter";
 import { toast } from "sonner";
 
 const _placementsStatsCache = {
@@ -88,7 +100,25 @@ const Placements = () => {
   const [statusFilter, setStatusFilter] = useState<PlacementStatus | "">("");
   const [typeFilter, setTypeFilter] = useState<PlacementType | "">("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("all");
   const [exporting, setExporting] = useState(false);
+
+  // Real client/company names present in the current placements list (not a
+  // fixed list), for the Company filter dropdown.
+  const availableCompanies = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          placements
+            .map((p) => p.job?.company_name)
+            .filter((name): name is string => Boolean(name))
+        )
+      ).sort(),
+    [placements]
+  );
+
+  const companyFilteredPlacements =
+    companyFilter === "all" ? placements : placements.filter((p) => p.job?.company_name === companyFilter);
 
   // Record Placement dialog state
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -142,36 +172,184 @@ const Placements = () => {
     fetchPlacements({});
   };
 
-  const handleExport = () => {
+  const exportColumns: CsvColumn<Placement>[] = [
+    { header: "Placement ID", accessor: (p) => p.placement_id || p.id },
+    { header: "Job", accessor: (p) => p.job?.title || "" },
+    { header: "Candidate", accessor: (p) => `${p.candidate?.first_name || ""} ${p.candidate?.last_name || ""}`.trim() },
+    { header: "Company", accessor: (p) => p.job?.company_name || "" },
+    { header: "Status", accessor: (p) => p.status },
+    { header: "Start Date", accessor: (p) => p.start_date || "" },
+    { header: "Salary", accessor: (p) => p.salary },
+    { header: "Currency", accessor: (p) => p.salary_currency || "USD" },
+    { header: "Commission", accessor: (p) => p.commission_amount ?? "" },
+    { header: "Location", accessor: (p) => p.location || "" },
+    { header: "Work Arrangement", accessor: (p) => p.work_arrangement || "" },
+    { header: "Recruiter", accessor: (p) => formatRecruiterName(p.recruiter) },
+  ];
+
+  const exportTimestamp = () => new Date().toISOString().replace(/[:.]/g, "-");
+
+  const handleExportCsv = () => {
     if (user?.role !== "recruiter") {
       toast.error("Only recruiters can export placements");
       return;
     }
-    if (!placements.length) {
+    if (!companyFilteredPlacements.length) {
       toast.error("No placements to export");
       return;
     }
     try {
       setExporting(true);
-      const columns = [
-        { header: "Placement ID", accessor: (p: any) => p.placement_id || p.id },
-        { header: "Job", accessor: (p: any) => p.job?.title || "" },
-        { header: "Candidate", accessor: (p: any) => `${p.candidate?.first_name || ""} ${p.candidate?.last_name || ""}`.trim() },
-        { header: "Status", accessor: (p: any) => p.status },
-        { header: "Start Date", accessor: (p: any) => p.start_date || "" },
-        { header: "Salary", accessor: (p: any) => p.salary },
-        { header: "Currency", accessor: (p: any) => p.salary_currency || "USD" },
-        { header: "Location", accessor: (p: any) => p.location || "" },
-        { header: "Work Arrangement", accessor: (p: any) => p.work_arrangement || "" },
-      ];
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      downloadCsv(`placements-${timestamp}.csv`, placements, columns);
-      toast.success("Placements exported");
+      downloadCsv(`placements-export-${exportTimestamp()}.csv`, companyFilteredPlacements, exportColumns);
+      toast.success("Placements exported as CSV");
     } catch (err: any) {
       toast.error(err?.message || "Failed to export placements");
     } finally {
       setExporting(false);
     }
+  };
+
+  const handleExportPdf = () => {
+    if (user?.role !== "recruiter") {
+      toast.error("Only recruiters can export placements");
+      return;
+    }
+    if (!companyFilteredPlacements.length) {
+      toast.error("No placements to export");
+      return;
+    }
+    downloadPdf(`placements-export-${exportTimestamp()}.pdf`, "Placements", companyFilteredPlacements, exportColumns);
+    toast.success("Placements exported as PDF");
+  };
+
+  const handleExportExcel = () => {
+    if (user?.role !== "recruiter") {
+      toast.error("Only recruiters can export placements");
+      return;
+    }
+    if (!companyFilteredPlacements.length) {
+      toast.error("No placements to export");
+      return;
+    }
+    downloadExcel(`placements-export-${exportTimestamp()}.xlsx`, "Placements", companyFilteredPlacements, exportColumns);
+    toast.success("Placements exported as Excel");
+  };
+
+  const handleExportGoogleSheets = async () => {
+    if (user?.role !== "recruiter") {
+      toast.error("Only recruiters can export placements");
+      return;
+    }
+    if (!companyFilteredPlacements.length) {
+      toast.error("No placements to export");
+      return;
+    }
+    try {
+      await exportToGoogleSheets(companyFilteredPlacements, exportColumns);
+      toast.success("Placement data copied — paste (Cmd/Ctrl+V) into the new sheet");
+    } catch {
+      toast.error("Couldn't copy to clipboard. Try CSV or Excel export instead.");
+    }
+  };
+
+  const handleGenerateRevenueReport = () => {
+    if (user?.role !== "recruiter") {
+      toast.error("Only recruiters can generate reports");
+      return;
+    }
+    if (!companyFilteredPlacements.length) {
+      toast.error("No placements to report on");
+      return;
+    }
+    // salary/commission_amount come back as strings (Sequelize DECIMAL), so
+    // every value is coerced through Number() before arithmetic or
+    // toLocaleString() - calling toLocaleString() on a raw string would throw.
+    const totalSalary = companyFilteredPlacements.reduce((sum, p) => sum + (Number(p.salary) || 0), 0);
+    const totalCommission = companyFilteredPlacements.reduce((sum, p) => sum + (Number(p.commission_amount) || 0), 0);
+    const avgCommission = totalCommission / companyFilteredPlacements.length;
+    const stats: ReportStat[] = [
+      { label: "Total Placements", value: String(companyFilteredPlacements.length) },
+      { label: "Total Salary Value", value: `$${totalSalary.toLocaleString()}` },
+      { label: "Total Commission Revenue", value: `$${totalCommission.toLocaleString()}` },
+      { label: "Avg. Commission / Placement", value: `$${avgCommission.toLocaleString(undefined, { maximumFractionDigits: 0 })}` },
+    ];
+    const columns: CsvColumn<Placement>[] = [
+      { header: "Placement ID", accessor: (p) => p.placement_id || p.id },
+      { header: "Company", accessor: (p) => p.job?.company_name || "" },
+      { header: "Candidate", accessor: (p) => `${p.candidate?.first_name || ""} ${p.candidate?.last_name || ""}`.trim() },
+      { header: "Start Date", accessor: (p) => p.start_date || "" },
+      { header: "Salary", accessor: (p) => (p.salary != null ? `$${Number(p.salary).toLocaleString()}` : "") },
+      { header: "Commission %", accessor: (p) => (p.commission_percentage != null ? `${p.commission_percentage}%` : "") },
+      { header: "Commission Amount", accessor: (p) => (p.commission_amount != null ? `$${Number(p.commission_amount).toLocaleString()}` : "") },
+      { header: "Status", accessor: (p) => p.status },
+    ];
+    downloadReportPdf(`revenue-report-${exportTimestamp()}.pdf`, "Revenue Report", stats, companyFilteredPlacements, columns);
+    toast.success("Revenue report generated");
+  };
+
+  const handleGeneratePerformanceSummary = () => {
+    if (user?.role !== "recruiter") {
+      toast.error("Only recruiters can generate reports");
+      return;
+    }
+    if (!companyFilteredPlacements.length) {
+      toast.error("No placements to report on");
+      return;
+    }
+    const active = companyFilteredPlacements.filter((p) => p.status === "active").length;
+    const completed = companyFilteredPlacements.filter((p) => p.status === "completed").length;
+    const terminated = companyFilteredPlacements.filter((p) => p.status === "terminated").length;
+    const rated = companyFilteredPlacements.filter((p) => p.performance_rating != null);
+    const avgRating = rated.length ? rated.reduce((sum, p) => sum + (p.performance_rating || 0), 0) / rated.length : 0;
+    const onboardingComplete = companyFilteredPlacements.filter((p) => p.onboarding_status === "completed").length;
+    const stats: ReportStat[] = [
+      { label: "Total Placements", value: String(companyFilteredPlacements.length) },
+      { label: "Active", value: String(active) },
+      { label: "Completed", value: String(completed) },
+      { label: "Terminated", value: String(terminated) },
+      { label: "Avg. Performance Rating", value: rated.length ? `${avgRating.toFixed(1)} / 5` : "No ratings yet" },
+      { label: "Onboarding Completion Rate", value: `${Math.round((onboardingComplete / companyFilteredPlacements.length) * 100)}%` },
+    ];
+    const columns: CsvColumn<Placement>[] = [
+      { header: "Placement ID", accessor: (p) => p.placement_id || p.id },
+      { header: "Candidate", accessor: (p) => `${p.candidate?.first_name || ""} ${p.candidate?.last_name || ""}`.trim() },
+      { header: "Company", accessor: (p) => p.job?.company_name || "" },
+      { header: "Status", accessor: (p) => p.status },
+      { header: "Performance Rating", accessor: (p) => (p.performance_rating != null ? `${p.performance_rating} / 5` : "Not rated") },
+      { header: "Onboarding Status", accessor: (p) => p.onboarding_status || "" },
+    ];
+    downloadReportPdf(`performance-summary-${exportTimestamp()}.pdf`, "Performance Summary", stats, companyFilteredPlacements, columns);
+    toast.success("Performance summary generated");
+  };
+
+  const handleGenerateCommissionReport = () => {
+    if (user?.role !== "recruiter") {
+      toast.error("Only recruiters can generate reports");
+      return;
+    }
+    if (!companyFilteredPlacements.length) {
+      toast.error("No placements to report on");
+      return;
+    }
+    const totalCommission = companyFilteredPlacements.reduce((sum, p) => sum + (Number(p.commission_amount) || 0), 0);
+    const rated = companyFilteredPlacements.filter((p) => p.commission_percentage != null);
+    const avgRate = rated.length ? rated.reduce((sum, p) => sum + (Number(p.commission_percentage) || 0), 0) / rated.length : 0;
+    const stats: ReportStat[] = [
+      { label: "Total Placements", value: String(companyFilteredPlacements.length) },
+      { label: "Total Commission", value: `$${totalCommission.toLocaleString()}` },
+      { label: "Avg. Commission Rate", value: rated.length ? `${avgRate.toFixed(1)}%` : "N/A" },
+      { label: "Avg. Commission / Placement", value: `$${(totalCommission / companyFilteredPlacements.length).toLocaleString(undefined, { maximumFractionDigits: 0 })}` },
+    ];
+    const columns: CsvColumn<Placement>[] = [
+      { header: "Placement ID", accessor: (p) => p.placement_id || p.id },
+      { header: "Candidate", accessor: (p) => `${p.candidate?.first_name || ""} ${p.candidate?.last_name || ""}`.trim() },
+      { header: "Company", accessor: (p) => p.job?.company_name || "" },
+      { header: "Salary", accessor: (p) => (p.salary != null ? `$${Number(p.salary).toLocaleString()}` : "") },
+      { header: "Commission %", accessor: (p) => (p.commission_percentage != null ? `${p.commission_percentage}%` : "") },
+      { header: "Commission Amount", accessor: (p) => (p.commission_amount != null ? `$${Number(p.commission_amount).toLocaleString()}` : "") },
+    ];
+    downloadReportPdf(`commission-report-${exportTimestamp()}.pdf`, "Commission Report", stats, companyFilteredPlacements, columns);
+    toast.success("Commission report generated");
   };
 
   const resetNewPlacementForm = () => {
@@ -338,22 +516,14 @@ const Placements = () => {
       }
 
       if (!statusFilter && !typeFilter) {
-        const commission = placements.reduce((sum, p) => {
-          const c = typeof p.commission === 'string'
-            ? parseFloat(p.commission.replace(/[^0-9.]/g, '')) || 0
-            : (p.commission || 0);
-          return sum + c;
-        }, 0);
-        const salaryList = placements
-          .map(p => typeof p.salary === 'string'
-            ? parseFloat(p.salary.replace(/[^0-9.]/g, '')) || 0
-            : (p.salary || 0))
-          .filter(s => s > 0);
+        // salary/commission_amount/commission_percentage are Sequelize DECIMAL
+        // columns, which serialize as strings over JSON - Number() coercion
+        // avoids "+" silently doing string concatenation instead of addition.
+        const commission = placements.reduce((sum, p) => sum + (Number(p.commission_amount) || 0), 0);
+        const salaryList = placements.map((p) => Number(p.salary) || 0).filter((s) => s > 0);
         const marginList = placements
-          .map(p => typeof p.margin === 'string'
-            ? parseFloat(p.margin.replace(/[^0-9.]/g, '')) || 0
-            : (p.margin || 0))
-          .filter(m => m > 0);
+          .map((p) => Number(p.commission_percentage) || 0)
+          .filter((m) => m > 0);
 
         next.totalCommission = commission;
         next.avgSalary = salaryList.length > 0 ? salaryList.reduce((s, v) => s + v, 0) / salaryList.length : 0;
@@ -476,6 +646,15 @@ const Placements = () => {
   ];
 
   const navigationCards = user?.role === "recruiter" ? recruiterCards : candidateCards;
+
+  const formatRecruiterName = (recruiter?: Placement["recruiter"]) => {
+    if (!recruiter) return "Unknown";
+    const name = [recruiter.recruiterProfile?.first_name, recruiter.recruiterProfile?.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    return name || recruiter.email;
+  };
 
   const getStatusColor = (status: string) => {
     const normalizedStatus = status?.toLowerCase() || '';
@@ -703,20 +882,77 @@ const Placements = () => {
                 : "Track successful placements and revenue"}
             </p>
           </div>
+          {user?.role === "recruiter" && (
+            <CompanyFilter
+              companies={availableCompanies}
+              selectedCompany={companyFilter}
+              onCompanyChange={setCompanyFilter}
+            />
+          )}
         </div>
         {user?.role === "recruiter" && (
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExport}
-              disabled={exporting}
-              className="border-green-200 hover:bg-green-50 hover:border-green-300 text-xs"
-            >
-              <FileSpreadsheet className="w-3 h-3 mr-1" />
-              {exporting ? "Exporting..." : "Export CSV"}
-            </Button>
-          
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={exporting}
+                  className="border-green-200 hover:bg-green-50 hover:border-green-300 text-xs flex items-center space-x-1"
+                >
+                  <FileSpreadsheet className="w-3 h-3 mr-1" />
+                  <span>{exporting ? "Exporting..." : "Export"}</span>
+                  <ChevronDown className="w-3 h-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-white border border-gray-200 shadow-lg z-50">
+                <DropdownMenuItem onClick={handleExportCsv} className="cursor-pointer">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Export as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportPdf} className="cursor-pointer">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Export as PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportExcel} className="cursor-pointer">
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Export as Excel
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportGoogleSheets} className="cursor-pointer">
+                  <Sheet className="w-4 h-4 mr-2" />
+                  Export to Google Sheets
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-green-200 hover:bg-green-50 hover:border-green-300 text-xs flex items-center space-x-1"
+                >
+                  <Settings className="w-3 h-3 mr-1" />
+                  <span>Actions</span>
+                  <ChevronDown className="w-3 h-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-white border border-gray-200 shadow-lg z-50">
+                <DropdownMenuItem onClick={handleGenerateRevenueReport} className="cursor-pointer">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Generate Revenue Report
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleGeneratePerformanceSummary} className="cursor-pointer">
+                  <Trophy className="w-4 h-4 mr-2" />
+                  Performance Summary
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleGenerateCommissionReport} className="cursor-pointer">
+                  <DollarSign className="w-4 h-4 mr-2" />
+                  Commission Report
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button
               className="button-gradient text-white shadow-lg hover:shadow-xl transition-all duration-300 text-xs"
               onClick={openCreateDialog}
@@ -789,7 +1025,7 @@ const Placements = () => {
           <CardContent className="p-0">
             {placements.length > 0 ? (
               <DataGrid
-                rows={placements.map(p => ({
+                rows={companyFilteredPlacements.map(p => ({
                   id: p.id,
                   placement_id: p.placement_id || p.id,
                   candidateName: `${p.candidate?.first_name || ''} ${p.candidate?.last_name || ''}`.trim() || 'Unknown',
@@ -797,12 +1033,12 @@ const Placements = () => {
                   companyName: p.job?.company_name || p.company?.name || 'Unknown',
                   startDate: p.start_date || '',
                   placementDate: p.created_at || '',
-                  salary: p.salary || p.salary_amount || '0',
-                  commission: p.commission || p.commission_amount || '0',
+                  salary: Number(p.salary) || 0,
+                  commission: Number(p.commission_amount) || 0,
                   status: p.status || 'active',
                   duration: p.placement_type || 'Permanent',
-                  recruiter: p.recruiter?.name || p.created_by_user?.name || 'Unknown',
-                  margin: p.margin || '0%',
+                  recruiter: formatRecruiterName(p.recruiter),
+                  margin: p.commission_percentage != null ? `${p.commission_percentage}%` : '—',
                 }))}
                 columns={columns}
                 pageSizeOptions={[10, 25, 50, 100]}

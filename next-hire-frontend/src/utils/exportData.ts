@@ -22,6 +22,45 @@ export const downloadPdf = <T>(
   doc.save(filename);
 };
 
+export interface ReportStat {
+  label: string;
+  value: string;
+}
+
+export const downloadReportPdf = <T>(
+  filename: string,
+  title: string,
+  stats: ReportStat[],
+  rows: T[],
+  columns: CsvColumn<T>[]
+) => {
+  const doc = new jsPDF({ orientation: "landscape" });
+  doc.setFontSize(16);
+  doc.text(title, 14, 15);
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  doc.text(`Generated ${new Date().toLocaleString()}`, 14, 21);
+  doc.setTextColor(0);
+
+  const statsStartY = 29;
+  doc.setFontSize(10);
+  stats.forEach((stat, idx) => {
+    const col = idx % 2;
+    const row = Math.floor(idx / 2);
+    doc.text(`${stat.label}: ${stat.value}`, 14 + col * 140, statsStartY + row * 6);
+  });
+  const tableStartY = statsStartY + Math.ceil(stats.length / 2) * 6 + 6;
+
+  autoTable(doc, {
+    startY: tableStartY,
+    head: [columns.map((col) => col.header)],
+    body: rows.map((row) => columns.map((col) => String(col.accessor(row) ?? ""))),
+    styles: { fontSize: 8 },
+    headStyles: { fillColor: [16, 122, 87] },
+  });
+  doc.save(filename);
+};
+
 export const downloadExcel = <T>(
   filename: string,
   sheetName: string,
