@@ -201,22 +201,6 @@ const Submissions = () => {
     },
   ];
 
-  const handleSearch = () => {
-    if (user?.role === "recruiter" && jobFilter === "all") {
-      toast.error("Select a job to view submissions");
-      return;
-    }
-
-    const newFilters = {
-      ...filters,
-      search: searchTerm || undefined,
-      status: statusFilter === "all" ? undefined : statusFilter,
-      job_id: jobFilter === "all" ? undefined : jobFilter,
-      page: 1,
-    };
-    fetchSubmissions(newFilters);
-  };
-
   const handleExport = async () => {
     if (user?.role !== "recruiter") {
       toast.error("Only recruiters can export submissions");
@@ -394,32 +378,14 @@ const Submissions = () => {
     }).format(amount);
   };
 
-  // Load initial data
-  useEffect(() => {
-    if (user && ["candidate", "vendor"].includes(user.role)) {
-      fetchSubmissions({ page: 1, limit: 50 });
-    }
-  }, [user?.role, fetchSubmissions]);
-
-  // Load recruiter jobs once
+  // Load recruiter jobs once, for the job filter dropdown's options
   useEffect(() => {
     const loadJobs = async () => {
       if (user?.role !== "recruiter") return;
       try {
         setJobsLoading(true);
         const resp = await recruiterService.getJobs({ page: 1, limit: 100 });
-        const jobs = resp.data.jobs || [];
-        setRecruiterJobs(jobs);
-        if (jobs.length > 0 && jobFilter === "all") {
-          setJobFilter(jobs[0].id);
-          fetchSubmissions({
-            job_id: jobs[0].id,
-            status: statusFilter === "all" ? undefined : statusFilter,
-            search: searchTerm || undefined,
-            page: 1,
-            limit: 50,
-          });
-        }
+        setRecruiterJobs(resp.data.jobs || []);
       } catch (err: any) {
         toast.error(err.message || "Failed to load jobs");
       } finally {
@@ -427,23 +393,20 @@ const Submissions = () => {
       }
     };
     loadJobs();
-  }, [user?.role, fetchSubmissions]);
+  }, [user?.role]);
 
-  // Refetch when recruiter changes job filter
+  // Search/status/job filters apply live as they change - every role shows
+  // all of their submissions by default (jobFilter starts at "all").
   useEffect(() => {
-    if (user?.role !== "recruiter") return;
-    if (jobFilter === "all") {
-      fetchSubmissions({ job_id: undefined });
-      return;
-    }
+    if (!user) return;
     fetchSubmissions({
-      job_id: jobFilter,
+      job_id: user.role === "recruiter" && jobFilter !== "all" ? jobFilter : undefined,
       status: statusFilter === "all" ? undefined : statusFilter,
       search: searchTerm || undefined,
       page: 1,
       limit: 50,
     });
-  }, [jobFilter, statusFilter, searchTerm, fetchSubmissions, user?.role]);
+  }, [user, jobFilter, statusFilter, searchTerm, fetchSubmissions]);
 
   if (!user || !["recruiter", "candidate", "vendor"].includes(user.role)) {
     return (
@@ -540,7 +503,6 @@ const Submissions = () => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
-                  onKeyPress={(e) => e.key === "Enter" && handleSearch()}
                 />
               </div>
             </div>
@@ -555,7 +517,7 @@ const Submissions = () => {
                     <SelectValue placeholder="Job" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Select Job</SelectItem>
+                    <SelectItem value="all">All Jobs</SelectItem>
                     {recruiterJobs.map((job) => (
                       <SelectItem key={job.id} value={job.id}>
                         {job.title}
@@ -582,11 +544,6 @@ const Submissions = () => {
                   <SelectItem value="rejected">Rejected</SelectItem>
                 </SelectContent>
               </Select>
-
-              <Button onClick={handleSearch} variant="default">
-                <Search className="h-4 w-4 mr-2" />
-                Search
-              </Button>
 
               <Button onClick={refresh} variant="outline" disabled={loading}>
                 <RefreshCw
@@ -632,7 +589,7 @@ const Submissions = () => {
                   ? "Start applying to jobs to see your applications here"
                   : user.role === "recruiter"
                   ? jobFilter === "all"
-                    ? "Select a job to view its submissions."
+                    ? "No candidates have been submitted to your jobs yet."
                     : "No submissions for the selected job yet."
                   : "Submissions will appear here after you submit candidates to client jobs"}
               </p>

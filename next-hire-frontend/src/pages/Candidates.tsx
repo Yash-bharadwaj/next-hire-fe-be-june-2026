@@ -313,8 +313,7 @@ const Candidates = () => {
   }, [candidates]);
 
   const totalSubmissions = useMemo(
-    () =>
-      candidates.reduce((sum, c) => sum + (c as any).submissions_count || 0, 0),
+    () => candidates.reduce((sum, c) => sum + (c.submissions_count || 0), 0),
     [candidates]
   );
 
@@ -344,7 +343,7 @@ const Candidates = () => {
         expectedSalary: c.expected_salary
           ? candidateSearchService.formatSalary(c.expected_salary)
           : "—",
-        submissions: (c as any).submissions_count || 0,
+        submissions: c.submissions_count || 0,
         rating: (c as any).rating || "—",
         lastContact: c.updated_at || c.created_at,
         email: c.user?.email,
@@ -456,11 +455,17 @@ const Candidates = () => {
       field: "currentSalary",
       headerName: "Current Salary",
       width: 130,
+      renderCell: (value: string) => (
+        <span className="whitespace-nowrap text-xs">{value}</span>
+      ),
     },
     {
       field: "expectedSalary",
       headerName: "Expected Salary",
       width: 140,
+      renderCell: (value: string) => (
+        <span className="whitespace-nowrap text-xs">{value}</span>
+      ),
     },
     {
       field: "submissions",

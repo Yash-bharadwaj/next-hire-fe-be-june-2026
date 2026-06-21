@@ -180,6 +180,21 @@ class SubmissionService {
     return response.data;
   }
 
+  // Get submissions across every job the recruiter is staffed on (or a
+  // single job via filters.job_id) - shows everything by default.
+  async getAllSubmissions(filters: SubmissionFilters = {}): Promise<SubmissionsResponse> {
+    const params = new URLSearchParams();
+
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await apiClient.get(`${this.baseUrl}?${params.toString()}`);
+    return response.data;
+  }
+
   // Get submissions for a job (recruiters)
   async getJobSubmissions(jobId: string, filters: SubmissionFilters = {}): Promise<SubmissionsResponse> {
     const params = new URLSearchParams();

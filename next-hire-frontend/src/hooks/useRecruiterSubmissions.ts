@@ -11,8 +11,8 @@ import { recruiterService } from "@/services/recruiterService";
 import { useAuth } from "@/contexts/AuthContext";
 
 /**
- * Hook for recruiters to view submissions for a specific job.
- * Requires job_id in filters; otherwise returns empty.
+ * Hook for recruiters to view submissions - across every job they're
+ * staffed on by default, or scoped to one job when filters.job_id is set.
  */
 export const useRecruiterSubmissions = (initialFilters: SubmissionFilters = {}) => {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -36,29 +36,13 @@ export const useRecruiterSubmissions = (initialFilters: SubmissionFilters = {}) 
       if (user?.role !== "recruiter") return;
       if (isFetchingRef.current) return;
 
-      const jobId = searchFilters.job_id || filters.job_id || initialFilters.job_id;
-
-      if (!jobId) {
-        setSubmissions([]);
-        setPagination({
-          currentPage: 1,
-          totalPages: 1,
-          totalItems: 0,
-          itemsPerPage: pagination.itemsPerPage,
-          hasNextPage: false,
-          hasPrevPage: false,
-        });
-        setFilters(searchFilters);
-        return;
-      }
-
       try {
         isFetchingRef.current = true;
         setLoading(true);
         setError(null);
 
-        const finalFilters = { ...filters, ...searchFilters, job_id: jobId };
-        const response = await submissionService.getJobSubmissions(jobId, finalFilters);
+        const finalFilters = { ...filters, ...searchFilters };
+        const response = await submissionService.getAllSubmissions(finalFilters);
         const subs = response.data.submissions || [];
         setSubmissions(subs);
 
@@ -88,7 +72,7 @@ export const useRecruiterSubmissions = (initialFilters: SubmissionFilters = {}) 
         setLoading(false);
       }
     },
-    [user?.role, initialFilters.job_id, filters.job_id]
+    [user?.role]
   );
 
   const searchSubmissions = useCallback((searchFilters: SubmissionFilters) => {

@@ -175,12 +175,35 @@ export const searchCandidates = asyncHandler(
       distinct: true,
     });
 
+    // Submission counts per candidate, for the "Submissions" column - one
+    // grouped query for the whole page rather than one query per candidate.
+    const candidateIds = candidates.map((c) => c.id);
+    const submissionCounts = candidateIds.length
+      ? await Submission.findAll({
+          attributes: [
+            "candidate_id",
+            [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+          ],
+          where: { candidate_id: { [Op.in]: candidateIds } },
+          group: ["candidate_id"],
+          raw: true,
+        })
+      : [];
+    const submissionCountByCandidateId = new Map(
+      (submissionCounts as any[]).map((row) => [row.candidate_id, Number(row.count)])
+    );
+
+    const candidatesWithCounts = candidates.map((candidate) => ({
+      ...candidate.toJSON(),
+      submissions_count: submissionCountByCandidateId.get(candidate.id) || 0,
+    }));
+
     const totalPages = Math.ceil(count / Number(limit));
 
     res.json({
       success: true,
       data: {
-        candidates,
+        candidates: candidatesWithCounts,
         pagination: {
           currentPage: Number(page),
           totalPages,

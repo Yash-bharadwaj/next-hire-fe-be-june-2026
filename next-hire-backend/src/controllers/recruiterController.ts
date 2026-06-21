@@ -16,6 +16,7 @@ import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../utils/email";
+import { isJobStaff } from "../utils/jobPermissions";
 
 // Shared `include` for resolving Job's people/client references to
 // human-readable data instead of raw UUIDs.
@@ -306,13 +307,7 @@ export const updateJob = asyncHandler(
     }
 
     // Check if user has permission to update this job
-    const isPermitted = [
-      job.created_by,
-      job.assigned_to,
-      job.primary_recruiter_id,
-      job.account_manager_id,
-    ].includes(userId);
-    if (!isPermitted) {
+    if (!isJobStaff(job, userId)) {
       throw createError("You do not have permission to update this job", 403);
     }
 
@@ -517,13 +512,7 @@ export const getJobDetails = asyncHandler(
     }
 
     // Check if user has permission to view this job
-    const isPermitted = [
-      job.created_by,
-      job.assigned_to,
-      job.primary_recruiter_id,
-      job.account_manager_id,
-    ].includes(userId);
-    if (!isPermitted) {
+    if (!isJobStaff(job, userId)) {
       throw createError("You do not have permission to view this job", 403);
     }
 
@@ -554,7 +543,7 @@ export const addJobNote = asyncHandler(
       throw createError("Job not found", 404);
     }
 
-    if (job.created_by !== userId && job.assigned_to !== userId) {
+    if (!isJobStaff(job, userId)) {
       throw createError("You do not have permission to update this job", 403);
     }
 
@@ -586,7 +575,7 @@ export const addJobAttachment = asyncHandler(
       throw createError("Job not found", 404);
     }
 
-    if (job.created_by !== userId && job.assigned_to !== userId) {
+    if (!isJobStaff(job, userId)) {
       throw createError("You do not have permission to update this job", 403);
     }
 
@@ -638,7 +627,7 @@ export const sourceCandidates = asyncHandler(
     const job = await Job.findByPk(jobId);
     if (!job) throw createError("Job not found", 404);
 
-    if (job.created_by !== userId && job.assigned_to !== userId) {
+    if (!isJobStaff(job, userId)) {
       throw createError("You do not have permission to source candidates for this job", 403);
     }
 
@@ -701,7 +690,7 @@ export const getJobSubmissions = asyncHandler(
       throw createError("Job not found", 404);
     }
 
-    if (job.created_by !== userId && job.assigned_to !== userId) {
+    if (!isJobStaff(job, userId)) {
       throw createError(
         "You do not have permission to view submissions for this job",
         403
@@ -798,10 +787,7 @@ export const getSubmissionDetails = asyncHandler(
     }
 
     // Check if user has permission to view this submission
-    if (
-      submission.job?.created_by !== userId &&
-      submission.job?.assigned_to !== userId
-    ) {
+    if (!isJobStaff(submission.job, userId)) {
       throw createError(
         "You do not have permission to view this submission",
         403
@@ -846,10 +832,7 @@ export const addSubmissionNote = asyncHandler(
       throw createError("Submission not found", 404);
     }
 
-    if (
-      submission.job?.created_by !== userId &&
-      submission.job?.assigned_to !== userId
-    ) {
+    if (!isJobStaff(submission.job, userId)) {
       throw createError(
         "You do not have permission to update this submission",
         403
@@ -891,10 +874,7 @@ export const addSubmissionAttachment = asyncHandler(
       throw createError("Submission not found", 404);
     }
 
-    if (
-      submission.job?.created_by !== userId &&
-      submission.job?.assigned_to !== userId
-    ) {
+    if (!isJobStaff(submission.job, userId)) {
       throw createError(
         "You do not have permission to update this submission",
         403
@@ -935,10 +915,7 @@ export const updateSubmissionStatus = asyncHandler(
     }
 
     // Check if user has permission to update this submission
-    if (
-      submission.job?.created_by !== userId &&
-      submission.job?.assigned_to !== userId
-    ) {
+    if (!isJobStaff(submission.job, userId)) {
       throw createError(
         "You do not have permission to update this submission",
         403
@@ -1073,10 +1050,7 @@ export const scheduleInterview = asyncHandler(
     }
 
     // Check if user has permission
-    if (
-      submission.job?.created_by !== userId &&
-      submission.job?.assigned_to !== userId
-    ) {
+    if (!isJobStaff(submission.job, userId)) {
       throw createError(
         "You do not have permission to schedule interviews for this submission",
         403

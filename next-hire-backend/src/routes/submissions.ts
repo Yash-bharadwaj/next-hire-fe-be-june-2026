@@ -6,6 +6,7 @@ import {
   createSubmission,
   getCandidateSubmissions,
   getVendorSubmissions,
+  getAllSubmissions,
   getJobSubmissions,
   getSubmissionById,
   updateSubmissionStatus,
@@ -101,11 +102,20 @@ const paginationValidation = [
     .withMessage("Invalid status filter"),
 ];
 
+const getAllSubmissionsValidation = [
+  ...paginationValidation,
+  query("job_id").optional().isUUID().withMessage("Valid job ID is required"),
+  query("search").optional().isString(),
+];
+
 // All routes require authentication
 router.use(auth);
 
 // Create submission (apply to job)
 router.post("/", createSubmissionValidation, validate, createSubmission);
+
+// Get all submissions across every job the recruiter is staffed on
+router.get("/", getAllSubmissionsValidation, validate, getAllSubmissions);
 
 // Get candidate's own submissions
 router.get("/candidate/my-applications", paginationValidation, validate, getCandidateSubmissions);

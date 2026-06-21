@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/api";
 import { CandidateResume } from "./candidateService";
+import { formatCompactCurrency } from "@/lib/format";
 
 export interface CandidateProfile {
   id: string;
@@ -57,6 +58,7 @@ export interface CandidateProfile {
   matchScore?: number;
   matchReasoning?: string;
   resumes?: CandidateResume[];
+  submissions_count?: number;
 }
 
 export interface ParsedResumeData {
@@ -284,13 +286,7 @@ class CandidateSearchService {
   }
 
   formatSalary(amount?: number): string {
-    if (!amount) return "Not specified";
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
+    return formatCompactCurrency(amount) || "Not specified";
   }
 
   // Shorten long free text (e.g. an AI-generated bio used as a title

@@ -56,6 +56,7 @@ import { jobService } from "@/services/jobService";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { formatCompactRange } from "@/lib/format";
 
 // Module-level cache — survives component remount so cards never flash 0
 const _jobsStatsCache = {
@@ -377,13 +378,10 @@ const Jobs = () => {
     );
   };
 
-  const formatSalary = (min?: number, max?: number) => {
-    if (!min && !max) return "Not specified";
-    if (min && max)
-      return `$${min.toLocaleString()} - $${max.toLocaleString()}`;
-    if (min) return `$${min.toLocaleString()}+`;
-    return `Up to $${max?.toLocaleString()}`;
-  };
+  const formatSalary = (job: Pick<typeof jobs[number], "job_type" | "salary_min" | "salary_max" | "bill_rate_min" | "bill_rate_max">) =>
+    job.job_type === "contract"
+      ? formatCompactRange(job.bill_rate_min, job.bill_rate_max, { suffix: "/hr" })
+      : formatCompactRange(job.salary_min, job.salary_max);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -404,7 +402,7 @@ const Jobs = () => {
           job.location ||
           [job.city, job.state, job.country].filter(Boolean).join(", "),
         type: jobService.formatJobType(job.job_type),
-        salary: formatSalary(job.salary_min, job.salary_max),
+        salary: formatSalary(job),
         status: job.status,
         priority: job.priority,
         submissions: job.submission_count || 0,
@@ -516,6 +514,9 @@ const Jobs = () => {
       field: "salary",
       headerName: "Salary",
       width: 150,
+      renderCell: (value: string) => (
+        <span className="whitespace-nowrap text-xs">{value}</span>
+      ),
     },
     {
       field: "submissions",

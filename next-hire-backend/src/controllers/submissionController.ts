@@ -4,6 +4,8 @@ import { Submission, Job, Candidate, User, Recruiter, Vendor, Interview } from "
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import { likeOp } from "../utils/searchOperators";
+import { isJobStaff } from "../utils/jobPermissions";
 
 // Apply to job (candidates and vendors)
 export const createSubmission = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -298,6 +300,107 @@ export const getVendorSubmissions = asyncHandler(async (req: AuthRequest, res: R
   });
 });
 
+// Get submissions across every job the recruiter is staffed on (or a single
+// job via job_id) - powers the top-level Submissions page, which shows
+// everything by default instead of requiring a job to be picked first.
+export const getAllSubmissions = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.userId;
+  const userRole = req.user?.role;
+
+  if (userRole !== "recruiter") {
+    throw createError("Only recruiters can access submissions", 403);
+  }
+
+  const { page = 1, limit = 20, status, search, job_id } = req.query;
+  const offset = (Number(page) - 1) * Number(limit);
+
+  const staffedJobs = await Job.findAll({
+    where: {
+      [Op.or]: [
+        { created_by: userId },
+        { assigned_to: userId },
+        { primary_recruiter_id: userId },
+        { account_manager_id: userId },
+      ],
+    },
+    attributes: ["id"],
+  });
+  const staffedJobIds = staffedJobs.map((j) => j.id);
+
+  if (job_id && !staffedJobIds.includes(job_id as string)) {
+    throw createError("Access denied", 403);
+  }
+
+  const whereConditions: any = {
+    job_id: job_id ? job_id : { [Op.in]: staffedJobIds },
+  };
+  if (status) {
+    whereConditions.status = status;
+  }
+  if (search) {
+    whereConditions[Op.and] = [
+      {
+        [Op.or]: [
+          { "$job.title$": { [likeOp]: `%${search}%` } },
+          { "$job.company_name$": { [likeOp]: `%${search}%` } },
+          { "$candidate.first_name$": { [likeOp]: `%${search}%` } },
+          { "$candidate.last_name$": { [likeOp]: `%${search}%` } },
+        ],
+      },
+    ];
+  }
+
+  const { count, rows: submissions } = await Submission.findAndCountAll({
+    where: whereConditions,
+    subQuery: false,
+    distinct: true,
+    include: [
+      {
+        model: Job,
+        as: "job",
+        attributes: ["id", "job_id", "title", "company_name", "status"],
+      },
+      {
+        model: Candidate,
+        as: "candidate",
+        attributes: ["id", "first_name", "last_name", "phone", "location", "experience_years"],
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "email"],
+          },
+        ],
+      },
+      {
+        model: User,
+        as: "submitter",
+        attributes: ["id", "email", "role"],
+      },
+    ],
+    order: [["submitted_at", "DESC"]],
+    limit: Number(limit),
+    offset,
+  });
+
+  const totalPages = Math.ceil(count / Number(limit));
+
+  res.json({
+    success: true,
+    data: {
+      submissions,
+      pagination: {
+        currentPage: Number(page),
+        totalPages,
+        totalItems: count,
+        itemsPerPage: Number(limit),
+        hasNextPage: Number(page) < totalPages,
+        hasPrevPage: Number(page) > 1,
+      },
+    },
+  });
+});
+
 // Get submissions for a job (recruiters)
 export const getJobSubmissions = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { jobId } = req.params;
@@ -314,7 +417,7 @@ export const getJobSubmissions = asyncHandler(async (req: AuthRequest, res: Resp
     throw createError("Job not found", 404);
   }
 
-  if (job.created_by !== userId && job.assigned_to !== userId) {
+  if (!isJobStaff(job, userId)) {
     throw createError("Access denied", 403);
   }
 
@@ -420,7 +523,7 @@ export const getSubmissionById = asyncHandler(async (req: AuthRequest, res: Resp
         attributes: [
           "id", "job_id", "title", "description", "company_name", "location",
           "job_type", "salary_min", "salary_max", "required_skills", "preferred_skills",
-          "created_by", "assigned_to"
+          "created_by", "assigned_to", "primary_recruiter_id", "account_manager_id"
         ],
       },
       {
@@ -485,7 +588,7 @@ export const getSubmissionById = asyncHandler(async (req: AuthRequest, res: Resp
     }
   } else if (userRole === "recruiter") {
     const job = submission.job;
-    if (job && job.created_by !== userId && job.assigned_to !== userId) {
+    if (job && !isJobStaff(job, userId)) {
       throw createError("Access denied", 403);
     }
   }
@@ -513,7 +616,7 @@ export const updateSubmissionStatus = asyncHandler(async (req: AuthRequest, res:
       {
         model: Job,
         as: "job",
-        attributes: ["id", "created_by", "assigned_to"],
+        attributes: ["id", "created_by", "assigned_to", "primary_recruiter_id", "account_manager_id"],
       },
     ],
   });
@@ -524,7 +627,7 @@ export const updateSubmissionStatus = asyncHandler(async (req: AuthRequest, res:
 
   // Check if recruiter has access to this job
   const job = submission.job;
-  if (job && job.created_by !== userId && job.assigned_to !== userId) {
+  if (job && !isJobStaff(job, userId)) {
     throw createError("Access denied", 403);
   }
 

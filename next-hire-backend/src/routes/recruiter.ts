@@ -206,6 +206,23 @@ const jobDetailsValidation = [
   param("jobId").isUUID().withMessage("Valid job ID is required"),
 ];
 
+const submissionStatusOptions = [
+  "new_candidate",
+  "initial_scanning",
+  "first_round",
+  "technical_round",
+  "final_round",
+  "hired",
+  "rejected",
+  "sourcing",
+  "submitted",
+  "under_review",
+  "shortlisted",
+  "interview_scheduled",
+  "interviewed",
+  "offered",
+];
+
 const getJobSubmissionsValidation = [
   param("jobId").isUUID().withMessage("Valid job ID is required"),
   query("page")
@@ -218,22 +235,7 @@ const getJobSubmissionsValidation = [
     .withMessage("Limit must be between 1 and 100"),
   query("status")
     .optional()
-    .isIn([
-      "new_candidate",
-      "initial_scanning",
-      "first_round",
-      "technical_round",
-      "final_round",
-      "hired",
-      "rejected",
-      "sourcing",
-      "submitted",
-      "under_review",
-      "shortlisted",
-      "interview_scheduled",
-      "interviewed",
-      "offered",
-    ])
+    .isIn(submissionStatusOptions)
     .withMessage("Invalid status"),
   query("sort_by")
     .optional()

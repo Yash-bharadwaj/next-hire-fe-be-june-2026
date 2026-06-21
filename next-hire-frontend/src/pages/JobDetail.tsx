@@ -101,6 +101,9 @@ import { candidateSearchService } from "@/services/candidateSearchService";
 import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { ExpandableText } from "@/components/ExpandableText";
+import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
+import { formatCompactRange } from "@/lib/format";
 
 // Local type definitions
 interface Document {
@@ -192,15 +195,11 @@ const JobDetail = () => {
       maxExperience: apiJob.experience_max || 0,
       salary:
         apiJob.job_type === "contract"
-          ? apiJob.bill_rate_min && apiJob.bill_rate_max
-            ? `$${apiJob.bill_rate_min}/hr - $${apiJob.bill_rate_max}/hr`
-            : apiJob.bill_rate_min
-            ? `$${apiJob.bill_rate_min}/hr+`
+          ? apiJob.bill_rate_min || apiJob.bill_rate_max
+            ? `${formatCompactRange(apiJob.bill_rate_min, apiJob.bill_rate_max, { suffix: "/hr" })}`
             : "Rate negotiable"
-          : apiJob.salary_min && apiJob.salary_max
-          ? `$${apiJob.salary_min / 1000}k - $${apiJob.salary_max / 1000}k`
-          : apiJob.salary_min
-          ? `$${apiJob.salary_min / 1000}k+`
+          : apiJob.salary_min || apiJob.salary_max
+          ? formatCompactRange(apiJob.salary_min, apiJob.salary_max)
           : "Competitive",
       primarySkills: apiJob.required_skills || [],
       secondarySkills: apiJob.preferred_skills || [],
@@ -1046,9 +1045,11 @@ const JobDetail = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-gray-700 leading-relaxed">
-                      {currentJob.jobDescription}
-                    </p>
+                    <ExpandableText
+                      text={currentJob.jobDescription}
+                      maxLength={400}
+                      className="text-gray-700 leading-relaxed"
+                    />
                   </CardContent>
                 </Card>
 
@@ -1065,37 +1066,23 @@ const JobDetail = () => {
                         <h4 className="font-semibold mb-3 text-gray-700">
                           Primary Skills
                         </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {currentJob.primarySkills.map(
-                            (skill: string, index: number) => (
-                              <Badge
-                                key={index}
-                                className="bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md"
-                              >
-                                {skill}
-                              </Badge>
-                            )
-                          )}
-                        </div>
+                        <ExpandableBadgeList
+                          items={currentJob.primarySkills}
+                          initialCount={8}
+                          badgeClassName="bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md"
+                        />
                       </div>
                       {currentJob.secondarySkills.length > 0 && (
                         <div>
                           <h4 className="font-semibold mb-3 text-gray-700">
                             Secondary Skills
                           </h4>
-                          <div className="flex flex-wrap gap-2">
-                            {currentJob.secondarySkills.map(
-                              (skill: string, index: number) => (
-                                <Badge
-                                  key={index}
-                                  variant="outline"
-                                  className="border-green-300 text-green-700 hover:bg-green-50"
-                                >
-                                  {skill}
-                                </Badge>
-                              )
-                            )}
-                          </div>
+                          <ExpandableBadgeList
+                            items={currentJob.secondarySkills}
+                            initialCount={8}
+                            badgeVariant="outline"
+                            badgeClassName="border-green-300 text-green-700 hover:bg-green-50"
+                          />
                         </div>
                       )}
                     </div>
@@ -1206,14 +1193,10 @@ const JobDetail = () => {
                         <p className="text-sm text-gray-600">
                           {job.job_type === "contract" ? "Bill Rate Range" : "Salary Range"}
                         </p>
-                        <p className="font-semibold text-gray-800">
+                        <p className="font-semibold text-gray-800 whitespace-nowrap">
                           {job.job_type === "contract"
-                            ? job.bill_rate_min || job.bill_rate_max
-                              ? `$${job.bill_rate_min ?? "–"}/hr – $${job.bill_rate_max ?? "–"}/hr`
-                              : "Not specified"
-                            : job.salary_min || job.salary_max
-                            ? `$${(job.salary_min ?? 0).toLocaleString()} – $${(job.salary_max ?? 0).toLocaleString()}`
-                            : "Not specified"}
+                            ? formatCompactRange(job.bill_rate_min, job.bill_rate_max, { suffix: "/hr" })
+                            : formatCompactRange(job.salary_min, job.salary_max)}
                         </p>
                       </div>
                     </CardContent>

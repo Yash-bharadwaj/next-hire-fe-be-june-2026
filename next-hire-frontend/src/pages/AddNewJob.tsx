@@ -88,8 +88,6 @@ const AddNewJob = () => {
   const [newContactEmail, setNewContactEmail] = useState("");
   const [newContactPhone, setNewContactPhone] = useState("");
   const [savingContact, setSavingContact] = useState(false);
-  const [unlinkedCompanyName, setUnlinkedCompanyName] = useState<string | null>(null);
-  const [linkingClient, setLinkingClient] = useState(false);
 
   useEffect(() => {
     businessPartnerService
@@ -207,40 +205,6 @@ const AddNewJob = () => {
       });
     } finally {
       setSavingContact(false);
-    }
-  };
-
-  // Link (or create) a Business Partner for a job's freeform company_name
-  // that has no business_partner_id yet - see the prefill effect above.
-  const handleUseUnlinkedCompanyAsClient = async () => {
-    if (!unlinkedCompanyName) return;
-    setLinkingClient(true);
-    try {
-      const existing = clients.find(
-        (c) => c.name.toLowerCase() === unlinkedCompanyName.toLowerCase()
-      );
-      const client =
-        existing ||
-        (await businessPartnerService.createBusinessPartner({
-          name: unlinkedCompanyName,
-          is_client: true,
-          status: "active",
-        })).data.businessPartner;
-
-      if (!existing) {
-        setClients((prev) => [...prev, client]);
-      }
-      form.setValue("businessPartnerId", client.id);
-      setUnlinkedCompanyName(null);
-      toast({ title: existing ? "Client linked" : "Client created and linked" });
-    } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err?.response?.data?.message || "Failed to link client",
-        variant: "destructive",
-      });
-    } finally {
-      setLinkingClient(false);
     }
   };
 
@@ -435,15 +399,6 @@ const AddNewJob = () => {
 
         setSkills(job.required_skills || []);
         setSecondarySkills(job.preferred_skills || []);
-
-        // Older/edge-case jobs (e.g. parsed before client auto-linking, or
-        // where the AI's client match needs a human to confirm) can have a
-        // company_name with no linked business_partner_id. Surface it as a
-        // one-click suggestion instead of leaving the Client field blank
-        // with no context.
-        if (!job.business_partner_id && job.company_name) {
-          setUnlinkedCompanyName(job.company_name);
-        }
       } catch (err: any) {
         console.error("Failed to load job for editing", err);
         setJobLoadError(err?.message || "Failed to load job details");
@@ -1053,20 +1008,6 @@ const AddNewJob = () => {
                           className="text-green-700 underline hover:text-green-800"
                         >
                           add one in Business Partners
-                        </button>
-                        .
-                      </p>
-                    )}
-                    {!field.value && unlinkedCompanyName && (
-                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 mt-1">
-                        This job's parsed company is "{unlinkedCompanyName}" —{" "}
-                        <button
-                          type="button"
-                          disabled={linkingClient}
-                          onClick={handleUseUnlinkedCompanyAsClient}
-                          className="text-green-700 underline hover:text-green-800 font-medium disabled:opacity-50"
-                        >
-                          {linkingClient ? "Linking…" : "use it as the Client"}
                         </button>
                         .
                       </p>

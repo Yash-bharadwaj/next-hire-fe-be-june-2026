@@ -76,6 +76,9 @@ import { recruiterService } from "@/services/recruiterService";
 import { API_BASE_URL } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { ExpandableText } from "@/components/ExpandableText";
+import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
+import { formatCompactCurrency } from "@/lib/format";
 
 // Candidate data will be fetched from API - no static data needed
 
@@ -871,9 +874,7 @@ const CandidateDetail = () => {
                   <div className="flex items-center gap-2 bg-green-50 px-3 py-1 rounded-full flex-shrink-0">
                     <DollarSign className="w-4 h-4 text-green-600" />
                     <span className="font-medium text-green-700 whitespace-nowrap">
-                      {candidate.expected_salary
-                        ? `$${candidate.expected_salary}`
-                        : "Not specified"}{" "}
+                      {formatCompactCurrency(candidate.expected_salary) || "Not specified"}{" "}
                       Expected
                     </span>
                   </div>
@@ -1002,9 +1003,11 @@ const CandidateDetail = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-gray-700 leading-relaxed">
-                      {candidate.bio}
-                    </p>
+                    <ExpandableText
+                      text={candidate.bio}
+                      maxLength={280}
+                      className="text-gray-700 leading-relaxed"
+                    />
                   </CardContent>
                 </Card>
 
@@ -1059,16 +1062,11 @@ const CandidateDetail = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {(candidate.skills || []).map((skill, index) => (
-                      <Badge
-                        key={index}
-                        className="bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md"
-                      >
-                        {skill}
-                      </Badge>
-                    ))}
-                  </div>
+                  <ExpandableBadgeList
+                    items={candidate.skills || []}
+                    initialCount={10}
+                    badgeClassName="bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md"
+                  />
                 </CardContent>
               </Card>
 
