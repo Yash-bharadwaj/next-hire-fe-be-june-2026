@@ -69,8 +69,8 @@ import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/rec
 import { ScheduleInterviewDialog } from "@/components/ScheduleInterviewDialog";
 import { ExpandableText } from "@/components/ExpandableText";
 import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
-import { InterviewNotesPanel } from "@/components/InterviewNotesPanel";
-import { InterviewDocumentsPanel } from "@/components/InterviewDocumentsPanel";
+import { NotesPanel } from "@/components/NotesPanel";
+import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { formatCompactCurrency, formatCompactRange } from "@/lib/format";
 
 const statusColors: Record<string, string> = {
@@ -928,7 +928,19 @@ const InterviewDetail = () => {
         </TabsContent>
 
         <TabsContent value="notes" className="mt-4">
-          <InterviewNotesPanel interviewId={interview.id} notes={interview.notes_history || []} onChanged={refresh} />
+          <NotesPanel
+            title="Interview Notes"
+            description="Comprehensive notes and feedback from all interview stages"
+            notes={interview.notes_history || []}
+            onAdd={async (data) => {
+              await interviewService.addInterviewNote(interview.id, data);
+              refresh();
+            }}
+            onUpdate={async (noteId, data) => {
+              await interviewService.updateInterviewNote(interview.id, noteId, data);
+              refresh();
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="todo" className="mt-4">
@@ -1146,7 +1158,14 @@ const InterviewDetail = () => {
             </CardContent>
           </Card>
 
-          <InterviewDocumentsPanel interviewId={interview.id} documents={interview.attachments || []} onChanged={refresh} />
+          <DocumentsPanel
+            title="Interview Documents"
+            documents={interview.attachments || []}
+            onUpload={async (data) => {
+              await interviewService.addInterviewAttachment(interview.id, data);
+              refresh();
+            }}
+          />
         </TabsContent>
       </Tabs>
 

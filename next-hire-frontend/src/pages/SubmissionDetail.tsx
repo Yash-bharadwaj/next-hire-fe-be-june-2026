@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -9,6 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +20,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -25,11 +30,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   ArrowLeft,
@@ -43,30 +55,44 @@ import {
   Briefcase,
   Building,
   Star,
-  FileText,
-  Paperclip,
   Download,
   Edit,
   MoreHorizontal,
-  MessageSquare,
-  CheckCircle,
+  ChevronDown,
   Linkedin,
   Globe,
   Trash,
-  Eye,
   Plus,
+  Search,
+  UserCog,
+  Bot,
+  CheckSquare,
+  Activity,
+  Award,
+  Target,
+  Users,
+  TrendingUp,
+  UserCheck,
+  AlertTriangle,
+  FileText,
+  Briefcase as BriefcaseIcon,
 } from "lucide-react";
 import {
   submissionService,
   Submission,
   SubmissionStatus,
 } from "@/services/submissionService";
-import { recruiterService } from "@/services/recruiterService";
+import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/recruiterService";
+import { jobService } from "@/services/jobService";
 import { ScheduleInterviewDialog } from "@/components/ScheduleInterviewDialog";
 import { ExpandableText } from "@/components/ExpandableText";
 import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
+import { NotesPanel } from "@/components/NotesPanel";
+import { DocumentsPanel } from "@/components/DocumentsPanel";
+import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
 import { formatCompactCurrency, formatCompactRange } from "@/lib/format";
 import { getSubmissionStatusMeta } from "@/lib/submissionStatus";
+import { computeSkillMatrix, summarizeSkillMatrix, getMatchLevelLabel } from "@/lib/skillMatching";
 
 const formatDateTime = (dateString?: string | null) => {
   if (!dateString) return "—";
@@ -109,21 +135,12 @@ const SubmissionDetail = () => {
   const [statusNote, setStatusNote] = useState("");
   const [savingStatus, setSavingStatus] = useState(false);
 
-  const [showNoteDialog, setShowNoteDialog] = useState(false);
-  const [newNote, setNewNote] = useState("");
-  const [savingNote, setSavingNote] = useState(false);
-
-  const [showAttachmentDialog, setShowAttachmentDialog] = useState(false);
-  const [attachmentUrl, setAttachmentUrl] = useState("");
-  const [attachmentName, setAttachmentName] = useState("");
-  const [savingAttachment, setSavingAttachment] = useState(false);
-
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
 
   const isRecruiter = user?.role === "recruiter";
   const isCandidate = user?.role === "candidate";
 
-  const fetchSubmission = async () => {
+  const fetchSubmission = useCallback(async () => {
     if (!id) return;
     try {
       setLoading(true);
@@ -137,12 +154,24 @@ const SubmissionDetail = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     fetchSubmission();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [fetchSubmission]);
+
+  // ── Team members (for Change Assignment / Task assignment) ─────────────
+  const [teamOptions, setTeamOptions] = useState<TeamMember[]>([]);
+  useEffect(() => {
+    recruiterService.getTeamMembers().then(setTeamOptions).catch(() => {});
+  }, []);
+  const formatTeamMemberName = (member: TeamMember) => {
+    const name = [member.recruiterProfile?.first_name, member.recruiterProfile?.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    return name || member.email;
+  };
 
   const handleUpdateStatus = async () => {
     if (!submission || !newStatus) return;
@@ -168,50 +197,6 @@ const SubmissionDetail = () => {
     }
   };
 
-  const handleAddNote = async () => {
-    if (!submission || !newNote.trim()) return;
-    try {
-      setSavingNote(true);
-      await recruiterService.addSubmissionNote(submission.id, newNote.trim());
-      toast({ title: "Note added" });
-      setNewNote("");
-      setShowNoteDialog(false);
-      fetchSubmission();
-    } catch (err: any) {
-      toast({
-        title: "Failed to add note",
-        description: err?.response?.data?.message || err?.message,
-        variant: "destructive",
-      });
-    } finally {
-      setSavingNote(false);
-    }
-  };
-
-  const handleAddAttachment = async () => {
-    if (!submission || !attachmentUrl.trim()) return;
-    try {
-      setSavingAttachment(true);
-      await recruiterService.addSubmissionAttachment(submission.id, {
-        url: attachmentUrl.trim(),
-        name: attachmentName.trim() || undefined,
-      });
-      toast({ title: "Attachment added" });
-      setAttachmentUrl("");
-      setAttachmentName("");
-      setShowAttachmentDialog(false);
-      fetchSubmission();
-    } catch (err: any) {
-      toast({
-        title: "Failed to add attachment",
-        description: err?.response?.data?.message || err?.message,
-        variant: "destructive",
-      });
-    } finally {
-      setSavingAttachment(false);
-    }
-  };
-
   const handleWithdraw = async () => {
     if (!submission) return;
     if (!window.confirm("Are you sure you want to withdraw this application?")) return;
@@ -227,6 +212,205 @@ const SubmissionDetail = () => {
       });
     }
   };
+
+  // ── Manual Search (deep-link into the job's existing Manual Search) ────
+  const handleManualSearch = () => {
+    if (submission?.job?.id) navigate(`/dashboard/jobs/${submission.job.id}?openManualSearch=1`);
+  };
+
+  // ── Change Assignment (reassign the job's owning recruiter) ─────────────
+  const [showChangeAssignment, setShowChangeAssignment] = useState(false);
+  const [reassignRecruiterId, setReassignRecruiterId] = useState("");
+  const [savingAssignment, setSavingAssignment] = useState(false);
+
+  const handleChangeAssignment = async () => {
+    if (!submission?.job?.id || !reassignRecruiterId) return;
+    setSavingAssignment(true);
+    try {
+      await jobService.updateJob(submission.job.id, { assigned_to: reassignRecruiterId });
+      toast({ title: "Assignment updated" });
+      setShowChangeAssignment(false);
+      fetchSubmission();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to update assignment",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
+
+  // ── Assign to AI Agent (real Gemini re-score, persisted to ai_score) ───
+  const [assigningAiAgent, setAssigningAiAgent] = useState(false);
+
+  const handleAssignAiAgent = async () => {
+    if (!submission) return;
+    setAssigningAiAgent(true);
+    try {
+      const res = await recruiterService.assignSubmissionAiAgent(submission.id);
+      toast({ title: "AI Agent", description: res.message });
+      fetchSubmission();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "AI scoring is temporarily unavailable",
+        variant: "destructive",
+      });
+    } finally {
+      setAssigningAiAgent(false);
+    }
+  };
+
+  // ── Tasks (scoped to this submission) ───────────────────────────────────
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDueDate, setNewTaskDueDate] = useState("");
+  const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
+  const [newTaskAssignee, setNewTaskAssignee] = useState("");
+  const [savingTask, setSavingTask] = useState(false);
+  const [reassigningTaskId, setReassigningTaskId] = useState<string | null>(null);
+  const [tasksFilter, setTasksFilter] = useState("all");
+  const [tasksSearch, setTasksSearch] = useState("");
+
+  const fetchTasks = useCallback(async () => {
+    if (!submission?.id) return;
+    setTasksLoading(true);
+    try {
+      const res = await recruiterService.getTasks({ submission_id: submission.id, limit: 100 });
+      setTasks((res as any)?.data?.tasks || []);
+    } catch {
+      // empty state handles failures gracefully
+    } finally {
+      setTasksLoading(false);
+    }
+  }, [submission?.id]);
+
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  const filteredTasks = tasks.filter((task) => {
+    const matchesFilter =
+      tasksFilter === "all" ||
+      task.status === tasksFilter ||
+      task.priority === tasksFilter;
+    const q = tasksSearch.toLowerCase();
+    const matchesSearch =
+      !q ||
+      task.title.toLowerCase().includes(q) ||
+      (task.description || "").toLowerCase().includes(q);
+    return matchesFilter && matchesSearch;
+  });
+
+  const handleAddTask = async () => {
+    if (!submission?.id || !newTaskTitle.trim()) return;
+    setSavingTask(true);
+    try {
+      await recruiterService.createTask({
+        title: newTaskTitle.trim(),
+        submission_id: submission.id,
+        priority: newTaskPriority,
+        due_date: newTaskDueDate || undefined,
+        assigned_to: newTaskAssignee || undefined,
+      });
+      toast({ title: "Task added" });
+      setNewTaskTitle("");
+      setNewTaskDueDate("");
+      setNewTaskPriority("medium");
+      setNewTaskAssignee("");
+      setShowAddTask(false);
+      fetchTasks();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to add task",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
+  const handleToggleTask = async (task: Task) => {
+    const nextStatus = task.status === "completed" ? "pending" : "completed";
+    try {
+      await recruiterService.updateTask(task.id, { status: nextStatus });
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)));
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to update task",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRescheduleTask = async (taskId: string, dueDate: Date) => {
+    try {
+      await recruiterService.updateTask(taskId, { due_date: dueDate.toISOString() });
+      toast({ title: "Task rescheduled" });
+      fetchTasks();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to reschedule task",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleReassignTask = async (taskId: string, assigneeId: string) => {
+    try {
+      await recruiterService.updateTask(taskId, { assigned_to: assigneeId });
+      toast({ title: "Task reassigned" });
+      setReassigningTaskId(null);
+      fetchTasks();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to reassign task",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await recruiterService.deleteTask(taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to delete task",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // ── Related jobs (Pitch tab) ─────────────────────────────────────────────
+  const [relatedJobs, setRelatedJobs] = useState<any[]>([]);
+  const [relatedJobsLoading, setRelatedJobsLoading] = useState(false);
+
+  const fetchRelatedJobs = useCallback(async () => {
+    if (!submission?.id) return;
+    setRelatedJobsLoading(true);
+    try {
+      const res = await recruiterService.getRelatedJobsForSubmission(submission.id);
+      setRelatedJobs((res as any)?.data?.jobs || []);
+    } catch {
+      // empty state handles failures gracefully
+    } finally {
+      setRelatedJobsLoading(false);
+    }
+  }, [submission?.id]);
+
+  useEffect(() => {
+    fetchRelatedJobs();
+  }, [fetchRelatedJobs]);
 
   if (loading) {
     return (
@@ -268,23 +452,37 @@ const SubmissionDetail = () => {
 
   const resumeUrl = resolveFileUrl(submission.resume_url || candidate?.resume_url);
 
+  const skillMatrix = computeSkillMatrix(job, candidate);
+  const skillSummary = summarizeSkillMatrix(skillMatrix);
+
+  const daysActive = Math.max(
+    0,
+    Math.round((Date.now() - new Date(submission.submitted_at).getTime()) / (1000 * 60 * 60 * 24))
+  );
+
   type TimelineEvent = { at: string; label: string; icon: JSX.Element; detail?: string };
   const timelineEvents: TimelineEvent[] = [
     {
       at: submission.submitted_at,
       label: "Submitted",
-      icon: <Briefcase className="h-4 w-4 text-blue-600" />,
+      icon: <BriefcaseIcon className="h-4 w-4 text-blue-600" />,
     },
+    ...(submission.status_history || []).map((entry) => ({
+      at: entry.at,
+      label: `Status changed to ${getSubmissionStatusMeta(entry.to).label}`,
+      icon: <AlertTriangle className="h-4 w-4 text-yellow-600" />,
+      detail: entry.notes,
+    })),
     ...(submission.notes_history || []).map((entry) => ({
       at: entry.at,
-      label: "Note added",
-      icon: <MessageSquare className="h-4 w-4 text-gray-600" />,
-      detail: entry.note,
+      label: `Note added by ${entry.author}`,
+      icon: <FileText className="h-4 w-4 text-gray-600" />,
+      detail: entry.content,
     })),
     ...(submission.attachments || []).map((entry) => ({
       at: entry.at,
-      label: "Attachment added",
-      icon: <Paperclip className="h-4 w-4 text-gray-600" />,
+      label: "Document uploaded",
+      icon: <FileText className="h-4 w-4 text-purple-600" />,
       detail: entry.name,
     })),
     ...(submission.reviewed_at
@@ -292,7 +490,7 @@ const SubmissionDetail = () => {
           {
             at: submission.reviewed_at,
             label: "Reviewed",
-            icon: <CheckCircle className="h-4 w-4 text-green-600" />,
+            icon: <UserCheck className="h-4 w-4 text-green-600" />,
             detail: submission.reviewer?.recruiterProfile
               ? `${submission.reviewer.recruiterProfile.first_name} ${submission.reviewer.recruiterProfile.last_name}`
               : submission.reviewer?.email,
@@ -337,37 +535,44 @@ const SubmissionDetail = () => {
 
         <div className="flex items-center gap-2">
           {isRecruiter && (
-            <>
-              <Button onClick={() => setShowStatusDialog(true)}>
-                <Edit className="h-4 w-4 mr-2" />
-                Update Status
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => navigate(`/dashboard/candidates/${candidate?.id}`)}>
-                    <Eye className="h-4 w-4 mr-2" />
-                    View Candidate Profile
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowScheduleDialog(true)}>
-                    <Calendar className="h-4 w-4 mr-2" />
-                    Schedule Interview
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowNoteDialog(true)}>
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    Add Note
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowAttachmentDialog(true)}>
-                    <Paperclip className="h-4 w-4 mr-2" />
-                    Add Attachment
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <MoreHorizontal className="h-4 w-4 mr-2" />
+                  Actions
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setNewStatus(submission.status);
+                    setStatusNote("");
+                    setShowStatusDialog(true);
+                  }}
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Submission
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleManualSearch} disabled={!job?.id}>
+                  <Search className="h-4 w-4 mr-2" />
+                  Manual Search
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setReassignRecruiterId(job?.assigned_to || "");
+                    setShowChangeAssignment(true);
+                  }}
+                >
+                  <UserCog className="h-4 w-4 mr-2" />
+                  Change Assignment
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleAssignAiAgent} disabled={assigningAiAgent}>
+                  <Bot className="h-4 w-4 mr-2" />
+                  {assigningAiAgent ? "Scoring..." : "Assign to AI Agent"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {isCandidate && submission.status === "submitted" && (
             <Button variant="destructive" onClick={handleWithdraw}>
@@ -378,12 +583,58 @@ const SubmissionDetail = () => {
         </div>
       </div>
 
+      {/* Quick Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Calendar className="w-4 h-4 text-blue-600" />
+              Submitted
+            </div>
+            <p className="font-semibold text-gray-900">{formatDateOnly(submission.submitted_at)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <DollarSign className="w-4 h-4 text-green-600" />
+              {job?.job_type === "contract" ? "Bill Rate" : "Salary"}
+            </div>
+            <p className="font-semibold text-gray-900">{salaryRange}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Calendar className="w-4 h-4 text-orange-600" />
+              Availability
+            </div>
+            <p className="font-semibold text-gray-900">{formatDateOnly(submission.availability_date)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <TrendingUp className="w-4 h-4 text-purple-600" />
+              Experience
+            </div>
+            <p className="font-semibold text-gray-900">
+              {candidate?.experience_years !== undefined ? `${candidate.experience_years}+ years` : "Not specified"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Tabs defaultValue="overview">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="matching">AI Matching</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
+          {isRecruiter && <TabsTrigger value="tasks">Tasks</TabsTrigger>}
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          {isRecruiter && <TabsTrigger value="profitability">Profitability</TabsTrigger>}
+          <TabsTrigger value="pitch">Pitch</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-4">
@@ -456,6 +707,18 @@ const SubmissionDetail = () => {
                     {candidate.experience_years} years experience
                   </div>
                 )}
+                {submission.ai_score !== undefined && submission.ai_score !== null && (
+                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-3 border border-purple-100">
+                    <Label className="text-xs font-medium text-purple-700">AI Skill Match</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="flex items-center gap-1 text-base font-bold px-3 py-1">
+                        <Star className="h-4 w-4 text-yellow-500" />
+                        {submission.ai_score}%
+                      </Badge>
+                      <span className="text-sm text-purple-600">{getMatchLevelLabel(submission.ai_score)} Match</span>
+                    </div>
+                  </div>
+                )}
                 {(candidate?.linkedin_url || candidate?.portfolio_url) && (
                   <div className="flex items-center gap-3 pt-1">
                     {candidate.linkedin_url && (
@@ -494,6 +757,24 @@ const SubmissionDetail = () => {
                     <ExpandableText text={candidate.bio} maxLength={240} className="text-gray-600" />
                   </div>
                 )}
+                <div className="flex items-center gap-2 pt-1">
+                  {candidate?.user?.email && (
+                    <a href={`mailto:${candidate.user.email}`}>
+                      <Button size="sm" variant="outline">
+                        <Mail className="h-4 w-4 mr-1" />
+                        Email
+                      </Button>
+                    </a>
+                  )}
+                  {candidate?.phone && (
+                    <a href={`tel:${candidate.phone}`}>
+                      <Button size="sm" variant="outline">
+                        <Phone className="h-4 w-4 mr-1" />
+                        Call
+                      </Button>
+                    </a>
+                  )}
+                </div>
                 <Button
                   variant="link"
                   className="px-0 h-auto"
@@ -504,6 +785,49 @@ const SubmissionDetail = () => {
               </CardContent>
             </Card>
           </div>
+
+          {job?.client && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Users className="h-4 w-4" />
+                  Client
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p className="font-semibold text-gray-900">{job.client.name}</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {job.client.industry && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500">Industry</p>
+                      <p className="text-gray-800">{job.client.industry}</p>
+                    </div>
+                  )}
+                  {job.client.company_size && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500">Company Size</p>
+                      <p className="text-gray-800 capitalize">{job.client.company_size}</p>
+                    </div>
+                  )}
+                  {job.client.status && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500">Relationship</p>
+                      <p className="text-gray-800 capitalize">{job.client.status}</p>
+                    </div>
+                  )}
+                </div>
+                {job.clientContact && (
+                  <div className="pt-2 border-t">
+                    <p className="text-xs font-medium text-gray-500">Primary Contact</p>
+                    <p className="text-gray-800">
+                      {job.clientContact.name}
+                      {job.clientContact.title ? ` — ${job.clientContact.title}` : ""}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -536,6 +860,8 @@ const SubmissionDetail = () => {
                             ? ` (${submission.submitter.vendorProfile.contact_person_name})`
                             : ""
                         }`
+                      : submission.submitter.recruiterProfile
+                      ? `${submission.submitter.recruiterProfile.first_name} ${submission.submitter.recruiterProfile.last_name}`
                       : submission.submitter.email}{" "}
                     <span className="text-gray-500">— {submission.submitter.role}</span>
                   </p>
@@ -549,100 +875,422 @@ const SubmissionDetail = () => {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="notes" className="mt-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Notes</CardTitle>
-              {isRecruiter && (
-                <Button size="sm" onClick={() => setShowNoteDialog(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Note
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
-              {submission.notes_history && submission.notes_history.length > 0 ? (
-                <div className="space-y-4">
-                  {[...submission.notes_history].reverse().map((entry, idx) => (
-                    <div key={idx} className="border-l-2 border-gray-200 pl-4 py-1">
-                      <p className="text-sm text-gray-800">{entry.note}</p>
-                      <p className="text-xs text-gray-400 mt-1">{formatDateTime(entry.at)}</p>
-                    </div>
-                  ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-blue-700">Days Active</p>
+                  <p className="text-2xl font-bold text-blue-900">{daysActive}</p>
                 </div>
-              ) : submission.notes ? (
-                <div className="border-l-2 border-gray-200 pl-4 py-1">
-                  <p className="text-sm text-gray-800">{submission.notes}</p>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">No notes yet.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="documents" className="mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Resume</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {resumeUrl ? (
-                  <a
-                    href={resumeUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-2 text-blue-700 hover:underline text-sm"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download Resume
-                  </a>
-                ) : (
-                  <p className="text-sm text-gray-500">No resume on file.</p>
-                )}
+                <Activity className="w-8 h-8 text-blue-600" />
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-base">Attachments</CardTitle>
-                {isRecruiter && (
-                  <Button size="sm" onClick={() => setShowAttachmentDialog(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add
-                  </Button>
-                )}
-              </CardHeader>
-              <CardContent>
-                {submission.attachments && submission.attachments.length > 0 ? (
-                  <div className="space-y-2">
-                    {submission.attachments.map((attachment, idx) => (
-                      <a
-                        key={idx}
-                        href={attachment.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-2 text-blue-700 hover:underline text-sm"
-                      >
-                        <FileText className="h-4 w-4" />
-                        {attachment.name}
-                      </a>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500">No attachments yet.</p>
-                )}
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-green-700">Skills Matched</p>
+                  <p className="text-2xl font-bold text-green-900">
+                    {skillSummary.matchedCount}/{skillSummary.totalSkills}
+                  </p>
+                </div>
+                <Target className="w-8 h-8 text-green-600" />
+              </CardContent>
+            </Card>
+            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-purple-700">Tasks</p>
+                  <p className="text-2xl font-bold text-purple-900">
+                    {tasks.filter((t) => t.status !== "completed").length} open
+                  </p>
+                </div>
+                <CheckSquare className="w-8 h-8 text-purple-600" />
+              </CardContent>
+            </Card>
+            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-orange-700">Status</p>
+                  <p className="text-lg font-bold text-orange-900">{statusMeta.label}</p>
+                </div>
+                <Users className="w-8 h-8 text-orange-600" />
               </CardContent>
             </Card>
           </div>
         </TabsContent>
 
+        <TabsContent value="matching" className="space-y-6 mt-4">
+          <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Overall AI Match Score</h3>
+                  <p className="text-gray-600">Real-time score from Gemini, based on job and candidate profile</p>
+                </div>
+                {submission.ai_score !== undefined && submission.ai_score !== null ? (
+                  <div className="flex items-center gap-3 px-6 py-3 rounded-xl font-bold text-3xl border-2 text-purple-700 bg-white border-purple-200">
+                    <Star className="w-8 h-8 fill-current text-yellow-500" />
+                    {submission.ai_score}%
+                  </div>
+                ) : (
+                  <Button onClick={handleAssignAiAgent} disabled={assigningAiAgent || !isRecruiter}>
+                    <Bot className="w-4 h-4 mr-2" />
+                    {assigningAiAgent ? "Scoring..." : "Run AI Match"}
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-6">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {skillSummary.matchedCount}/{skillSummary.totalSkills}
+                  </div>
+                  <div className="text-sm text-gray-600">Skills Matched</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">{skillSummary.avgScore}%</div>
+                  <div className="text-sm text-gray-600">Avg. Skill Score</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">{getMatchLevelLabel(skillSummary.avgScore)}</div>
+                  <div className="text-sm text-gray-600">Skill Match Level</div>
+                </div>
+              </div>
+              {submission.ai_reasoning && (
+                <div className="mt-4 pt-4 border-t border-purple-200/60">
+                  <p className="text-xs font-medium text-purple-700 mb-1">AI Reasoning</p>
+                  <p className="text-sm text-gray-700">{submission.ai_reasoning}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-purple-600" />
+                Skill Coverage
+              </CardTitle>
+              <p className="text-sm text-gray-500">
+                Based on the candidate's recorded skills against this job's required and preferred skills.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {skillMatrix.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">This job has no required or preferred skills listed.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Skill</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Candidate Level</TableHead>
+                      <TableHead>Experience</TableHead>
+                      <TableHead className="text-center">Score</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {skillMatrix.map((row) => (
+                      <TableRow key={`${row.requirement}-${row.skill}`}>
+                        <TableCell className="font-semibold text-gray-900">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${row.matched ? "bg-green-500" : "bg-gray-300"}`} />
+                            {row.skill}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {row.requirement}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-gray-600">{row.category}</TableCell>
+                        <TableCell className="font-medium text-gray-700">{row.candidateLevel}</TableCell>
+                        <TableCell className="text-gray-600">
+                          {row.yearsExperience !== undefined ? `${row.yearsExperience} years` : "—"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge
+                            className={
+                              row.score >= 80
+                                ? "bg-green-100 text-green-800"
+                                : row.score >= 50
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-gray-100 text-gray-600"
+                            }
+                          >
+                            {row.score}%
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="notes" className="mt-4">
+          <NotesPanel
+            title="Submission Notes"
+            description="Keep track of important observations and updates"
+            notes={submission.notes_history || []}
+            onAdd={async (data) => {
+              await recruiterService.addSubmissionNote(submission.id, data);
+              fetchSubmission();
+            }}
+            onUpdate={async (noteId, data) => {
+              await recruiterService.updateSubmissionNote(submission.id, noteId, data);
+              fetchSubmission();
+            }}
+          />
+        </TabsContent>
+
+        {isRecruiter && (
+          <TabsContent value="tasks" className="mt-4">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CheckSquare className="h-4 w-4" />
+                    Tasks
+                  </CardTitle>
+                  <Dialog open={showAddTask} onOpenChange={setShowAddTask}>
+                    <DialogTrigger asChild>
+                      <Button size="sm">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Task
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Add Task</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-3">
+                        <Input
+                          placeholder="Task title"
+                          value={newTaskTitle}
+                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                        />
+                        <div className="grid grid-cols-2 gap-3">
+                          <Input
+                            type="date"
+                            value={newTaskDueDate}
+                            onChange={(e) => setNewTaskDueDate(e.target.value)}
+                          />
+                          <Select value={newTaskPriority} onValueChange={(v) => setNewTaskPriority(v as TaskPriority)}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Priority" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="low">Low</SelectItem>
+                              <SelectItem value="medium">Medium</SelectItem>
+                              <SelectItem value="high">High</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Select value={newTaskAssignee} onValueChange={setNewTaskAssignee}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Assign to (optional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {teamOptions.map((member) => (
+                              <SelectItem key={member.id} value={member.id}>
+                                {formatTeamMemberName(member)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowAddTask(false)}>
+                          Cancel
+                        </Button>
+                        <Button onClick={handleAddTask} disabled={!newTaskTitle.trim() || savingTask}>
+                          {savingTask ? "Adding..." : "Add Task"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+
+                <div className="flex items-center gap-3 pt-4 border-t flex-wrap">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <Input
+                      placeholder="Search tasks..."
+                      value={tasksSearch}
+                      onChange={(e) => setTasksSearch(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <Select value={tasksFilter} onValueChange={setTasksFilter}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Tasks</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="high">High Priority</SelectItem>
+                      <SelectItem value="medium">Medium Priority</SelectItem>
+                      <SelectItem value="low">Low Priority</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {tasksLoading ? (
+                  <div className="flex items-center justify-center py-10 text-gray-500">
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                    Loading tasks...
+                  </div>
+                ) : filteredTasks.length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">
+                    {tasks.length === 0 ? "No tasks for this submission yet." : "No tasks match the selected filter."}
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredTasks.map((todo) => (
+                      <div key={todo.id} className="border rounded-lg p-4 hover:shadow-sm transition-shadow">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <Checkbox
+                              checked={todo.status === "completed"}
+                              onCheckedChange={() => handleToggleTask(todo)}
+                            />
+                            <div className="min-w-0">
+                              <h4
+                                className={`font-semibold truncate ${
+                                  todo.status === "completed" ? "line-through text-gray-500" : "text-gray-900"
+                                }`}
+                              >
+                                {todo.title}
+                              </h4>
+                              {todo.description && <p className="text-sm text-gray-600">{todo.description}</p>}
+                              <div className="flex items-center gap-3 text-sm text-gray-600">
+                                <span>Due: {todo.due_date ? formatDateOnly(todo.due_date) : "—"}</span>
+                                {todo.assignee && <span>Assigned to: {formatTeamMemberName(todo.assignee)}</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <Badge
+                              className={`text-xs ${
+                                todo.priority === "high"
+                                  ? "bg-red-100 text-red-800 border-red-200"
+                                  : todo.priority === "medium"
+                                  ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                                  : "bg-green-100 text-green-800 border-green-200"
+                              }`}
+                            >
+                              {todo.priority}
+                            </Badge>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button size="sm" variant="outline" className="text-blue-600 hover:bg-blue-50">
+                                  <Calendar className="w-4 h-4" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0">
+                                <CalendarComponent
+                                  mode="single"
+                                  selected={todo.due_date ? new Date(todo.due_date) : undefined}
+                                  onSelect={(date) => date && handleRescheduleTask(todo.id, date)}
+                                  initialFocus
+                                />
+                              </PopoverContent>
+                            </Popover>
+                            <Dialog
+                              open={reassigningTaskId === todo.id}
+                              onOpenChange={(open) => setReassigningTaskId(open ? todo.id : null)}
+                            >
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="text-purple-600 hover:bg-purple-50">
+                                  <UserCog className="w-4 h-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Reassign Task</DialogTitle>
+                                </DialogHeader>
+                                <Select onValueChange={(v) => handleReassignTask(todo.id, v)}>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select assignee" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {teamOptions.map((member) => (
+                                      <SelectItem key={member.id} value={member.id}>
+                                        {formatTeamMemberName(member)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </DialogContent>
+                            </Dialog>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeleteTask(todo.id)}
+                              className="text-red-600 hover:bg-red-50"
+                            >
+                              <Trash className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        <TabsContent value="documents" className="space-y-6 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Resume</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {resumeUrl ? (
+                <a
+                  href={resumeUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 text-blue-700 hover:underline text-sm"
+                >
+                  <Download className="h-4 w-4" />
+                  Download Resume
+                </a>
+              ) : (
+                <p className="text-sm text-gray-500">No resume on file.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <DocumentsPanel
+            title="Submission Documents"
+            documents={submission.attachments || []}
+            onUpload={async (data) => {
+              await recruiterService.addSubmissionAttachment(submission.id, data);
+              fetchSubmission();
+            }}
+          />
+        </TabsContent>
+
         <TabsContent value="timeline" className="mt-4">
           <Card>
-            <CardContent className="pt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Activity className="h-4 w-4 text-indigo-600" />
+                Activity Timeline
+              </CardTitle>
+              <p className="text-sm text-gray-600">Complete history of submission activities and changes</p>
+            </CardHeader>
+            <CardContent className="pt-2">
               <div className="space-y-5">
                 {timelineEvents.map((event, idx) => (
                   <div key={idx} className="flex items-start gap-3">
@@ -658,14 +1306,209 @@ const SubmissionDetail = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {isRecruiter && (
+          <TabsContent value="profitability" className="mt-4">
+            {job?.id && <JobProfitabilityPanel jobId={job.id} />}
+          </TabsContent>
+        )}
+
+        <TabsContent value="pitch" className="space-y-6 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Briefcase className="h-5 w-5" />
+                Job Summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-600">Position</h4>
+                  <p className="text-gray-900">{job?.title}</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-600">Company</h4>
+                  <p className="text-gray-900">{job?.company_name}</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-600">Location</h4>
+                  <p className="text-gray-900">{job?.location || "—"}</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-600">Job Type</h4>
+                  <p className="text-gray-900 capitalize">{job?.job_type?.replace("_", " ") || "—"}</p>
+                </div>
+              </div>
+              {job?.required_skills && job.required_skills.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="font-semibold text-sm text-gray-600 mb-2">Key Requirements</h4>
+                  <ul className="list-disc list-inside text-gray-700 space-y-1">
+                    {job.required_skills.map((skill) => (
+                      <li key={skill}>{skill}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {job?.client && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building className="h-5 w-5" />
+                  Client Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="font-semibold text-sm text-gray-600">Company</h4>
+                    <p className="text-gray-900">{job.client.name}</p>
+                  </div>
+                  {job.client.industry && (
+                    <div>
+                      <h4 className="font-semibold text-sm text-gray-600">Industry</h4>
+                      <p className="text-gray-900">{job.client.industry}</p>
+                    </div>
+                  )}
+                  {job.client.company_size && (
+                    <div>
+                      <h4 className="font-semibold text-sm text-gray-600">Company Size</h4>
+                      <p className="text-gray-900 capitalize">{job.client.company_size}</p>
+                    </div>
+                  )}
+                  {job.client.status && (
+                    <div>
+                      <h4 className="font-semibold text-sm text-gray-600">Partnership Status</h4>
+                      <p className="text-gray-900 capitalize">{job.client.status}</p>
+                    </div>
+                  )}
+                </div>
+                {job.client.notes && (
+                  <div className="mt-4">
+                    <h4 className="font-semibold text-sm text-gray-600 mb-2">About the Company</h4>
+                    <p className="text-gray-700">{job.client.notes}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Candidate Skill Matching Matrix
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {skillMatrix.length === 0 ? (
+                <p className="text-center text-gray-500 py-6">No required or preferred skills listed for this job.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Skill</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Candidate Level</TableHead>
+                      <TableHead>Score</TableHead>
+                      <TableHead>Experience</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {skillMatrix.map((row) => (
+                      <TableRow key={`${row.requirement}-${row.skill}`}>
+                        <TableCell className="font-medium">{row.skill}</TableCell>
+                        <TableCell>{row.requirement}</TableCell>
+                        <TableCell>{row.candidateLevel}</TableCell>
+                        <TableCell>
+                          <Badge variant={row.score >= 80 ? "default" : row.score >= 50 ? "secondary" : "outline"}>
+                            {row.score}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{row.yearsExperience !== undefined ? `${row.yearsExperience} years` : "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          {skillMatrix.some((r) => !r.matched) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Areas of Improvement
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {skillMatrix
+                    .filter((r) => !r.matched)
+                    .map((row) => (
+                      <div key={row.skill} className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                        <h4 className="font-semibold text-yellow-800 mb-1">{row.skill}</h4>
+                        <p className="text-yellow-700 text-sm">
+                          This {row.requirement.toLowerCase()} skill has no record on the candidate's profile.
+                        </p>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Search className="h-5 w-5" />
+                Other Jobs That Could Be of Interest
+              </CardTitle>
+              <p className="text-sm text-gray-600">Other active jobs ranked by overlap with this candidate's skills</p>
+            </CardHeader>
+            <CardContent>
+              {relatedJobsLoading ? (
+                <div className="flex items-center justify-center py-8 text-gray-500">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                  Loading...
+                </div>
+              ) : relatedJobs.length === 0 ? (
+                <p className="text-center text-gray-500 py-6">No other active jobs match this candidate's skills yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {relatedJobs.map((r) => (
+                    <button
+                      key={r.job.id}
+                      onClick={() => navigate(`/dashboard/jobs/${r.job.id}`)}
+                      className="w-full text-left p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-semibold text-gray-900">{r.job.title}</h4>
+                        <Badge className="bg-green-100 text-green-800">{r.matchScore}% match</Badge>
+                      </div>
+                      <p className="text-gray-600 text-sm">
+                        {r.job.company_name} • {r.job.location || "Remote"}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
+      {/* Edit Submission / Status Dialog */}
       <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Update Submission Status</DialogTitle>
+            <DialogTitle>Edit Submission</DialogTitle>
             <DialogDescription>
-              Change the status of {candidate?.first_name} {candidate?.last_name}'s submission
+              Update the status of {candidate?.first_name} {candidate?.last_name}'s submission
             </DialogDescription>
           </DialogHeader>
           <div className="py-2 space-y-4">
@@ -694,57 +1537,37 @@ const SubmissionDetail = () => {
               Cancel
             </Button>
             <Button onClick={handleUpdateStatus} disabled={!newStatus || savingStatus}>
-              {savingStatus ? "Updating..." : "Update Status"}
+              {savingStatus ? "Updating..." : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showNoteDialog} onOpenChange={setShowNoteDialog}>
+      {/* Change Assignment Dialog */}
+      <Dialog open={showChangeAssignment} onOpenChange={setShowChangeAssignment}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Note</DialogTitle>
+            <DialogTitle>Change Assignment</DialogTitle>
+            <DialogDescription>Reassign the recruiter who owns this job's pipeline.</DialogDescription>
           </DialogHeader>
-          <Textarea
-            placeholder="Write a note..."
-            value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-            className="min-h-[100px]"
-          />
+          <Select value={reassignRecruiterId} onValueChange={setReassignRecruiterId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select recruiter" />
+            </SelectTrigger>
+            <SelectContent>
+              {teamOptions.map((member) => (
+                <SelectItem key={member.id} value={member.id}>
+                  {formatTeamMemberName(member)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNoteDialog(false)}>
+            <Button variant="outline" onClick={() => setShowChangeAssignment(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddNote} disabled={!newNote.trim() || savingNote}>
-              {savingNote ? "Saving..." : "Add Note"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showAttachmentDialog} onOpenChange={setShowAttachmentDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Attachment</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Input
-              placeholder="Attachment URL"
-              value={attachmentUrl}
-              onChange={(e) => setAttachmentUrl(e.target.value)}
-            />
-            <Input
-              placeholder="Display name (optional)"
-              value={attachmentName}
-              onChange={(e) => setAttachmentName(e.target.value)}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAttachmentDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddAttachment} disabled={!attachmentUrl.trim() || savingAttachment}>
-              {savingAttachment ? "Saving..." : "Add Attachment"}
+            <Button onClick={handleChangeAssignment} disabled={!reassignRecruiterId || savingAssignment}>
+              {savingAssignment ? "Saving..." : "Reassign"}
             </Button>
           </DialogFooter>
         </DialogContent>

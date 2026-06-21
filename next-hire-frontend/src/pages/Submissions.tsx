@@ -353,7 +353,7 @@ const Submissions = () => {
       }
       await recruiterService.addSubmissionNote(
         selectedSubmission.id,
-        newNote.trim()
+        { content: newNote.trim() }
       );
       toast.success("Note added");
       setNewNote("");

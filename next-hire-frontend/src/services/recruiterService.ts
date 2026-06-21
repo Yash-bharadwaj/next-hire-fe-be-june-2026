@@ -493,9 +493,12 @@ class RecruiterService {
   /**
    * Add note to submission
    */
-  async addSubmissionNote(submissionId: string, note: string): Promise<ApiResponse> {
+  async addSubmissionNote(
+    submissionId: string,
+    data: { title?: string; content: string; category?: string; isPrivate?: boolean; tags?: string[] }
+  ): Promise<ApiResponse> {
     try {
-      const response = await apiClient.post<ApiResponse>(`/recruiter/submissions/${submissionId}/notes`, { note });
+      const response = await apiClient.post<ApiResponse>(`/recruiter/submissions/${submissionId}/notes`, data);
       return response.data;
     } catch (error: any) {
       throw this.handleError(error);
@@ -503,14 +506,73 @@ class RecruiterService {
   }
 
   /**
-   * Add attachment to submission
+   * Edit an existing submission note
+   */
+  async updateSubmissionNote(
+    submissionId: string,
+    noteId: string,
+    data: { title?: string; content?: string; category?: string; isPrivate?: boolean; tags?: string[] }
+  ): Promise<ApiResponse> {
+    try {
+      const response = await apiClient.put<ApiResponse>(
+        `/recruiter/submissions/${submissionId}/notes/${noteId}`,
+        data
+      );
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Add a document to a submission - either an uploaded file or a pasted URL
    */
   async addSubmissionAttachment(
     submissionId: string,
-    data: { url: string; name?: string }
+    data: { file?: File; url?: string; name?: string; document_type?: string; valid_from?: string; valid_to?: string }
   ): Promise<ApiResponse> {
     try {
-      const response = await apiClient.post<ApiResponse>(`/recruiter/submissions/${submissionId}/attachments`, data);
+      const formData = new FormData();
+      if (data.file) formData.append("file", data.file);
+      if (data.url) formData.append("url", data.url);
+      if (data.name) formData.append("name", data.name);
+      if (data.document_type) formData.append("document_type", data.document_type);
+      if (data.valid_from) formData.append("valid_from", data.valid_from);
+      if (data.valid_to) formData.append("valid_to", data.valid_to);
+      const response = await apiClient.upload<ApiResponse>(
+        `/recruiter/submissions/${submissionId}/attachments`,
+        formData
+      );
+      return response.data as unknown as ApiResponse;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Have the AI agent (re-)score this candidate against the job, persisting
+   * a real ai_score + ai_reasoning (never a fabricated number).
+   */
+  async assignSubmissionAiAgent(submissionId: string): Promise<ApiResponse<{ ai_score: number; ai_reasoning: string }>> {
+    try {
+      const response = await apiClient.post<ApiResponse<{ ai_score: number; ai_reasoning: string }>>(
+        `/recruiter/submissions/${submissionId}/ai-score`
+      );
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Other active jobs that might suit this candidate, ranked by real
+   * required/preferred skill overlap.
+   */
+  async getRelatedJobsForSubmission(submissionId: string): Promise<ApiResponse<{ jobs: any[] }>> {
+    try {
+      const response = await apiClient.get<ApiResponse<{ jobs: any[] }>>(
+        `/recruiter/submissions/${submissionId}/related-jobs`
+      );
       return response.data;
     } catch (error: any) {
       throw this.handleError(error);

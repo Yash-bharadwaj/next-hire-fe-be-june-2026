@@ -11,8 +11,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { interviewService, InterviewNote, NoteCategory } from "@/services/interviewService";
 import { cn } from "@/lib/utils";
+
+export type NoteCategory = "technical" | "behavioral" | "feedback" | "general";
+
+export interface NoteRecord {
+  id: string;
+  title: string;
+  content: string;
+  category: NoteCategory;
+  isPrivate: boolean;
+  tags: string[];
+  author: string;
+  at: string;
+}
+
+export interface NoteFormData {
+  title?: string;
+  content: string;
+  category?: NoteCategory;
+  isPrivate?: boolean;
+  tags?: string[];
+}
 
 const categoryColor: Record<NoteCategory, string> = {
   technical: "bg-blue-100 text-blue-800 border-blue-200",
@@ -37,13 +57,21 @@ const parseTags = (raw: string) =>
     .map((t) => t.trim())
     .filter(Boolean);
 
-interface InterviewNotesPanelProps {
-  interviewId: string;
-  notes: InterviewNote[];
-  onChanged: () => void;
+interface NotesPanelProps {
+  title?: string;
+  description?: string;
+  notes: NoteRecord[];
+  onAdd: (data: NoteFormData) => Promise<void>;
+  onUpdate: (noteId: string, data: NoteFormData) => Promise<void>;
 }
 
-export const InterviewNotesPanel = ({ interviewId, notes, onChanged }: InterviewNotesPanelProps) => {
+export const NotesPanel = ({
+  title = "Notes",
+  description = "Comprehensive notes and feedback in one place",
+  notes,
+  onAdd,
+  onUpdate,
+}: NotesPanelProps) => {
   const { toast } = useToast();
   const [categoryFilter, setCategoryFilter] = useState<"all" | NoteCategory>("all");
   const [search, setSearch] = useState("");
@@ -52,7 +80,7 @@ export const InterviewNotesPanel = ({ interviewId, notes, onChanged }: Interview
   const [addForm, setAddForm] = useState<NoteFormState>(emptyForm);
   const [saving, setSaving] = useState(false);
 
-  const [editingNote, setEditingNote] = useState<InterviewNote | null>(null);
+  const [editingNote, setEditingNote] = useState<NoteRecord | null>(null);
   const [editForm, setEditForm] = useState<NoteFormState>(emptyForm);
   const [editSaving, setEditSaving] = useState(false);
 
@@ -71,7 +99,7 @@ export const InterviewNotesPanel = ({ interviewId, notes, onChanged }: Interview
     if (!addForm.content.trim()) return;
     setSaving(true);
     try {
-      await interviewService.addInterviewNote(interviewId, {
+      await onAdd({
         title: addForm.title.trim() || undefined,
         content: addForm.content.trim(),
         category: addForm.category,
@@ -81,7 +109,6 @@ export const InterviewNotesPanel = ({ interviewId, notes, onChanged }: Interview
       toast({ title: "Note added" });
       setAddForm(emptyForm);
       setShowAddDialog(false);
-      onChanged();
     } catch (err: any) {
       toast({
         title: "Error",
@@ -93,7 +120,7 @@ export const InterviewNotesPanel = ({ interviewId, notes, onChanged }: Interview
     }
   };
 
-  const openEditDialog = (note: InterviewNote) => {
+  const openEditDialog = (note: NoteRecord) => {
     setEditingNote(note);
     setEditForm({
       title: note.title,
@@ -108,7 +135,7 @@ export const InterviewNotesPanel = ({ interviewId, notes, onChanged }: Interview
     if (!editingNote || !editForm.content.trim()) return;
     setEditSaving(true);
     try {
-      await interviewService.updateInterviewNote(interviewId, editingNote.id, {
+      await onUpdate(editingNote.id, {
         title: editForm.title.trim(),
         content: editForm.content.trim(),
         category: editForm.category,
@@ -117,7 +144,6 @@ export const InterviewNotesPanel = ({ interviewId, notes, onChanged }: Interview
       });
       toast({ title: "Note updated" });
       setEditingNote(null);
-      onChanged();
     } catch (err: any) {
       toast({
         title: "Error",
@@ -129,11 +155,11 @@ export const InterviewNotesPanel = ({ interviewId, notes, onChanged }: Interview
     }
   };
 
-  const handleShare = async (note: InterviewNote) => {
-    const text = `${note.title || "Interview note"}\n\n${note.content}\n\n— ${note.author}, ${format(new Date(note.at), "PPP")}`;
+  const handleShare = async (note: NoteRecord) => {
+    const text = `${note.title || "Note"}\n\n${note.content}\n\n— ${note.author}, ${format(new Date(note.at), "PPP")}`;
     if (navigator.share) {
       try {
-        await navigator.share({ title: note.title || "Interview note", text });
+        await navigator.share({ title: note.title || "Note", text });
         return;
       } catch {
         // user cancelled the share sheet or it failed - fall back to clipboard
@@ -151,9 +177,9 @@ export const InterviewNotesPanel = ({ interviewId, notes, onChanged }: Interview
             <div>
               <CardTitle className="text-xl flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-green-600" />
-                Interview Notes
+                {title}
               </CardTitle>
-              <CardDescription>Comprehensive notes and feedback from all interview stages</CardDescription>
+              <CardDescription>{description}</CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as "all" | NoteCategory)}>
@@ -196,7 +222,7 @@ export const InterviewNotesPanel = ({ interviewId, notes, onChanged }: Interview
               <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-600 mb-2">No notes found</h3>
               <p className="text-gray-500">
-                {notes.length === 0 ? "Start taking notes about this interview." : "Try a different filter or search."}
+                {notes.length === 0 ? "Start taking notes." : "Try a different filter or search."}
               </p>
             </CardContent>
           </Card>

@@ -382,7 +382,7 @@ const CandidateDetail = () => {
     if (!addNoteText.trim() || !addNoteSubmissionId) return;
     setAddNoteSaving(true);
     try {
-      await recruiterService.addSubmissionNote(addNoteSubmissionId, addNoteText.trim());
+      await recruiterService.addSubmissionNote(addNoteSubmissionId, { content: addNoteText.trim() });
       const linkedSub = (submissions as any[]).find((s: any) => s.id === addNoteSubmissionId);
       setNotes((prev) => [
         {

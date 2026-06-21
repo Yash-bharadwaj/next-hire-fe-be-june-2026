@@ -16,7 +16,10 @@ import {
   getJobProfitability,
   updateJobProfitability,
   addSubmissionNote,
+  updateSubmissionNote,
   addSubmissionAttachment,
+  assignSubmissionAiAgent,
+  getRelatedJobsForSubmission,
   scheduleInterview,
   createTask,
   listTasks,
@@ -31,7 +34,7 @@ import {
 } from "../controllers/recruiterController";
 import { authenticate, recruiterOnly } from "../middleware/auth";
 import { validate } from "../middleware/validation";
-import { documentUpload } from "../middleware/upload";
+import { documentUpload, generalDocumentUpload } from "../middleware/upload";
 
 const router = Router();
 
@@ -269,12 +272,41 @@ const noteValidation = [
     .withMessage("Note is required and must be less than 2000 characters"),
 ];
 
+const noteCategories = ["technical", "behavioral", "feedback", "general"];
+
+const addNoteValidation = [
+  body("content")
+    .trim()
+    .notEmpty()
+    .isLength({ max: 2000 })
+    .withMessage("Note content is required and must be less than 2000 characters"),
+  body("title").optional().isString(),
+  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
+  body("isPrivate").optional().isBoolean(),
+  body("tags").optional().isArray().withMessage("Tags must be an array"),
+];
+
+const updateNoteValidation = [
+  param("noteId").notEmpty().withMessage("Valid note ID is required"),
+  body("content").optional().trim().notEmpty().withMessage("Note content cannot be empty"),
+  body("title").optional().isString(),
+  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
+  body("isPrivate").optional().isBoolean(),
+  body("tags").optional().isArray().withMessage("Tags must be an array"),
+];
+
 const attachmentValidation = [
-  body("url").isURL().withMessage("Attachment url must be valid"),
+  body("url").optional().trim().notEmpty().withMessage("Attachment url cannot be empty"),
   body("name")
     .optional()
     .isLength({ max: 255 })
     .withMessage("Name must be less than 255 characters"),
+  body("document_type")
+    .optional()
+    .isIn(["PDF", "DOC", "DOCX", "IMG", "OTHER"])
+    .withMessage("Invalid document type"),
+  body("valid_from").optional().isISO8601().withMessage("Valid 'valid from' date required"),
+  body("valid_to").optional().isISO8601().withMessage("Valid 'valid to' date required"),
 ];
 
 const updateSubmissionStatusValidation = [
@@ -492,16 +524,36 @@ router.put(
 router.post(
   "/submissions/:submissionId/notes",
   submissionDetailsValidation,
-  noteValidation,
+  addNoteValidation,
   validate,
   addSubmissionNote
+);
+router.put(
+  "/submissions/:submissionId/notes/:noteId",
+  submissionDetailsValidation,
+  updateNoteValidation,
+  validate,
+  updateSubmissionNote
 );
 router.post(
   "/submissions/:submissionId/attachments",
   submissionDetailsValidation,
+  generalDocumentUpload.single("file"),
   attachmentValidation,
   validate,
   addSubmissionAttachment
+);
+router.post(
+  "/submissions/:submissionId/ai-score",
+  submissionDetailsValidation,
+  validate,
+  assignSubmissionAiAgent
+);
+router.get(
+  "/submissions/:submissionId/related-jobs",
+  submissionDetailsValidation,
+  validate,
+  getRelatedJobsForSubmission
 );
 
 // Interview management

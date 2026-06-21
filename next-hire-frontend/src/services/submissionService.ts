@@ -17,6 +17,42 @@ export type SubmissionStatus =
   | "interviewed"
   | "offered";
 
+export type NoteCategory = "technical" | "behavioral" | "feedback" | "general";
+export type DocumentType = "PDF" | "DOC" | "DOCX" | "IMG" | "OTHER";
+
+export interface SubmissionNote {
+  id: string;
+  title: string;
+  content: string;
+  category: NoteCategory;
+  isPrivate: boolean;
+  tags: string[];
+  author: string;
+  by?: string;
+  at: string;
+  edited_at?: string;
+}
+
+export interface SubmissionDocument {
+  id: string;
+  url: string;
+  name: string;
+  document_type: DocumentType;
+  size?: number;
+  valid_from: string;
+  valid_to?: string;
+  by?: string;
+  at: string;
+}
+
+export interface SubmissionStatusChange {
+  from: SubmissionStatus;
+  to: SubmissionStatus;
+  by?: string;
+  at: string;
+  notes?: string;
+}
+
 export interface Submission {
   id: string;
   submission_id?: string;
@@ -25,6 +61,7 @@ export interface Submission {
   submitted_by: string;
   status: SubmissionStatus;
   ai_score?: number;
+  ai_reasoning?: string;
   notes?: string;
   cover_letter?: string;
   resume_url?: string;
@@ -35,8 +72,9 @@ export interface Submission {
   reviewed_by?: string;
   created_at: string;
   updated_at: string;
-  attachments?: { url: string; name: string; by?: string; at: string }[];
-  notes_history?: { note: string; by?: string; at: string }[];
+  attachments?: SubmissionDocument[];
+  notes_history?: SubmissionNote[];
+  status_history?: SubmissionStatusChange[];
   // Populated for candidates/vendors: latest interview summary (if any)
   latestInterview?: {
     id: string;
@@ -45,7 +83,19 @@ export interface Submission {
     interview_type?: string;
     duration_minutes?: number;
   };
-  job?: Partial<Job>;
+  job?: Partial<Job> & {
+    client?: {
+      id: string;
+      name: string;
+      industry?: string;
+      company_size?: string;
+      status?: string;
+      notes?: string;
+      primary_email?: string;
+      primary_phone?: string;
+    };
+    clientContact?: { id: string; name: string; title?: string; email?: string; phone?: string };
+  };
   candidate?: {
     id: string;
     candidate_id?: string;
@@ -61,6 +111,13 @@ export interface Submission {
     linkedin_url?: string;
     portfolio_url?: string;
     bio?: string;
+    candidateSkills?: {
+      id: string;
+      skill_name: string;
+      category: "technical" | "soft" | "language" | "certification" | "other";
+      proficiency_level: "beginner" | "intermediate" | "advanced" | "expert";
+      years_of_experience?: number;
+    }[];
     user?: {
       id: string;
       email: string;
@@ -73,6 +130,10 @@ export interface Submission {
     vendorProfile?: {
       company_name: string;
       contact_person_name?: string;
+    };
+    recruiterProfile?: {
+      first_name: string;
+      last_name: string;
     };
   };
   reviewer?: {

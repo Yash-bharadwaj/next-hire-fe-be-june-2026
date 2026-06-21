@@ -1,11 +1,16 @@
 import { Response } from "express";
 import { Op } from "sequelize";
+import { randomUUID } from "crypto";
 import {
   User,
   Recruiter,
+  Vendor,
   Job,
   Submission,
   Candidate,
+  CandidateSkill,
+  Experience,
+  Education,
   Interview,
   Task,
   Placement,
@@ -18,6 +23,9 @@ import { AuthenticatedRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../utils/email";
 import { isJobStaff } from "../utils/jobPermissions";
+import { formatUserName, prepareNotesAndAttachmentsForResponse } from "../utils/notesAndAttachments";
+import { scoreJobFit } from "../services/aiParsingService";
+import { buildCandidateProfileText, buildJobEmbeddingText } from "./candidateSearchController";
 import { estimatePayRate } from "../services/aiParsingService";
 import {
   getSetting,
@@ -938,6 +946,19 @@ export const getSubmissionDetails = asyncHandler(
         {
           model: Job,
           as: "job",
+          include: [
+            {
+              model: BusinessPartner,
+              as: "client",
+              required: false,
+            },
+            {
+              model: BusinessPartnerContact,
+              as: "clientContact",
+              attributes: ["id", "name", "title", "email", "phone"],
+              required: false,
+            },
+          ],
         },
         {
           model: Candidate,
@@ -948,17 +969,29 @@ export const getSubmissionDetails = asyncHandler(
               as: "user",
               attributes: ["id", "email"],
             },
+            {
+              model: CandidateSkill,
+              as: "candidateSkills",
+              required: false,
+            },
           ],
         },
         {
           model: User,
           as: "submitter",
           attributes: ["id", "email"],
+          include: [
+            { model: Recruiter, as: "recruiterProfile", attributes: ["first_name", "last_name"], required: false },
+            { model: Vendor, as: "vendorProfile", attributes: ["company_name", "contact_person_name"], required: false },
+          ],
         },
         {
           model: User,
           as: "reviewer",
           attributes: ["id", "email"],
+          include: [
+            { model: Recruiter, as: "recruiterProfile", attributes: ["first_name", "last_name"], required: false },
+          ],
         },
       ],
     });
@@ -991,7 +1024,7 @@ export const getSubmissionDetails = asyncHandler(
     res.json({
       success: true,
       data: {
-        submission,
+        submission: await prepareNotesAndAttachmentsForResponse(submission, req.user?.role),
         interviews,
       },
     });
@@ -1002,7 +1035,7 @@ export const getSubmissionDetails = asyncHandler(
 export const addSubmissionNote = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { submissionId } = req.params;
-    const { note } = req.body;
+    const { title, content, category, isPrivate, tags } = req.body;
     const userId = req.user?.userId;
 
     const submission = await Submission.findByPk(submissionId, {
@@ -1020,15 +1053,23 @@ export const addSubmissionNote = asyncHandler(
       );
     }
 
+    const authorName = await formatUserName(userId);
     const notesHistory = (submission as any).notes_history || [];
-    notesHistory.push({
-      note,
+    const entry = {
+      id: randomUUID(),
+      title: (title || "").trim(),
+      content: content.trim(),
+      category: category || "general",
+      isPrivate: !!isPrivate,
+      tags: Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string" && t.trim()) : [],
+      author: authorName,
       by: userId,
       at: new Date().toISOString(),
-    });
+    };
+    notesHistory.push(entry);
 
     await submission.update({
-      notes: note, // keep latest note in notes field for quick view
+      notes: entry.content, // keep latest note in notes field for quick view
       notes_history: notesHistory,
     } as any);
 
@@ -1040,11 +1081,58 @@ export const addSubmissionNote = asyncHandler(
   }
 );
 
-// Add attachment to submission
+// Edit an existing submission note
+export const updateSubmissionNote = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { submissionId, noteId } = req.params;
+    const { title, content, category, isPrivate, tags } = req.body;
+    const userId = req.user?.userId;
+
+    const submission = await Submission.findByPk(submissionId, {
+      include: [{ model: Job, as: "job" }],
+    });
+
+    if (!submission) {
+      throw createError("Submission not found", 404);
+    }
+    if (!isJobStaff(submission.job, userId)) {
+      throw createError("You do not have permission to update this submission", 403);
+    }
+
+    const notesHistory = (submission as any).notes_history || [];
+    const noteIndex = notesHistory.findIndex((n: any) => n.id === noteId);
+    if (noteIndex === -1) {
+      throw createError("Note not found", 404);
+    }
+
+    const existing = notesHistory[noteIndex];
+    notesHistory[noteIndex] = {
+      ...existing,
+      title: title !== undefined ? title.trim() : existing.title,
+      content: content !== undefined ? content.trim() : existing.content,
+      category: category !== undefined ? category : existing.category,
+      isPrivate: isPrivate !== undefined ? !!isPrivate : existing.isPrivate,
+      tags: Array.isArray(tags)
+        ? tags.filter((t: any) => typeof t === "string" && t.trim())
+        : existing.tags,
+      edited_at: new Date().toISOString(),
+    };
+
+    await submission.update({ notes_history: notesHistory } as any);
+
+    res.json({
+      success: true,
+      message: "Note updated successfully",
+      data: { notes_history: notesHistory },
+    });
+  }
+);
+
+// Add a document to a submission - either an uploaded file or a pasted URL
 export const addSubmissionAttachment = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { submissionId } = req.params;
-    const { url, name } = req.body;
+    const { name, document_type, valid_from, valid_to } = req.body;
     const userId = req.user?.userId;
 
     const submission = await Submission.findByPk(submissionId, {
@@ -1062,10 +1150,28 @@ export const addSubmissionAttachment = asyncHandler(
       );
     }
 
+    let url: string;
+    let size: number | undefined;
+    const file = (req as any).file;
+    if (file) {
+      const serverBase = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
+      url = `${serverBase}/uploads/documents_tmp/${file.filename}`;
+      size = file.size;
+    } else if (req.body.url) {
+      url = req.body.url;
+    } else {
+      throw createError("A file or url is required", 400);
+    }
+
     const attachments = (submission as any).attachments || [];
     attachments.push({
+      id: randomUUID(),
       url,
-      name: name || url,
+      name: name || file?.originalname || url,
+      document_type: document_type || "OTHER",
+      size,
+      valid_from: valid_from || new Date().toISOString(),
+      valid_to: valid_to || undefined,
       by: userId,
       at: new Date().toISOString(),
     });
@@ -1074,8 +1180,127 @@ export const addSubmissionAttachment = asyncHandler(
 
     res.json({
       success: true,
-      message: "Attachment added successfully",
+      message: "Document uploaded successfully",
       data: { attachments },
+    });
+  }
+);
+
+// "Assign to AI Agent" - have Gemini (re-)evaluate this candidate against the
+// job and persist the result as ai_score/ai_reasoning, reusing the exact same
+// scoring path Manual Search uses (buildJobEmbeddingText/buildCandidateProfileText
+// + scoreJobFit), so this is never a fabricated number or narrative.
+export const assignSubmissionAiAgent = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { submissionId } = req.params;
+    const userId = req.user?.userId;
+
+    const submission = await Submission.findByPk(submissionId, {
+      include: [
+        { model: Job, as: "job" },
+        {
+          model: Candidate,
+          as: "candidate",
+          include: [
+            { model: Experience, as: "experiences", required: false, order: [["start_date", "DESC"]], limit: 3 },
+            { model: Education, as: "education", required: false, order: [["start_date", "DESC"]], limit: 2 },
+            { model: CandidateSkill, as: "candidateSkills", required: false },
+          ],
+        },
+      ],
+    });
+
+    if (!submission) {
+      throw createError("Submission not found", 404);
+    }
+    if (!isJobStaff(submission.job, userId)) {
+      throw createError("You do not have permission to update this submission", 403);
+    }
+
+    const job = submission.job!;
+    const candidate = submission.candidate!;
+
+    const result = await scoreJobFit(buildJobEmbeddingText(job), buildCandidateProfileText(candidate.toJSON()));
+    if (!result) {
+      throw createError("AI scoring is temporarily unavailable. Please try again later.", 503);
+    }
+
+    await submission.update({
+      ai_score: Math.round(result.score),
+      ai_reasoning: result.reasoning,
+    } as any);
+
+    res.json({
+      success: true,
+      message: `AI agent scored this candidate at ${Math.round(result.score)}%`,
+      data: { ai_score: Math.round(result.score), ai_reasoning: result.reasoning },
+    });
+  }
+);
+
+// Other active jobs that might suit this candidate, ranked by real
+// required/preferred skill overlap (deterministic, no AI call) - used by the
+// Pitch tab's "Other Jobs of Interest" section.
+export const getRelatedJobsForSubmission = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { submissionId } = req.params;
+    const userId = req.user?.userId;
+
+    const submission = await Submission.findByPk(submissionId, {
+      include: [
+        { model: Job, as: "job" },
+        {
+          model: Candidate,
+          as: "candidate",
+          include: [{ model: CandidateSkill, as: "candidateSkills", required: false }],
+        },
+      ],
+    });
+
+    if (!submission) {
+      throw createError("Submission not found", 404);
+    }
+    if (!isJobStaff(submission.job, userId)) {
+      throw createError("You do not have permission to view this submission", 403);
+    }
+
+    const candidate = submission.candidate;
+    const candidateSkillNames: string[] = (candidate as any)?.candidateSkills?.length
+      ? (candidate as any).candidateSkills.map((s: any) => s.skill_name)
+      : candidate?.skills || [];
+    const candidateSkills = new Set(candidateSkillNames.map((s) => s.toLowerCase()));
+
+    const otherJobs = await Job.findAll({
+      where: { status: "active", id: { [Op.ne]: submission.job_id } },
+      attributes: [
+        "id",
+        "job_id",
+        "title",
+        "company_name",
+        "location",
+        "job_type",
+        "salary_min",
+        "salary_max",
+        "required_skills",
+        "preferred_skills",
+      ],
+      limit: 50,
+    });
+
+    const ranked = otherJobs
+      .map((job) => {
+        const skills = [...(job.required_skills || []), ...(job.preferred_skills || [])];
+        const matchedSkills = skills.filter((s) => candidateSkills.has(s.toLowerCase()));
+        const matchScore = skills.length ? Math.round((matchedSkills.length / skills.length) * 100) : 0;
+        return { job, matchScore, matchedSkills };
+      })
+      .filter((r) => r.matchScore > 0)
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, 3);
+
+    res.json({
+      success: true,
+      data: { jobs: ranked },
     });
   }
 );
@@ -1103,12 +1328,24 @@ export const updateSubmissionStatus = asyncHandler(
       );
     }
 
+    const statusHistory = (submission as any).status_history || [];
+    if (status !== submission.status) {
+      statusHistory.push({
+        from: submission.status,
+        to: status,
+        by: userId,
+        at: new Date().toISOString(),
+        notes: notes || undefined,
+      });
+    }
+
     const updatedSubmission = await submission.update({
       status,
       notes: notes || submission.notes,
+      status_history: statusHistory,
       reviewed_by: userId!,
       reviewed_at: new Date(),
-    });
+    } as any);
 
     // Auto-create or update placement for offer/hire
     if (status === "offered" || status === "hired") {

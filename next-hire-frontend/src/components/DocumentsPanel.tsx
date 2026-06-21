@@ -9,17 +9,37 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { interviewService, InterviewDocument, DocumentType } from "@/services/interviewService";
 import { cn } from "@/lib/utils";
 
+export type DocumentType = "PDF" | "DOC" | "DOCX" | "IMG" | "OTHER";
+
+export interface DocumentRecord {
+  id: string;
+  url: string;
+  name: string;
+  document_type: DocumentType;
+  size?: number;
+  valid_from: string;
+  valid_to?: string;
+  at: string;
+}
+
+export interface DocumentUploadData {
+  file?: File;
+  name: string;
+  document_type: DocumentType;
+  valid_from: string;
+  valid_to?: string;
+}
+
 type DocStatus = "active" | "expiring" | "expired";
+type FilterStatus = "all" | DocStatus;
 
 const formatFileSize = (bytes?: number): string => {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} B`;
   return `${(bytes / 1024).toFixed(bytes < 1024 * 100 ? 1 : 0)} KB`;
 };
-type FilterStatus = "all" | DocStatus;
 
 const getDocumentStatus = (validTo?: string): DocStatus => {
   if (!validTo) return "active";
@@ -58,7 +78,7 @@ const StatusBadge = ({ status, validTo }: { status: DocStatus; validTo?: string 
 interface UploadDocumentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpload: (data: { file?: File; name: string; document_type: DocumentType; valid_from: string; valid_to?: string }) => Promise<void>;
+  onUpload: (data: DocumentUploadData) => Promise<void>;
 }
 
 const UploadDocumentDialog = ({ open, onOpenChange, onUpload }: UploadDocumentDialogProps) => {
@@ -159,13 +179,13 @@ const UploadDocumentDialog = ({ open, onOpenChange, onUpload }: UploadDocumentDi
   );
 };
 
-interface InterviewDocumentsPanelProps {
-  interviewId: string;
-  documents: InterviewDocument[];
-  onChanged: () => void;
+interface DocumentsPanelProps {
+  title?: string;
+  documents: DocumentRecord[];
+  onUpload: (data: DocumentUploadData) => Promise<void>;
 }
 
-export const InterviewDocumentsPanel = ({ interviewId, documents, onChanged }: InterviewDocumentsPanelProps) => {
+export const DocumentsPanel = ({ title = "Documents", documents, onUpload }: DocumentsPanelProps) => {
   const [filter, setFilter] = useState<FilterStatus>("all");
   const [showUpload, setShowUpload] = useState(false);
   const { toast } = useToast();
@@ -178,11 +198,10 @@ export const InterviewDocumentsPanel = ({ interviewId, documents, onChanged }: I
     expired: documents.filter((d) => getDocumentStatus(d.valid_to) === "expired").length,
   };
 
-  const handleUpload = async (data: { file?: File; name: string; document_type: DocumentType; valid_from: string; valid_to?: string }) => {
+  const handleUpload = async (data: DocumentUploadData) => {
     try {
-      await interviewService.addInterviewAttachment(interviewId, data);
+      await onUpload(data);
       toast({ title: "Document uploaded" });
-      onChanged();
     } catch (err: any) {
       toast({
         title: "Error",
@@ -196,7 +215,7 @@ export const InterviewDocumentsPanel = ({ interviewId, documents, onChanged }: I
     <Card className="border-gray-200 shadow-sm">
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">Interview Documents</CardTitle>
+          <CardTitle className="text-base">{title}</CardTitle>
           <UploadDocumentDialog open={showUpload} onOpenChange={setShowUpload} onUpload={handleUpload} />
         </div>
 

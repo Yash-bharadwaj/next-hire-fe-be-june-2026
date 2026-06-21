@@ -26,6 +26,7 @@ export interface SubmissionAttributes {
     | "interviewed"
     | "offered";
   ai_score?: number; // AI matching score 0-100
+  ai_reasoning?: string; // AI Agent's narrative reasoning behind ai_score
   notes?: string; // Internal notes from recruiters
   cover_letter?: string;
   resume_url?: string;
@@ -38,6 +39,7 @@ export interface SubmissionAttributes {
   updated_at?: Date;
   attachments?: any;
   notes_history?: any;
+  status_history?: any;
 }
 
 export interface SubmissionCreationAttributes
@@ -71,6 +73,7 @@ export class Submission
     | "interviewed"
     | "offered";
   public ai_score?: number;
+  public ai_reasoning?: string;
   public notes?: string;
   public cover_letter?: string;
   public resume_url?: string;
@@ -81,6 +84,7 @@ export class Submission
   public reviewed_by?: string;
   public attachments?: any;
   public notes_history?: any;
+  public status_history?: any;
 
   // Timestamps
   public readonly created_at!: Date;
@@ -159,6 +163,10 @@ Submission.init(
         max: 100,
       },
     },
+    ai_reasoning: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
     notes: {
       type: DataTypes.TEXT,
       allowNull: true,
@@ -228,6 +236,23 @@ Submission.init(
       },
       set(value: any[]) {
         this.setDataValue("notes_history", JSON.stringify(value || []));
+      },
+    },
+    status_history: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: "[]",
+      get() {
+        const value = this.getDataValue("status_history") as unknown as string;
+        if (!value) return [];
+        try {
+          return JSON.parse(value);
+        } catch {
+          return [];
+        }
+      },
+      set(value: any[]) {
+        this.setDataValue("status_history", JSON.stringify(value || []));
       },
     },
   },
