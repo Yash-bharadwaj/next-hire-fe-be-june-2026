@@ -63,6 +63,7 @@ import {
   UserPlus,
   Loader2,
   X,
+  Sheet,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -71,7 +72,8 @@ import { useInterviews, useInterviewStats, useInterviewManagement } from "@/hook
 import { interviewService, InterviewStatus, InterviewType } from "@/services/interviewService";
 import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/recruiterService";
 import { useAuth } from "@/contexts/AuthContext";
-import { downloadCsv } from "@/utils/csv";
+import { downloadCsv, type CsvColumn } from "@/utils/csv";
+import { downloadPdf, downloadExcel, exportToGoogleSheets } from "@/utils/exportData";
 
 const _interviewsStatsCache = { total: 0, scheduled: 0, completed: 0, totalJobs: 0 };
 
@@ -154,7 +156,19 @@ const Interviews = () => {
     fetchInterviews({});
   };
 
-  const handleExport = () => {
+  const exportColumns: CsvColumn<any>[] = [
+    { header: "Interview ID", accessor: (i: any) => i.id },
+    { header: "Candidate", accessor: (i: any) => `${i.candidate?.first_name || ""} ${i.candidate?.last_name || ""}`.trim() },
+    { header: "Job", accessor: (i: any) => i.job?.title || "" },
+    { header: "Type", accessor: (i: any) => i.interview_type },
+    { header: "Status", accessor: (i: any) => i.status },
+    { header: "Scheduled At", accessor: (i: any) => i.scheduled_at },
+    { header: "Meeting Link", accessor: (i: any) => i.meeting_link || "" },
+  ];
+
+  const exportTimestamp = () => new Date().toISOString().replace(/[:.]/g, "-");
+
+  const handleExportCsv = () => {
     if (user?.role !== "recruiter") {
       toast({
         title: "Export unavailable",
@@ -172,17 +186,7 @@ const Interviews = () => {
     }
     try {
       setExporting(true);
-      const columns = [
-        { header: "Interview ID", accessor: (i: any) => i.id },
-        { header: "Candidate", accessor: (i: any) => `${i.candidate?.first_name || ""} ${i.candidate?.last_name || ""}`.trim() },
-        { header: "Job", accessor: (i: any) => i.job?.title || "" },
-        { header: "Type", accessor: (i: any) => i.interview_type },
-        { header: "Status", accessor: (i: any) => i.status },
-        { header: "Scheduled At", accessor: (i: any) => i.scheduled_at },
-        { header: "Meeting Link", accessor: (i: any) => i.meeting_link || "" },
-      ];
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      downloadCsv(`interviews-${timestamp}.csv`, interviews, columns);
+      downloadCsv(`interviews-export-${exportTimestamp()}.csv`, interviews, exportColumns);
       toast({ title: "Exported", description: "Interviews exported to CSV." });
     } catch (err: any) {
       toast({
@@ -192,6 +196,74 @@ const Interviews = () => {
       });
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleExportPdf = () => {
+    if (!interviews.length) {
+      toast({ title: "Nothing to export", description: "No interviews found for current filters." });
+      return;
+    }
+    downloadPdf(`interviews-export-${exportTimestamp()}.pdf`, "Interviews", interviews, exportColumns);
+    toast({ title: "Exported", description: "Interviews exported as PDF." });
+  };
+
+  const handleExportExcel = () => {
+    if (!interviews.length) {
+      toast({ title: "Nothing to export", description: "No interviews found for current filters." });
+      return;
+    }
+    downloadExcel(`interviews-export-${exportTimestamp()}.xlsx`, "Interviews", interviews, exportColumns);
+    toast({ title: "Exported", description: "Interviews exported as Excel." });
+  };
+
+  const handleExportGoogleSheets = async () => {
+    if (!interviews.length) {
+      toast({ title: "Nothing to export", description: "No interviews found for current filters." });
+      return;
+    }
+    try {
+      await exportToGoogleSheets(interviews, exportColumns);
+      toast({ title: "Copied", description: "Interview data copied — paste (Cmd/Ctrl+V) into the new sheet." });
+    } catch {
+      toast({ title: "Export failed", description: "Couldn't copy to clipboard. Try CSV or Excel instead.", variant: "destructive" });
+    }
+  };
+
+  // Bulk-send a reminder email to every upcoming scheduled interview
+  const [sendingReminders, setSendingReminders] = useState(false);
+  const handleBulkSendReminders = async () => {
+    const upcoming = interviews.filter((i: any) => i.status === "scheduled");
+    if (!upcoming.length) {
+      toast({ title: "No reminders to send", description: "There are no upcoming scheduled interviews." });
+      return;
+    }
+    setSendingReminders(true);
+    try {
+      const results = await Promise.all(upcoming.map((i: any) => sendReminder(i.id)));
+      const sent = results.filter(Boolean).length;
+      toast({ title: "Reminders sent", description: `Sent ${sent} of ${upcoming.length} reminder(s).` });
+    } finally {
+      setSendingReminders(false);
+    }
+  };
+
+  // Bulk Update Status dialog (pick one of the loaded interviews + a new status)
+  const [showUpdateStatus, setShowUpdateStatus] = useState(false);
+  const [statusUpdateInterviewId, setStatusUpdateInterviewId] = useState("");
+  const [statusUpdateValue, setStatusUpdateValue] = useState<InterviewStatus | "">("");
+  const [savingStatusUpdate, setSavingStatusUpdate] = useState(false);
+
+  const handleApplyStatusUpdate = async () => {
+    if (!statusUpdateInterviewId || !statusUpdateValue) return;
+    setSavingStatusUpdate(true);
+    const result = await updateInterview(statusUpdateInterviewId, { status: statusUpdateValue });
+    setSavingStatusUpdate(false);
+    if (result) {
+      setShowUpdateStatus(false);
+      setStatusUpdateInterviewId("");
+      setStatusUpdateValue("");
+      refreshInterviews();
     }
   };
 
@@ -566,20 +638,40 @@ const Interviews = () => {
         </div>
         <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto">
           {user?.role === "recruiter" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExport}
-              disabled={exporting}
-              className="border-green-200 hover:bg-green-50 hover:border-green-300 text-xs flex-1 sm:flex-none px-2 sm:px-3 transition-all duration-300"
-            >
-              <FileSpreadsheet className="w-3 h-3 mr-1" />
-              <span className="hidden sm:inline">
-                {exporting ? "Exporting..." : "Export CSV"}
-              </span>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={exporting}
+                  className="border-green-200 hover:bg-green-50 hover:border-green-300 text-xs flex-1 sm:flex-none px-2 sm:px-3 transition-all duration-300"
+                >
+                  <FileSpreadsheet className="w-3 h-3 mr-1" />
+                  <span className="hidden sm:inline">{exporting ? "Exporting..." : "Export"}</span>
+                  <ChevronDown className="w-3 h-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-white border-gray-200 z-50">
+                <DropdownMenuItem onClick={handleExportCsv}>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Export as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportPdf}>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Export as PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportExcel}>
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Export as Excel
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportGoogleSheets}>
+                  <Sheet className="w-4 h-4 mr-2" />
+                  Export to Google Sheets
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
- 
+
           {user?.role === "recruiter" && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -592,6 +684,14 @@ const Interviews = () => {
                 <DropdownMenuItem onClick={() => navigate("/dashboard/submissions")}>
                   <PlusCircle className="w-4 h-4 mr-2" />
                   Schedule Interview
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleBulkSendReminders} disabled={sendingReminders}>
+                  <Bell className="w-4 h-4 mr-2" />
+                  {sendingReminders ? "Sending..." : "Send Reminders"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowUpdateStatus(true)}>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Update Status
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1383,6 +1483,57 @@ const Interviews = () => {
             <Button onClick={handleSaveEdit} disabled={managementLoading}>
               {managementLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Update Status Dialog */}
+      <Dialog open={showUpdateStatus} onOpenChange={setShowUpdateStatus}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Interview Status</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="mb-1 block">Interview</Label>
+              <Select value={statusUpdateInterviewId} onValueChange={setStatusUpdateInterviewId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select an interview" />
+                </SelectTrigger>
+                <SelectContent>
+                  {interviews.map((i: any) => (
+                    <SelectItem key={i.id} value={i.id}>
+                      {`${i.candidate?.first_name || ""} ${i.candidate?.last_name || ""}`.trim() || "Candidate"} ·{" "}
+                      {i.job?.title || "Job"} · {interviewService.formatDate(i.scheduled_at)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1 block">New Status</Label>
+              <Select value={statusUpdateValue} onValueChange={(v) => setStatusUpdateValue(v as InterviewStatus)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="scheduled">Scheduled</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="no_show">No Show</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUpdateStatus(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleApplyStatusUpdate} disabled={!statusUpdateInterviewId || !statusUpdateValue || savingStatusUpdate}>
+              {savingStatusUpdate && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Update Status
             </Button>
           </DialogFooter>
         </DialogContent>

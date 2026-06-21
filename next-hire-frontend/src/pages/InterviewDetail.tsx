@@ -67,6 +67,7 @@ import {
   XCircle,
   Users,
   Upload,
+  Sparkles,
 } from "lucide-react";
 import { useInterviewDetail, useInterviewManagement } from "@/hooks/useInterviews";
 import { useToast } from "@/hooks/use-toast";
@@ -441,6 +442,12 @@ const InterviewDetail = () => {
           <Badge variant="outline" className="capitalize">
             {type}
           </Badge>
+          {submission?.ai_score !== undefined && submission?.ai_score !== null && (
+            <Badge className="bg-purple-100 text-purple-800 border-purple-200">
+              <Sparkles className="h-3 w-3 mr-1" />
+              AI Match {submission.ai_score}%
+            </Badge>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
