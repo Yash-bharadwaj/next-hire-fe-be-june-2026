@@ -64,6 +64,9 @@ import {
   Mail,
   Bot,
   RotateCcw,
+  FileSpreadsheet,
+  Sheet,
+  Download,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useJobs, useJobManagement } from "@/hooks/useJobs";
@@ -74,6 +77,8 @@ import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { formatCompactRange } from "@/lib/format";
+import { downloadCsv, type CsvColumn } from "@/utils/csv";
+import { downloadPdf, downloadExcel, exportToGoogleSheets } from "@/utils/exportData";
 
 // Module-level cache — survives component remount so cards never flash 0
 const _jobsStatsCache = {
@@ -110,7 +115,6 @@ const Jobs = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
-  const [exporting, setExporting] = useState(false);
   const [showParseDialog, setShowParseDialog] = useState(false);
   const [jdFile, setJdFile] = useState<File | null>(null);
   const [parsingJD, setParsingJD] = useState(false);
@@ -378,37 +382,6 @@ const Jobs = () => {
     }
   };
 
-  const handleExport = async () => {
-    if (user?.role !== "recruiter") {
-      toast.error("Only recruiters can export jobs");
-      return;
-    }
-    try {
-      setExporting(true);
-      const blob = await jobService.exportRecruiterJobs({
-        search: searchTerm || undefined,
-        status: statusFilter === "all" ? undefined : (statusFilter as any),
-        priority:
-          priorityFilter === "all" ? undefined : (priorityFilter as any),
-      });
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const url = window.URL.createObjectURL(blob as any);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `jobs-export-${timestamp}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      toast.success("Jobs exported");
-    } catch (error: any) {
-      const msg = error?.message || "Failed to export jobs";
-      toast.error(msg);
-    } finally {
-      setExporting(false);
-    }
-  };
-
   const getStatusColor = (status: string) => {
     const colors = {
       active: "bg-green-100 text-green-800",
@@ -467,6 +440,62 @@ const Jobs = () => {
       })),
     [jobs]
   );
+
+  const exportColumns: CsvColumn<(typeof tableRows)[number]>[] = [
+    { header: "Job ID", accessor: (row) => row.jobId },
+    { header: "Title", accessor: (row) => row.title },
+    { header: "Client", accessor: (row) => row.company },
+    { header: "Location", accessor: (row) => row.location },
+    { header: "Type", accessor: (row) => row.type },
+    { header: "Salary", accessor: (row) => row.salary },
+    { header: "Status", accessor: (row) => row.status },
+    { header: "Priority", accessor: (row) => row.priority },
+    { header: "Applications", accessor: (row) => row.submissions },
+    { header: "Created", accessor: (row) => row.createdAt },
+    { header: "Deadline", accessor: (row) => row.deadline },
+  ];
+
+  const exportTimestamp = () => new Date().toISOString().replace(/[:.]/g, "-");
+
+  const handleExportCsv = () => {
+    if (!tableRows.length) {
+      toast.error("No jobs to export");
+      return;
+    }
+    downloadCsv(`jobs-export-${exportTimestamp()}.csv`, tableRows, exportColumns);
+    toast.success("Jobs exported as CSV");
+  };
+
+  const handleExportPdf = () => {
+    if (!tableRows.length) {
+      toast.error("No jobs to export");
+      return;
+    }
+    downloadPdf(`jobs-export-${exportTimestamp()}.pdf`, "Jobs", tableRows, exportColumns);
+    toast.success("Jobs exported as PDF");
+  };
+
+  const handleExportExcel = () => {
+    if (!tableRows.length) {
+      toast.error("No jobs to export");
+      return;
+    }
+    downloadExcel(`jobs-export-${exportTimestamp()}.xlsx`, "Jobs", tableRows, exportColumns);
+    toast.success("Jobs exported as Excel");
+  };
+
+  const handleExportGoogleSheets = async () => {
+    if (!tableRows.length) {
+      toast.error("No jobs to export");
+      return;
+    }
+    try {
+      await exportToGoogleSheets(tableRows, exportColumns);
+      toast.success("Job data copied — paste (Cmd/Ctrl+V) into the new sheet");
+    } catch {
+      toast.error("Couldn't copy to clipboard. Try CSV or Excel export instead.");
+    }
+  };
 
   const columns = [
     {
@@ -720,6 +749,33 @@ const Jobs = () => {
             <RefreshCw className={`h-3 w-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="text-xs flex items-center space-x-1">
+                <Download className="h-3 w-3" />
+                <span>Export</span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-white border border-gray-200 shadow-lg z-50">
+              <DropdownMenuItem onClick={handleExportCsv} className="cursor-pointer">
+                <FileText className="w-4 h-4 mr-2" />
+                Export as CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportPdf} className="cursor-pointer">
+                <FileText className="w-4 h-4 mr-2" />
+                Export as PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportExcel} className="cursor-pointer">
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                Export as Excel
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportGoogleSheets} className="cursor-pointer">
+                <Sheet className="w-4 h-4 mr-2" />
+                Export to Google Sheets
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             onClick={() => setShowParseDialog(true)}
             variant="outline"
@@ -862,8 +918,6 @@ const Jobs = () => {
               pageSizeOptions={[10, 25, 50, 100]}
               onRowClick={(row) => handleViewJob(row.id)}
               initialFilters={{}}
-              onExport={handleExport}
-              exportLoading={exporting}
             />
           )}
         </CardContent>
