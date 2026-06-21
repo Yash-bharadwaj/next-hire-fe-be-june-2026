@@ -890,7 +890,7 @@ const keywordOverlapScore = (queryText: string, profileText: string): number => 
 
 // Build a compact natural-language summary of a scored candidate's profile
 // for the LLM fit-scoring prompt.
-const buildCandidateProfileText = (json: any): string => {
+export const buildCandidateProfileText = (json: any): string => {
   const skills: string[] = json.candidateSkills?.length
     ? json.candidateSkills.map((s: any) => s.skill_name)
     : json.skills || [];
@@ -1061,7 +1061,7 @@ const backfillMissingCandidateEmbeddings = async (): Promise<void> => {
   );
 };
 
-const buildJobEmbeddingText = (job: Job): string =>
+export const buildJobEmbeddingText = (job: Job): string =>
   [
     job.title,
     job.company_name,

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { body, param, query } from "express-validator";
 import { auth } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { generalDocumentUpload } from "../middleware/upload";
 import {
   getInterviews,
   getInterviewById,
@@ -10,8 +11,10 @@ import {
   deleteInterview,
   getInterviewStats,
   addInterviewNote,
+  updateInterviewNote,
   addInterviewAttachment,
   sendInterviewReminder,
+  assignInterviewAiAgent,
 } from "../controllers/interviewController";
 
 const router = Router();
@@ -48,15 +51,37 @@ const paginationValidation = [
     .withMessage("Valid submission ID is required"),
 ];
 
-const noteValidation = [
+const noteCategories = ["technical", "behavioral", "feedback", "general"];
+
+const addNoteValidation = [
   param("id").isUUID().withMessage("Valid interview ID is required"),
-  body("note").trim().notEmpty().withMessage("Note text is required"),
+  body("content").trim().notEmpty().withMessage("Note content is required"),
+  body("title").optional().isString(),
+  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
+  body("isPrivate").optional().isBoolean(),
+  body("tags").optional().isArray().withMessage("Tags must be an array"),
+];
+
+const updateNoteValidation = [
+  param("id").isUUID().withMessage("Valid interview ID is required"),
+  param("noteId").notEmpty().withMessage("Valid note ID is required"),
+  body("content").optional().trim().notEmpty().withMessage("Note content cannot be empty"),
+  body("title").optional().isString(),
+  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
+  body("isPrivate").optional().isBoolean(),
+  body("tags").optional().isArray().withMessage("Tags must be an array"),
 ];
 
 const attachmentValidation = [
   param("id").isUUID().withMessage("Valid interview ID is required"),
-  body("url").trim().notEmpty().withMessage("Attachment URL is required"),
+  body("url").optional().trim().notEmpty().withMessage("Attachment URL cannot be empty"),
   body("name").optional().isString(),
+  body("document_type")
+    .optional()
+    .isIn(["PDF", "DOC", "DOCX", "IMG", "OTHER"])
+    .withMessage("Invalid document type"),
+  body("valid_from").optional().isISO8601().withMessage("Valid 'valid from' date required"),
+  body("valid_to").optional().isISO8601().withMessage("Valid 'valid to' date required"),
 ];
 
 const createInterviewValidation = [
@@ -110,6 +135,11 @@ const updateInterviewValidation = [
     .optional()
     .isInt({ min: 1, max: 5 })
     .withMessage("Rating must be between 1 and 5"),
+  body("location").optional().isString().withMessage("Location must be a string"),
+  body("meeting_link").optional().isURL().withMessage("Meeting link must be a valid URL"),
+  body("interviewer_id").optional().isUUID().withMessage("Valid interviewer ID is required"),
+  body("notes").optional().isString().withMessage("Notes must be a string"),
+  body("feedback").optional().isString().withMessage("Feedback must be a string"),
 ];
 
 const interviewIdValidation = [
@@ -140,10 +170,20 @@ router.delete("/:id", interviewIdValidation, validate, deleteInterview);
 // Send a reminder email to the candidate (recruiters only)
 router.post("/:id/send-reminder", interviewIdValidation, validate, sendInterviewReminder);
 
-// Notes
-router.post("/:id/notes", noteValidation, validate, addInterviewNote);
+// Have the AI agent (re-)score this candidate against the job (recruiters only)
+router.post("/:id/ai-score", interviewIdValidation, validate, assignInterviewAiAgent);
 
-// Attachments (URL-based)
-router.post("/:id/attachments", attachmentValidation, validate, addInterviewAttachment);
+// Notes
+router.post("/:id/notes", addNoteValidation, validate, addInterviewNote);
+router.put("/:id/notes/:noteId", updateNoteValidation, validate, updateInterviewNote);
+
+// Documents (uploaded file or pasted URL)
+router.post(
+  "/:id/attachments",
+  generalDocumentUpload.single("file"),
+  attachmentValidation,
+  validate,
+  addInterviewAttachment
+);
 
 export default router;

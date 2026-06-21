@@ -1,12 +1,90 @@
 import { Response } from "express";
 import { Op } from "sequelize";
-import { Interview, Submission, Job, Candidate, User, Recruiter, BusinessPartner, BusinessPartnerContact } from "../models";
+import { randomUUID } from "crypto";
+import {
+  Interview,
+  Submission,
+  Job,
+  Candidate,
+  User,
+  Recruiter,
+  BusinessPartner,
+  BusinessPartnerContact,
+  Experience,
+  Education,
+  CandidateSkill,
+} from "../models";
 import { isJobStaff } from "../utils/jobPermissions";
 import { sequelize } from "../config/database";
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../utils/email";
+import { scoreJobFit } from "../services/aiParsingService";
+import { buildCandidateProfileText, buildJobEmbeddingText } from "./candidateSearchController";
+
+// notes_history/attachments are JSON-array blobs (see Interview model), so older
+// entries created before notes/documents gained richer fields (id, category,
+// tags, document_type, ...) only have the old shape. Fill in defaults so every
+// entry is safe for the frontend to render, and resolve "author" display names
+// from the stored user id for entries that predate that field.
+const normalizeNotesHistory = async (history: any[]): Promise<any[]> => {
+  if (!Array.isArray(history) || history.length === 0) return [];
+  const missingAuthorIds = Array.from(new Set(history.filter((n) => !n.author && n.by).map((n) => n.by)));
+  const authorNames = await Promise.all(missingAuthorIds.map((id) => formatUserName(id)));
+  const authorMap = new Map(missingAuthorIds.map((id, i) => [id, authorNames[i]]));
+
+  return history.map((n) => ({
+    id: n.id || randomUUID(),
+    title: n.title || "",
+    content: n.content || n.note || "",
+    category: n.category || "general",
+    isPrivate: !!n.isPrivate,
+    tags: Array.isArray(n.tags) ? n.tags : [],
+    author: n.author || authorMap.get(n.by) || "Unknown",
+    by: n.by,
+    at: n.at,
+    edited_at: n.edited_at,
+  }));
+};
+
+const normalizeAttachments = (attachments: any[]): any[] => {
+  if (!Array.isArray(attachments) || attachments.length === 0) return [];
+  return attachments.map((a) => ({
+    id: a.id || randomUUID(),
+    url: a.url,
+    name: a.name || a.url,
+    document_type: a.document_type || "OTHER",
+    size: a.size,
+    valid_from: a.valid_from || a.at,
+    valid_to: a.valid_to,
+    by: a.by,
+    at: a.at,
+  }));
+};
+
+// Normalizes notes/attachments to their current shape and, for non-staff
+// viewers (candidates), strips notes marked private.
+const prepareInterviewForResponse = async (interview: any, userRole?: string) => {
+  const plain = interview.toJSON ? interview.toJSON() : interview;
+  plain.notes_history = await normalizeNotesHistory(plain.notes_history);
+  plain.attachments = normalizeAttachments(plain.attachments);
+  if (userRole !== "recruiter" && userRole !== "vendor") {
+    plain.notes_history = plain.notes_history.filter((n: any) => !n.isPrivate);
+  }
+  return plain;
+};
+
+const formatUserName = async (userId?: string): Promise<string> => {
+  if (!userId) return "Unknown";
+  const user = await User.findByPk(userId, {
+    include: [{ model: Recruiter, as: "recruiterProfile", attributes: ["first_name", "last_name"], required: false }],
+  });
+  if (!user) return "Unknown";
+  const profile = (user as any).recruiterProfile;
+  const name = profile ? [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() : "";
+  return name || user.email;
+};
 
 // Get interviews (role-based access)
 export const getInterviews = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -156,7 +234,7 @@ export const getInterviews = asyncHandler(async (req: AuthRequest, res: Response
   res.json({
     success: true,
     data: {
-      interviews,
+      interviews: await Promise.all(interviews.map((i) => prepareInterviewForResponse(i, req.user?.role))),
       pagination: {
         currentPage: Number(page),
         totalPages,
@@ -274,9 +352,26 @@ export const getInterviewById = asyncHandler(async (req: AuthRequest, res: Respo
     throw createError("Access denied", 403);
   }
 
+  // One-time migration: persist normalized notes/attachments so legacy
+  // entries (created before richer fields existed) get a stable id from
+  // here on, instead of a fresh random one on every read.
+  const normalizedNotes = await normalizeNotesHistory((interview as any).notes_history);
+  const normalizedAttachments = normalizeAttachments((interview as any).attachments);
+  if (
+    JSON.stringify(normalizedNotes) !== JSON.stringify((interview as any).notes_history) ||
+    JSON.stringify(normalizedAttachments) !== JSON.stringify((interview as any).attachments)
+  ) {
+    await interview.update({ notes_history: normalizedNotes, attachments: normalizedAttachments } as any);
+  }
+
+  const responseInterview = interview.toJSON() as any;
+  responseInterview.notes_history =
+    userRole === "recruiter" ? normalizedNotes : normalizedNotes.filter((n) => !n.isPrivate);
+  responseInterview.attachments = normalizedAttachments;
+
   res.json({
     success: true,
-    data: { interview },
+    data: { interview: responseInterview },
   });
 });
 
@@ -610,7 +705,7 @@ export const updateInterview = asyncHandler(async (req: AuthRequest, res: Respon
 // Add a note to an interview (recruiters who staff the underlying job)
 export const addInterviewNote = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { note } = req.body;
+  const { title, content, category, isPrivate, tags } = req.body;
   const userId = req.user?.userId;
   const userRole = req.user?.role;
 
@@ -628,9 +723,21 @@ export const addInterviewNote = asyncHandler(async (req: AuthRequest, res: Respo
     throw createError("You do not have permission to update this interview", 403);
   }
 
+  const authorName = await formatUserName(userId);
   const history = (interview as any).notes_history || [];
-  history.push({ note, by: userId, at: new Date().toISOString() });
-  await interview.update({ notes_history: history, notes: note } as any);
+  const entry = {
+    id: randomUUID(),
+    title: (title || "").trim(),
+    content: content.trim(),
+    category: category || "general",
+    isPrivate: !!isPrivate,
+    tags: Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string" && t.trim()) : [],
+    author: authorName,
+    by: userId,
+    at: new Date().toISOString(),
+  };
+  history.push(entry);
+  await interview.update({ notes_history: history, notes: entry.content } as any);
 
   res.json({
     success: true,
@@ -639,10 +746,59 @@ export const addInterviewNote = asyncHandler(async (req: AuthRequest, res: Respo
   });
 });
 
-// Add a URL-based attachment to an interview
+// Edit an existing note (recruiters who staff the underlying job)
+export const updateInterviewNote = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id, noteId } = req.params;
+  const { title, content, category, isPrivate, tags } = req.body;
+  const userId = req.user?.userId;
+  const userRole = req.user?.role;
+
+  if (userRole !== "recruiter") {
+    throw createError("Only recruiters can edit interview notes", 403);
+  }
+
+  const interview = await Interview.findByPk(id, {
+    include: [{ model: Submission, as: "submission", include: [{ model: Job, as: "job" }] }],
+  });
+  if (!interview) {
+    throw createError("Interview not found", 404);
+  }
+  if (!isJobStaff(interview.submission?.job, userId)) {
+    throw createError("You do not have permission to update this interview", 403);
+  }
+
+  const history = (interview as any).notes_history || [];
+  const noteIndex = history.findIndex((n: any) => n.id === noteId);
+  if (noteIndex === -1) {
+    throw createError("Note not found", 404);
+  }
+
+  const existing = history[noteIndex];
+  history[noteIndex] = {
+    ...existing,
+    title: title !== undefined ? title.trim() : existing.title,
+    content: content !== undefined ? content.trim() : existing.content,
+    category: category !== undefined ? category : existing.category,
+    isPrivate: isPrivate !== undefined ? !!isPrivate : existing.isPrivate,
+    tags: Array.isArray(tags)
+      ? tags.filter((t: any) => typeof t === "string" && t.trim())
+      : existing.tags,
+    edited_at: new Date().toISOString(),
+  };
+
+  await interview.update({ notes_history: history } as any);
+
+  res.json({
+    success: true,
+    message: "Note updated successfully",
+    data: { notes_history: history },
+  });
+});
+
+// Add a document to an interview - either an uploaded file or a pasted URL
 export const addInterviewAttachment = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { url, name } = req.body;
+  const { name, document_type, valid_from, valid_to } = req.body;
   const userId = req.user?.userId;
   const userRole = req.user?.role;
 
@@ -660,14 +816,98 @@ export const addInterviewAttachment = asyncHandler(async (req: AuthRequest, res:
     throw createError("You do not have permission to update this interview", 403);
   }
 
+  let url: string;
+  let size: number | undefined;
+  const file = (req as any).file;
+  if (file) {
+    const serverBase = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
+    url = `${serverBase}/uploads/documents_tmp/${file.filename}`;
+    size = file.size;
+  } else if (req.body.url) {
+    url = req.body.url;
+  } else {
+    throw createError("A file or url is required", 400);
+  }
+
   const attachments = (interview as any).attachments || [];
-  attachments.push({ url, name: name || url, by: userId, at: new Date().toISOString() });
+  attachments.push({
+    id: randomUUID(),
+    url,
+    name: name || file?.originalname || url,
+    document_type: document_type || "OTHER",
+    size,
+    valid_from: valid_from || new Date().toISOString(),
+    valid_to: valid_to || undefined,
+    by: userId,
+    at: new Date().toISOString(),
+  });
   await interview.update({ attachments } as any);
 
   res.json({
     success: true,
-    message: "Attachment added successfully",
+    message: "Document uploaded successfully",
     data: { attachments },
+  });
+});
+
+// "Assign to AI Agent" - have Gemini (re-)evaluate this candidate against the
+// job and persist the result as the submission's real ai_score, the same
+// scoring path Manual Search uses (buildJobEmbeddingText/buildCandidateProfileText
+// + scoreJobFit), so this is never a fabricated number.
+export const assignInterviewAiAgent = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const userId = req.user?.userId;
+  const userRole = req.user?.role;
+
+  if (userRole !== "recruiter") {
+    throw createError("Only recruiters can assign the AI agent", 403);
+  }
+
+  const interview = await Interview.findByPk(id, {
+    include: [
+      {
+        model: Submission,
+        as: "submission",
+        include: [
+          { model: Job, as: "job" },
+          {
+            model: Candidate,
+            as: "candidate",
+            include: [
+              { model: Experience, as: "experiences", required: false, order: [["start_date", "DESC"]], limit: 3 },
+              { model: Education, as: "education", required: false, order: [["start_date", "DESC"]], limit: 2 },
+              { model: CandidateSkill, as: "candidateSkills", required: false },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  if (!interview) {
+    throw createError("Interview not found", 404);
+  }
+
+  const job = interview.submission?.job;
+  const candidate = interview.submission?.candidate;
+  if (!isJobStaff(job, userId)) {
+    throw createError("You do not have permission to update this interview", 403);
+  }
+  if (!job || !candidate) {
+    throw createError("Job or candidate information is missing for this interview", 400);
+  }
+
+  const result = await scoreJobFit(buildJobEmbeddingText(job), buildCandidateProfileText(candidate.toJSON()));
+  if (!result) {
+    throw createError("AI scoring is temporarily unavailable. Please try again later.", 503);
+  }
+
+  await interview.submission!.update({ ai_score: Math.round(result.score) });
+
+  res.json({
+    success: true,
+    message: `AI agent scored this candidate at ${Math.round(result.score)}%`,
+    data: { ai_score: Math.round(result.score), reasoning: result.reasoning },
   });
 });
 

@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -22,6 +23,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,9 +45,7 @@ import {
   Building,
   User,
   Star,
-  MessageSquare,
   FileText,
-  Paperclip,
   Plus,
   Trash2,
   Loader2,
@@ -50,15 +55,22 @@ import {
   History,
   Download,
   Edit,
+  MoreHorizontal,
+  ChevronDown,
+  Search,
+  UserCog,
+  Bot,
 } from "lucide-react";
 import { useInterviewDetail, useInterviewManagement } from "@/hooks/useInterviews";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { interviewService, InterviewStatus } from "@/services/interviewService";
+import { interviewService, InterviewStatus, InterviewType } from "@/services/interviewService";
 import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/recruiterService";
 import { ScheduleInterviewDialog } from "@/components/ScheduleInterviewDialog";
 import { ExpandableText } from "@/components/ExpandableText";
 import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
+import { InterviewNotesPanel } from "@/components/InterviewNotesPanel";
+import { InterviewDocumentsPanel } from "@/components/InterviewDocumentsPanel";
 import { formatCompactCurrency, formatCompactRange } from "@/lib/format";
 
 const statusColors: Record<string, string> = {
@@ -115,28 +127,101 @@ const InterviewDetail = () => {
     return name || member.email;
   };
 
-  // ── Status update ───────────────────────────────────────────────────────
-  const [showStatusDialog, setShowStatusDialog] = useState(false);
+  // ── Edit Interview (Actions menu) ───────────────────────────────────────
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editType, setEditType] = useState<InterviewType>("video");
+  const [editDate, setEditDate] = useState("");
+  const [editTime, setEditTime] = useState("");
+  const [editDuration, setEditDuration] = useState("60");
+  const [editLocation, setEditLocation] = useState("");
+  const [editMeetingLink, setEditMeetingLink] = useState("");
+  const [editInterviewerId, setEditInterviewerId] = useState("");
   const [newStatus, setNewStatus] = useState<InterviewStatus | "">("");
   const [newRating, setNewRating] = useState<string>("");
   const [newFeedback, setNewFeedback] = useState("");
   const [savingStatus, setSavingStatus] = useState(false);
 
-  const handleSaveStatus = async () => {
-    if (!interview || !newStatus) return;
+  const openEditDialog = () => {
+    if (!interview) return;
+    const scheduled = new Date(interview.scheduled_at);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    setEditType(interview.interview_type);
+    setEditDate(`${scheduled.getFullYear()}-${pad(scheduled.getMonth() + 1)}-${pad(scheduled.getDate())}`);
+    setEditTime(`${pad(scheduled.getHours())}:${pad(scheduled.getMinutes())}`);
+    setEditDuration(String(interview.duration_minutes || 60));
+    setEditLocation(interview.location || "");
+    setEditMeetingLink(interview.meeting_link || "");
+    setEditInterviewerId(interview.interviewer_id || "");
+    setNewStatus(status);
+    setNewRating(interview.rating ? String(interview.rating) : "");
+    setNewFeedback(interview.feedback || "");
+    setShowEditDialog(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!interview || !editDate || !editTime) return;
     setSavingStatus(true);
+    const [hours, minutes] = editTime.split(":");
+    const scheduledAt = new Date(editDate);
+    scheduledAt.setHours(parseInt(hours, 10), parseInt(minutes, 10));
+
     const result = await updateInterview(interview.id, {
-      status: newStatus,
+      interview_type: editType,
+      scheduled_at: scheduledAt.toISOString(),
+      duration_minutes: Number(editDuration),
+      location: editLocation || undefined,
+      meeting_link: editMeetingLink || undefined,
+      interviewer_id: editInterviewerId || undefined,
+      status: newStatus || undefined,
       rating: newRating ? Number(newRating) : undefined,
       feedback: newFeedback || undefined,
     });
     setSavingStatus(false);
     if (result) {
-      setShowStatusDialog(false);
-      setNewStatus("");
-      setNewRating("");
-      setNewFeedback("");
+      setShowEditDialog(false);
       refresh();
+    }
+  };
+
+  // ── Change Assignment (interviewer reassignment) ────────────────────────
+  const [showChangeAssignment, setShowChangeAssignment] = useState(false);
+  const [reassignInterviewerId, setReassignInterviewerId] = useState("");
+  const [savingAssignment, setSavingAssignment] = useState(false);
+
+  const handleChangeAssignment = async () => {
+    if (!interview || !reassignInterviewerId) return;
+    setSavingAssignment(true);
+    const result = await updateInterview(interview.id, { interviewer_id: reassignInterviewerId });
+    setSavingAssignment(false);
+    if (result) {
+      setShowChangeAssignment(false);
+      refresh();
+    }
+  };
+
+  // ── Manual Search (deep-link into the job's existing Manual Search) ────
+  const handleManualSearch = () => {
+    if (job?.id) navigate(`/dashboard/jobs/${job.id}?openManualSearch=1`);
+  };
+
+  // ── Assign to AI Agent (real Gemini re-score, persisted to ai_score) ───
+  const [assigningAiAgent, setAssigningAiAgent] = useState(false);
+
+  const handleAssignAiAgent = async () => {
+    if (!interview) return;
+    setAssigningAiAgent(true);
+    try {
+      const res = await interviewService.assignAiAgent(interview.id);
+      toast({ title: "AI Agent", description: res.message });
+      refresh();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "AI scoring is temporarily unavailable",
+        variant: "destructive",
+      });
+    } finally {
+      setAssigningAiAgent(false);
     }
   };
 
@@ -162,60 +247,6 @@ const InterviewDetail = () => {
     fetchRounds();
   }, [fetchRounds]);
 
-  // ── Notes ────────────────────────────────────────────────────────────────
-  const [showNoteDialog, setShowNoteDialog] = useState(false);
-  const [newNote, setNewNote] = useState("");
-  const [savingNote, setSavingNote] = useState(false);
-
-  const handleAddNote = async () => {
-    if (!interview || !newNote.trim()) return;
-    setSavingNote(true);
-    try {
-      await interviewService.addInterviewNote(interview.id, newNote.trim());
-      toast({ title: "Note added" });
-      setNewNote("");
-      setShowNoteDialog(false);
-      refresh();
-    } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err?.response?.data?.message || "Failed to add note",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingNote(false);
-    }
-  };
-
-  // ── Attachments ──────────────────────────────────────────────────────────
-  const [showAttachmentDialog, setShowAttachmentDialog] = useState(false);
-  const [attachmentUrl, setAttachmentUrl] = useState("");
-  const [attachmentName, setAttachmentName] = useState("");
-  const [savingAttachment, setSavingAttachment] = useState(false);
-
-  const handleAddAttachment = async () => {
-    if (!interview || !attachmentUrl.trim()) return;
-    setSavingAttachment(true);
-    try {
-      await interviewService.addInterviewAttachment(interview.id, {
-        url: attachmentUrl.trim(),
-        name: attachmentName.trim() || undefined,
-      });
-      toast({ title: "Attachment added" });
-      setAttachmentUrl("");
-      setAttachmentName("");
-      setShowAttachmentDialog(false);
-      refresh();
-    } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err?.response?.data?.message || "Failed to add attachment",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingAttachment(false);
-    }
-  };
 
   // ── ToDo (Tasks scoped to this submission) ──────────────────────────────
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -227,6 +258,14 @@ const InterviewDetail = () => {
   const [newTaskAssignee, setNewTaskAssignee] = useState("");
   const [savingTask, setSavingTask] = useState(false);
   const [reassigningTaskId, setReassigningTaskId] = useState<string | null>(null);
+  const [todoFilter, setTodoFilter] = useState<"all" | "pending" | "completed" | TaskPriority>("all");
+
+  const filteredTasks = tasks.filter((task) => {
+    if (todoFilter === "all") return true;
+    if (todoFilter === "pending") return task.status !== "completed";
+    if (todoFilter === "completed") return task.status === "completed";
+    return task.priority === todoFilter;
+  });
 
   const fetchTasks = useCallback(async () => {
     if (!submission?.id) return;
@@ -363,74 +402,179 @@ const InterviewDetail = () => {
           <Badge variant="outline" className="capitalize">
             {type}
           </Badge>
-          <Dialog
-            open={showStatusDialog}
-            onOpenChange={(open) => {
-              setShowStatusDialog(open);
-              if (open) {
-                setNewStatus(status);
-                setNewRating(interview.rating ? String(interview.rating) : "");
-                setNewFeedback(interview.feedback || "");
-              }
-            }}
-          >
-            <DialogTrigger asChild>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button variant="outline">
-                <Edit className="h-4 w-4 mr-2" />
-                Update
+                <MoreHorizontal className="h-4 w-4 mr-2" />
+                Actions
+                <ChevronDown className="h-3 w-3 ml-1" />
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Update Interview</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3">
-                <Select value={newStatus} onValueChange={(v) => setNewStatus(v as InterviewStatus)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="scheduled">Scheduled</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                    <SelectItem value="no_show">No Show</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={newRating} onValueChange={setNewRating}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Rating (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5].map((r) => (
-                      <SelectItem key={r} value={String(r)}>
-                        {"★".repeat(r)}
-                        {"☆".repeat(5 - r)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Textarea
-                  placeholder="Feedback (optional)"
-                  value={newFeedback}
-                  onChange={(e) => setNewFeedback(e.target.value)}
-                />
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowStatusDialog(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSaveStatus} disabled={!newStatus || savingStatus}>
-                  {savingStatus ? "Saving..." : "Save"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={openEditDialog}>
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Interview
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleManualSearch} disabled={!job?.id}>
+                <Search className="h-4 w-4 mr-2" />
+                Manual Search
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setReassignInterviewerId(interview.interviewer_id || ""); setShowChangeAssignment(true); }}>
+                <UserCog className="h-4 w-4 mr-2" />
+                Change Assignment
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleAssignAiAgent} disabled={assigningAiAgent}>
+                <Bot className="h-4 w-4 mr-2" />
+                {assigningAiAgent ? "Scoring..." : "Assign to AI Agent"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button variant="outline" onClick={refresh} disabled={loading}>
             Refresh
           </Button>
         </div>
       </div>
+
+      {/* Edit Interview Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Interview</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Interview Type</Label>
+              <Select value={editType} onValueChange={(v) => setEditType(v as InterviewType)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="video">Video</SelectItem>
+                  <SelectItem value="phone">Phone</SelectItem>
+                  <SelectItem value="in_person">In Person</SelectItem>
+                  <SelectItem value="technical">Technical</SelectItem>
+                  <SelectItem value="behavioral">Behavioral</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Date</Label>
+                <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+              </div>
+              <div>
+                <Label>Time</Label>
+                <Input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <Label>Duration (minutes)</Label>
+              <Input type="number" min={15} max={480} value={editDuration} onChange={(e) => setEditDuration(e.target.value)} />
+            </div>
+            {editType === "in_person" ? (
+              <div>
+                <Label>Location</Label>
+                <Input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} placeholder="Office address or meeting room" />
+              </div>
+            ) : (
+              <div>
+                <Label>Meeting Link</Label>
+                <Input value={editMeetingLink} onChange={(e) => setEditMeetingLink(e.target.value)} placeholder="https://..." />
+              </div>
+            )}
+            <div>
+              <Label>Interviewer</Label>
+              <Select value={editInterviewerId} onValueChange={setEditInterviewerId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select interviewer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teamOptions.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {formatTeamMemberName(member)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select value={newStatus} onValueChange={(v) => setNewStatus(v as InterviewStatus)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="scheduled">Scheduled</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="no_show">No Show</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Rating (optional)</Label>
+              <Select value={newRating} onValueChange={setNewRating}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Rating (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map((r) => (
+                    <SelectItem key={r} value={String(r)}>
+                      {"★".repeat(r)}
+                      {"☆".repeat(5 - r)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Feedback (optional)</Label>
+              <Textarea placeholder="Feedback (optional)" value={newFeedback} onChange={(e) => setNewFeedback(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={!editDate || !editTime || savingStatus}>
+              {savingStatus ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Assignment Dialog */}
+      <Dialog open={showChangeAssignment} onOpenChange={setShowChangeAssignment}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Assignment</DialogTitle>
+            <DialogDescription>Reassign the interviewer for this interview.</DialogDescription>
+          </DialogHeader>
+          <Select value={reassignInterviewerId} onValueChange={setReassignInterviewerId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select interviewer" />
+            </SelectTrigger>
+            <SelectContent>
+              {teamOptions.map((member) => (
+                <SelectItem key={member.id} value={member.id}>
+                  {formatTeamMemberName(member)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowChangeAssignment(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleChangeAssignment} disabled={!reassignInterviewerId || savingAssignment}>
+              {savingAssignment ? "Saving..." : "Reassign"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Tabs defaultValue="overview">
         <TabsList>
@@ -784,38 +928,31 @@ const InterviewDetail = () => {
         </TabsContent>
 
         <TabsContent value="notes" className="mt-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Notes</CardTitle>
-              <Button size="sm" onClick={() => setShowNoteDialog(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Note
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {interview.notes_history && interview.notes_history.length > 0 ? (
-                <div className="space-y-4">
-                  {[...interview.notes_history].reverse().map((entry, idx) => (
-                    <div key={idx} className="border-l-2 border-gray-200 pl-4 py-1">
-                      <p className="text-sm text-gray-800">{entry.note}</p>
-                      <p className="text-xs text-gray-400 mt-1">{formatDateTime(entry.at)}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">No notes yet.</p>
-              )}
-            </CardContent>
-          </Card>
+          <InterviewNotesPanel interviewId={interview.id} notes={interview.notes_history || []} onChanged={refresh} />
         </TabsContent>
 
         <TabsContent value="todo" className="mt-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CheckSquare className="h-4 w-4" />
-                ToDo
-              </CardTitle>
+            <CardHeader>
+              <div className="flex flex-row items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CheckSquare className="h-4 w-4" />
+                  ToDo
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Select value={todoFilter} onValueChange={(v) => setTodoFilter(v as typeof todoFilter)}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Items</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="high">High Priority</SelectItem>
+                      <SelectItem value="medium">Medium Priority</SelectItem>
+                      <SelectItem value="low">Low Priority</SelectItem>
+                    </SelectContent>
+                  </Select>
               <Dialog open={showAddTask} onOpenChange={setShowAddTask}>
                 <DialogTrigger asChild>
                   <Button size="sm">
@@ -873,6 +1010,13 @@ const InterviewDetail = () => {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 pt-4 border-t text-sm">
+                <span className="text-blue-600">Total: {tasks.length}</span>
+                <span className="text-green-600">Completed: {tasks.filter((t) => t.status === "completed").length}</span>
+                <span className="text-orange-600">Pending: {tasks.filter((t) => t.status !== "completed").length}</span>
+              </div>
             </CardHeader>
             <CardContent>
               {tasksLoading ? (
@@ -880,11 +1024,13 @@ const InterviewDetail = () => {
                   <Loader2 className="w-5 h-5 animate-spin mr-2" />
                   Loading tasks...
                 </div>
-              ) : tasks.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">No tasks for this interview yet.</p>
+              ) : filteredTasks.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">
+                  {tasks.length === 0 ? "No tasks for this interview yet." : "No tasks match the selected filter."}
+                </p>
               ) : (
                 <div className="space-y-3">
-                  {tasks.map((todo) => (
+                  {filteredTasks.map((todo) => (
                     <div key={todo.id} className="border rounded-lg p-4 hover:shadow-sm transition-shadow">
                       <div className="flex items-center justify-between gap-3 flex-wrap">
                         <div className="flex items-center gap-3 min-w-0">
@@ -978,113 +1124,31 @@ const InterviewDetail = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="documents" className="mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Candidate Resume</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {candidate?.resume_url ? (
-                  <a
-                    href={candidate.resume_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-2 text-blue-700 hover:underline text-sm"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download Resume
-                  </a>
-                ) : (
-                  <p className="text-sm text-gray-500">No resume on file.</p>
-                )}
-              </CardContent>
-            </Card>
+        <TabsContent value="documents" className="space-y-6 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Candidate Resume</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {candidate?.resume_url ? (
+                <a
+                  href={candidate.resume_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 text-blue-700 hover:underline text-sm"
+                >
+                  <Download className="h-4 w-4" />
+                  Download Resume
+                </a>
+              ) : (
+                <p className="text-sm text-gray-500">No resume on file.</p>
+              )}
+            </CardContent>
+          </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-base">Attachments</CardTitle>
-                <Dialog open={showAttachmentDialog} onOpenChange={setShowAttachmentDialog}>
-                  <DialogTrigger asChild>
-                    <Button size="sm">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add Attachment</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-3">
-                      <Input
-                        placeholder="Attachment URL"
-                        value={attachmentUrl}
-                        onChange={(e) => setAttachmentUrl(e.target.value)}
-                      />
-                      <Input
-                        placeholder="Display name (optional)"
-                        value={attachmentName}
-                        onChange={(e) => setAttachmentName(e.target.value)}
-                      />
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setShowAttachmentDialog(false)}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleAddAttachment} disabled={!attachmentUrl.trim() || savingAttachment}>
-                        {savingAttachment ? "Saving..." : "Add Attachment"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </CardHeader>
-              <CardContent>
-                {interview.attachments && interview.attachments.length > 0 ? (
-                  <div className="space-y-2">
-                    {interview.attachments.map((att, idx) => (
-                      <a
-                        key={idx}
-                        href={att.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-2 text-blue-700 hover:underline text-sm"
-                      >
-                        <FileText className="h-4 w-4" />
-                        {att.name}
-                      </a>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500">No attachments yet.</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          <InterviewDocumentsPanel interviewId={interview.id} documents={interview.attachments || []} onChanged={refresh} />
         </TabsContent>
       </Tabs>
-
-      {/* Add Note Dialog */}
-      <Dialog open={showNoteDialog} onOpenChange={setShowNoteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Note</DialogTitle>
-          </DialogHeader>
-          <Textarea
-            placeholder="Write a note..."
-            value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-            className="min-h-[100px]"
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNoteDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddNote} disabled={!newNote.trim() || savingNote}>
-              {savingNote ? "Saving..." : "Add Note"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Schedule Next Round Dialog */}
       {submission?.id && (

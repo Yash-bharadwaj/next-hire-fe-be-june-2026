@@ -90,3 +90,21 @@ export const documentUpload = wrapUpload(
     },
   })
 );
+
+// General-purpose file attachments (e.g. interview documents) where, unlike
+// AI-parsed resumes/job descriptions, images are also valid document types.
+const ALLOWED_GENERAL_DOCUMENT_TYPES = [...ALLOWED_AI_DOCUMENT_TYPES, ...ALLOWED_IMAGE_TYPES];
+
+export const generalDocumentUpload = wrapUpload(
+  multer({
+    storage: makeStorage(documentsTmpDir),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    fileFilter: (_req, file, cb) => {
+      if (ALLOWED_GENERAL_DOCUMENT_TYPES.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(createError("Only PDF, DOC, DOCX, TXT, or image files are allowed", 400));
+      }
+    },
+  })
+);

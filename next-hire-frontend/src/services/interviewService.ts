@@ -2,6 +2,33 @@ import { apiClient } from "@/lib/api";
 
 export type InterviewStatus = "scheduled" | "in_progress" | "completed" | "cancelled" | "no_show";
 export type InterviewType = "phone" | "video" | "in_person" | "technical" | "behavioral";
+export type NoteCategory = "technical" | "behavioral" | "feedback" | "general";
+export type DocumentType = "PDF" | "DOC" | "DOCX" | "IMG" | "OTHER";
+
+export interface InterviewNote {
+  id: string;
+  title: string;
+  content: string;
+  category: NoteCategory;
+  isPrivate: boolean;
+  tags: string[];
+  author: string;
+  by?: string;
+  at: string;
+  edited_at?: string;
+}
+
+export interface InterviewDocument {
+  id: string;
+  url: string;
+  name: string;
+  document_type: DocumentType;
+  size?: number;
+  valid_from: string;
+  valid_to?: string;
+  by?: string;
+  at: string;
+}
 
 export interface Interview {
   id: string;
@@ -19,8 +46,8 @@ export interface Interview {
   created_by: string;
   created_at: string;
   updated_at: string;
-  attachments?: { url: string; name: string; by?: string; at: string }[];
-  notes_history?: { note: string; by?: string; at: string }[];
+  attachments?: InterviewDocument[];
+  notes_history?: InterviewNote[];
   submission?: {
     id: string;
     status: string;
@@ -190,16 +217,43 @@ class InterviewService {
     return response.data;
   }
 
-  async addInterviewNote(id: string, note: string): Promise<{ success: boolean; data: { notes_history: any[] } }> {
-    const response = await apiClient.post(`${this.baseUrl}/${id}/notes`, { note });
+  async addInterviewNote(
+    id: string,
+    data: { title?: string; content: string; category?: NoteCategory; isPrivate?: boolean; tags?: string[] }
+  ): Promise<{ success: boolean; data: { notes_history: InterviewNote[] } }> {
+    const response = await apiClient.post(`${this.baseUrl}/${id}/notes`, data);
+    return response.data;
+  }
+
+  async updateInterviewNote(
+    id: string,
+    noteId: string,
+    data: { title?: string; content?: string; category?: NoteCategory; isPrivate?: boolean; tags?: string[] }
+  ): Promise<{ success: boolean; data: { notes_history: InterviewNote[] } }> {
+    const response = await apiClient.put(`${this.baseUrl}/${id}/notes/${noteId}`, data);
     return response.data;
   }
 
   async addInterviewAttachment(
     id: string,
-    data: { url: string; name?: string }
-  ): Promise<{ success: boolean; data: { attachments: any[] } }> {
-    const response = await apiClient.post(`${this.baseUrl}/${id}/attachments`, data);
+    data: { file?: File; url?: string; name?: string; document_type?: DocumentType; valid_from?: string; valid_to?: string }
+  ): Promise<{ success: boolean; data: { attachments: InterviewDocument[] } }> {
+    const formData = new FormData();
+    if (data.file) formData.append("file", data.file);
+    if (data.url) formData.append("url", data.url);
+    if (data.name) formData.append("name", data.name);
+    if (data.document_type) formData.append("document_type", data.document_type);
+    if (data.valid_from) formData.append("valid_from", data.valid_from);
+    if (data.valid_to) formData.append("valid_to", data.valid_to);
+    const response = await apiClient.upload<{ attachments: InterviewDocument[] }>(
+      `${this.baseUrl}/${id}/attachments`,
+      formData
+    );
+    return response.data as { success: boolean; data: { attachments: InterviewDocument[] } };
+  }
+
+  async assignAiAgent(id: string): Promise<{ success: boolean; message: string; data: { ai_score: number; reasoning: string } }> {
+    const response = await apiClient.post(`${this.baseUrl}/${id}/ai-score`);
     return response.data;
   }
 

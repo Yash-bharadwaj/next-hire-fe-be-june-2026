@@ -11,7 +11,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -241,6 +241,7 @@ const DroppableKanbanColumn = ({
 const JobDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
   const { toast } = useToast();
@@ -995,6 +996,19 @@ const JobDetail = () => {
       setMatchLoading(false);
     }
   };
+
+  // Deep-link from elsewhere (e.g. Interview Detail's "Manual Search" action)
+  // straight into this job's existing Manual Search dialog, rather than
+  // duplicating the AI-ranked search logic on another page.
+  useEffect(() => {
+    if (job?.id && searchParams.get("openManualSearch") === "1") {
+      handleOpenManualSearch();
+      const next = new URLSearchParams(searchParams);
+      next.delete("openManualSearch");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.id]);
 
   const filteredMatchResults = matchResults.filter((c) => {
     const score = c.matchScore ?? 0;
