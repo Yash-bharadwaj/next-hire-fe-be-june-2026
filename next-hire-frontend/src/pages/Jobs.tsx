@@ -542,6 +542,7 @@ const Jobs = () => {
       width: 150,
       sortable: false,
       filterable: false,
+      sticky: "right",
       renderCell: (_: any, row: any) => (
         <TooltipProvider delayDuration={100}>
           <div className="flex items-center gap-1">

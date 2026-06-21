@@ -16,6 +16,10 @@ interface Column {
   sortable?: boolean;
   filterable?: boolean;
   renderCell?: (value: any, row: any) => React.ReactNode;
+  // Pins the column to the edge of the table (e.g. "right" for an Actions
+  // column) so it stays visible when the table scrolls horizontally,
+  // instead of being scrolled out of view with no indication it exists.
+  sticky?: "left" | "right";
 }
 
 interface SavedLayout {
@@ -487,9 +491,15 @@ export const DataGrid = ({
                 </TableHead>
               )}
               {visibleColumns.map((column) => (
-                <TableHead 
+                <TableHead
                   key={column.field}
-                  className="relative h-8 font-medium text-xs text-gray-600 border-gray-200 whitespace-nowrap"
+                  className={`relative h-8 font-medium text-xs text-gray-600 border-gray-200 whitespace-nowrap ${
+                    column.sticky === "right"
+                      ? "sticky right-0 z-20 bg-gray-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)]"
+                      : column.sticky === "left"
+                      ? "sticky left-0 z-20 bg-gray-50"
+                      : ""
+                  }`}
                   style={{ width: column.width }}
                 >
                   <div className="flex items-center justify-between group">
@@ -602,9 +612,9 @@ export const DataGrid = ({
           </TableHeader>
           <TableBody>
             {paginatedRows.map((row, index) => (
-              <TableRow 
-                key={row.id || index} 
-                className="hover:bg-gray-50 cursor-pointer transition-colors border-gray-200"
+              <TableRow
+                key={row.id || index}
+                className="group hover:bg-gray-50 cursor-pointer transition-colors border-gray-200"
                 onClick={() => onRowClick?.(row)}
               >
                 {checkboxSelection && (
@@ -619,10 +629,19 @@ export const DataGrid = ({
                   </TableCell>
                 )}
                 {visibleColumns.map((column) => (
-                  <TableCell key={column.field} className="h-8 text-gray-700 font-poppins text-xs">
+                  <TableCell
+                    key={column.field}
+                    className={`h-8 text-gray-700 font-poppins text-xs ${
+                      column.sticky === "right"
+                        ? "sticky right-0 z-10 bg-white group-hover:bg-gray-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)]"
+                        : column.sticky === "left"
+                        ? "sticky left-0 z-10 bg-white group-hover:bg-gray-50"
+                        : ""
+                    }`}
+                  >
                     <div className="font-poppins text-xs">
-                      {column.renderCell 
-                        ? column.renderCell(row[column.field], row) 
+                      {column.renderCell
+                        ? column.renderCell(row[column.field], row)
                         : row[column.field]
                       }
                     </div>
