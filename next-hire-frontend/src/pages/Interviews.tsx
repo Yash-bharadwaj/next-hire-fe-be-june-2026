@@ -828,6 +828,29 @@ const Interviews = () => {
                                 className="flex items-center gap-4"
                                 onClick={(e) => e.stopPropagation()}
                               >
+                                {interview.submission?.ai_score !== undefined &&
+                                  interview.submission?.ai_score !== null && (
+                                    <div className="text-center">
+                                      <div className="flex items-center gap-1 mb-1">
+                                        <Star className="w-4 h-4 text-yellow-500" />
+                                        <span className="text-xs text-gray-500">Skill Match</span>
+                                      </div>
+                                      <p
+                                        className={`text-lg font-bold ${
+                                          interview.submission.ai_score >= 90
+                                            ? "text-green-600"
+                                            : interview.submission.ai_score >= 80
+                                            ? "text-blue-600"
+                                            : interview.submission.ai_score >= 70
+                                            ? "text-yellow-600"
+                                            : "text-red-600"
+                                        }`}
+                                      >
+                                        {interview.submission.ai_score}%
+                                      </p>
+                                    </div>
+                                  )}
+
                                 {interview.rating && (
                                   <div className="text-center">
                                     <div className="flex items-center gap-1 mb-1">
