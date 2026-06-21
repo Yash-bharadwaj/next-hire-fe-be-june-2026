@@ -429,7 +429,7 @@ const Submissions = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             {user.role === "recruiter"
-              ? "Job Applications"
+              ? "Submissions"
               : user.role === "candidate"
               ? "My Applications"
               : "My Submissions"}
@@ -649,12 +649,15 @@ const Submissions = () => {
                                     <User className="h-5 w-5 text-blue-600" />
                                   </div>
                                   <div>
-                                    <h4 className="font-semibold text-gray-900">
+                                    <button
+                                      onClick={() => navigate(`/dashboard/submissions/${submission.id}`)}
+                                      className="font-semibold text-gray-900 hover:text-blue-700 hover:underline text-left"
+                                    >
                                       {submission.candidate?.first_name}{" "}
                                       {submission.candidate?.last_name}
-                                    </h4>
+                                    </button>
                                     <p className="text-sm text-gray-600">
-                                      {submission.candidate?.email}
+                                      {submission.candidate?.user?.email}
                                     </p>
                                   </div>
                                   <Badge
@@ -771,6 +774,16 @@ const Submissions = () => {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      navigate(
+                                        `/dashboard/submissions/${submission.id}`
+                                      )
+                                    }
+                                  >
+                                    <ExternalLink className="h-4 w-4 mr-2" />
+                                    View Submission Details
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onClick={() =>
                                       navigate(

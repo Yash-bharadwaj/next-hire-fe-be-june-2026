@@ -35,6 +35,8 @@ export interface Submission {
   reviewed_by?: string;
   created_at: string;
   updated_at: string;
+  attachments?: { url: string; name: string; by?: string; at: string }[];
+  notes_history?: { note: string; by?: string; at: string }[];
   // Populated for candidates/vendors: latest interview summary (if any)
   latestInterview?: {
     id: string;
@@ -49,7 +51,6 @@ export interface Submission {
     candidate_id?: string;
     first_name: string;
     last_name: string;
-    email: string;
     phone?: string;
     location?: string;
     current_salary?: number;
@@ -60,6 +61,10 @@ export interface Submission {
     linkedin_url?: string;
     portfolio_url?: string;
     bio?: string;
+    user?: {
+      id: string;
+      email: string;
+    };
   };
   submitter?: {
     id: string;
@@ -67,7 +72,7 @@ export interface Submission {
     role: string;
     vendorProfile?: {
       company_name: string;
-      contact_name: string;
+      contact_person_name?: string;
     };
   };
   reviewer?: {

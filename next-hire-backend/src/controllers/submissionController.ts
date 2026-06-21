@@ -522,7 +522,8 @@ export const getSubmissionById = asyncHandler(async (req: AuthRequest, res: Resp
         as: "job",
         attributes: [
           "id", "job_id", "title", "description", "company_name", "location",
-          "job_type", "salary_min", "salary_max", "required_skills", "preferred_skills",
+          "job_type", "salary_min", "salary_max", "bill_rate_min", "bill_rate_max",
+          "required_skills", "preferred_skills",
           "created_by", "assigned_to", "primary_recruiter_id", "account_manager_id"
         ],
       },
