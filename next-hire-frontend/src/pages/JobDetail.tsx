@@ -1028,7 +1028,21 @@ const JobDetail = () => {
     if (selectedCandidates.size === 0) return;
     setSourcingLoading(true);
     try {
-      const res = await recruiterService.sourceCandidates(job!.id, Array.from(selectedCandidates));
+      // Carry the AI match score already computed during this search over
+      // onto the submission, instead of leaving it blank and re-deriving it
+      // later (or never).
+      const aiScores: Record<string, number> = {};
+      matchResults.forEach((c: any) => {
+        if (selectedCandidates.has(c.id) && typeof c.matchScore === "number") {
+          aiScores[c.id] = c.matchScore;
+        }
+      });
+
+      const res = await recruiterService.sourceCandidates(
+        job!.id,
+        Array.from(selectedCandidates),
+        aiScores
+      );
       const { added = [], skipped = [] } = (res as any).data || {};
       if (added.length > 0 && skipped.length === 0) {
         toast({ title: "Added to pipeline", description: `${added.length} candidate(s) added to the sourcing funnel.` });

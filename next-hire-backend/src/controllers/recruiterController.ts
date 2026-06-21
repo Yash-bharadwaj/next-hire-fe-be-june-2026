@@ -792,7 +792,10 @@ export const updateJobProfitability = asyncHandler(
 export const sourceCandidates = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { jobId } = req.params;
-    const { candidate_ids } = req.body as { candidate_ids: string[] };
+    const { candidate_ids, ai_scores } = req.body as {
+      candidate_ids: string[];
+      ai_scores?: Record<string, number>;
+    };
     const userId = req.user?.userId;
 
     if (!candidate_ids || !Array.isArray(candidate_ids) || candidate_ids.length === 0) {
@@ -825,12 +828,15 @@ export const sourceCandidates = asyncHandler(
         continue;
       }
 
+      const score = ai_scores?.[candidateId];
+
       const submission = await Submission.create({
         job_id: jobId,
         candidate_id: candidateId,
         submitted_by: userId!,
         status: "new_candidate",
         submitted_at: new Date(),
+        ai_score: typeof score === "number" ? Math.round(score) : undefined,
       });
 
       results.push(submission);

@@ -462,7 +462,10 @@ router.post(
 router.post(
   "/jobs/:jobId/source-candidates",
   jobDetailsValidation,
-  [body("candidate_ids").isArray({ min: 1 }).withMessage("candidate_ids must be a non-empty array")],
+  [
+    body("candidate_ids").isArray({ min: 1 }).withMessage("candidate_ids must be a non-empty array"),
+    body("ai_scores").optional().isObject().withMessage("ai_scores must be an object"),
+  ],
   validate,
   sourceCandidates
 );

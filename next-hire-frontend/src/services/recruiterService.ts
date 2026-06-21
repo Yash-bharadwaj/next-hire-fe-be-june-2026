@@ -571,10 +571,15 @@ class RecruiterService {
   /**
    * Source candidates into a job's sourcing funnel
    */
-  async sourceCandidates(jobId: string, candidateIds: string[]): Promise<ApiResponse> {
+  async sourceCandidates(
+    jobId: string,
+    candidateIds: string[],
+    aiScores?: Record<string, number>
+  ): Promise<ApiResponse> {
     try {
       const response = await apiClient.post<ApiResponse>(`/recruiter/jobs/${jobId}/source-candidates`, {
         candidate_ids: candidateIds,
+        ai_scores: aiScores,
       });
       return response.data;
     } catch (error: any) {
