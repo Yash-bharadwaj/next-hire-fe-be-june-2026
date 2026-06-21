@@ -12,6 +12,7 @@ import {
   getInterviewStats,
   addInterviewNote,
   updateInterviewNote,
+  deleteInterviewNote,
   addInterviewAttachment,
   sendInterviewReminder,
   assignInterviewAiAgent,
@@ -70,6 +71,11 @@ const updateNoteValidation = [
   body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
   body("isPrivate").optional().isBoolean(),
   body("tags").optional().isArray().withMessage("Tags must be an array"),
+];
+
+const noteIdValidation = [
+  param("id").isUUID().withMessage("Valid interview ID is required"),
+  param("noteId").notEmpty().withMessage("Valid note ID is required"),
 ];
 
 const attachmentValidation = [
@@ -176,6 +182,7 @@ router.post("/:id/ai-score", interviewIdValidation, validate, assignInterviewAiA
 // Notes
 router.post("/:id/notes", addNoteValidation, validate, addInterviewNote);
 router.put("/:id/notes/:noteId", updateNoteValidation, validate, updateInterviewNote);
+router.delete("/:id/notes/:noteId", noteIdValidation, validate, deleteInterviewNote);
 
 // Documents (uploaded file or pasted URL)
 router.post(

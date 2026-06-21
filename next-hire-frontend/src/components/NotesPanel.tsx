@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { BookOpen, Search, PenTool, History, Tags, Edit, Share2, Plus, Loader2 } from "lucide-react";
+import { BookOpen, Search, PenTool, History, Tags, Edit, Share2, Trash2, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -63,6 +63,7 @@ interface NotesPanelProps {
   notes: NoteRecord[];
   onAdd: (data: NoteFormData) => Promise<void>;
   onUpdate: (noteId: string, data: NoteFormData) => Promise<void>;
+  onDelete: (noteId: string) => Promise<void>;
 }
 
 export const NotesPanel = ({
@@ -71,10 +72,12 @@ export const NotesPanel = ({
   notes,
   onAdd,
   onUpdate,
+  onDelete,
 }: NotesPanelProps) => {
   const { toast } = useToast();
   const [categoryFilter, setCategoryFilter] = useState<"all" | NoteCategory>("all");
   const [search, setSearch] = useState("");
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [addForm, setAddForm] = useState<NoteFormState>(emptyForm);
@@ -167,6 +170,23 @@ export const NotesPanel = ({
     }
     await navigator.clipboard.writeText(text);
     toast({ title: "Note copied to clipboard" });
+  };
+
+  const handleDelete = async (note: NoteRecord) => {
+    if (!window.confirm("Delete this note? This cannot be undone.")) return;
+    setDeletingNoteId(note.id);
+    try {
+      await onDelete(note.id);
+      toast({ title: "Note deleted" });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to delete note",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingNoteId(null);
+    }
   };
 
   return (
@@ -274,6 +294,20 @@ export const NotesPanel = ({
                   <Button size="sm" variant="outline" className="text-gray-600 border-gray-200 hover:bg-gray-50" onClick={() => handleShare(note)}>
                     <Share2 className="w-3 h-3 mr-1" />
                     Share
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-red-600 border-red-200 hover:bg-red-50"
+                    onClick={() => handleDelete(note)}
+                    disabled={deletingNoteId === note.id}
+                  >
+                    {deletingNoteId === note.id ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3 h-3 mr-1" />
+                    )}
+                    Delete
                   </Button>
                 </div>
               </CardContent>

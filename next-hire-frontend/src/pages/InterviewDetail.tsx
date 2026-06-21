@@ -1073,6 +1073,10 @@ const InterviewDetail = () => {
               await interviewService.updateInterviewNote(interview.id, noteId, data);
               refresh();
             }}
+            onDelete={async (noteId) => {
+              await interviewService.deleteInterviewNote(interview.id, noteId);
+              refresh();
+            }}
           />
         </TabsContent>
 

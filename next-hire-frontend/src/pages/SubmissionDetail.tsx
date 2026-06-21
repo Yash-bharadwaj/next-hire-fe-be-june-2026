@@ -1077,6 +1077,10 @@ const SubmissionDetail = () => {
               await recruiterService.updateSubmissionNote(submission.id, noteId, data);
               fetchSubmission();
             }}
+            onDelete={async (noteId) => {
+              await recruiterService.deleteSubmissionNote(submission.id, noteId);
+              fetchSubmission();
+            }}
           />
         </TabsContent>
 

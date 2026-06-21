@@ -738,6 +738,42 @@ export const updateInterviewNote = asyncHandler(async (req: AuthRequest, res: Re
   });
 });
 
+// Delete a note from an interview
+export const deleteInterviewNote = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id, noteId } = req.params;
+  const userId = req.user?.userId;
+  const userRole = req.user?.role;
+
+  if (userRole !== "recruiter") {
+    throw createError("Only recruiters can delete interview notes", 403);
+  }
+
+  const interview = await Interview.findByPk(id, {
+    include: [{ model: Submission, as: "submission", include: [{ model: Job, as: "job" }] }],
+  });
+  if (!interview) {
+    throw createError("Interview not found", 404);
+  }
+  if (!isJobStaff(interview.submission?.job, userId)) {
+    throw createError("You do not have permission to update this interview", 403);
+  }
+
+  const history = (interview as any).notes_history || [];
+  const noteIndex = history.findIndex((n: any) => n.id === noteId);
+  if (noteIndex === -1) {
+    throw createError("Note not found", 404);
+  }
+
+  history.splice(noteIndex, 1);
+  await interview.update({ notes_history: history } as any);
+
+  res.json({
+    success: true,
+    message: "Note deleted successfully",
+    data: { notes_history: history },
+  });
+});
+
 // Add a document to an interview - either an uploaded file or a pasted URL
 export const addInterviewAttachment = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;

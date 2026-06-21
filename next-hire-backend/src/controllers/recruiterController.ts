@@ -1128,6 +1128,40 @@ export const updateSubmissionNote = asyncHandler(
   }
 );
 
+// Delete a note from a submission
+export const deleteSubmissionNote = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { submissionId, noteId } = req.params;
+    const userId = req.user?.userId;
+
+    const submission = await Submission.findByPk(submissionId, {
+      include: [{ model: Job, as: "job" }],
+    });
+
+    if (!submission) {
+      throw createError("Submission not found", 404);
+    }
+    if (!isJobStaff(submission.job, userId)) {
+      throw createError("You do not have permission to update this submission", 403);
+    }
+
+    const notesHistory = (submission as any).notes_history || [];
+    const noteIndex = notesHistory.findIndex((n: any) => n.id === noteId);
+    if (noteIndex === -1) {
+      throw createError("Note not found", 404);
+    }
+
+    notesHistory.splice(noteIndex, 1);
+    await submission.update({ notes_history: notesHistory } as any);
+
+    res.json({
+      success: true,
+      message: "Note deleted successfully",
+      data: { notes_history: notesHistory },
+    });
+  }
+);
+
 // Add a document to a submission - either an uploaded file or a pasted URL
 export const addSubmissionAttachment = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {

@@ -234,6 +234,14 @@ class InterviewService {
     return response.data;
   }
 
+  async deleteInterviewNote(
+    id: string,
+    noteId: string
+  ): Promise<{ success: boolean; data: { notes_history: InterviewNote[] } }> {
+    const response = await apiClient.delete(`${this.baseUrl}/${id}/notes/${noteId}`);
+    return response.data;
+  }
+
   async addInterviewAttachment(
     id: string,
     data: { file?: File; url?: string; name?: string; document_type?: DocumentType; valid_from?: string; valid_to?: string }

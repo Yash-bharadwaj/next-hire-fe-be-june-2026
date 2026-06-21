@@ -525,6 +525,20 @@ class RecruiterService {
   }
 
   /**
+   * Delete a note from a submission
+   */
+  async deleteSubmissionNote(submissionId: string, noteId: string): Promise<ApiResponse> {
+    try {
+      const response = await apiClient.delete<ApiResponse>(
+        `/recruiter/submissions/${submissionId}/notes/${noteId}`
+      );
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
    * Add a document to a submission - either an uploaded file or a pasted URL
    */
   async addSubmissionAttachment(

@@ -17,6 +17,7 @@ import {
   updateJobProfitability,
   addSubmissionNote,
   updateSubmissionNote,
+  deleteSubmissionNote,
   addSubmissionAttachment,
   assignSubmissionAiAgent,
   getRelatedJobsForSubmission,
@@ -295,6 +296,10 @@ const updateNoteValidation = [
   body("tags").optional().isArray().withMessage("Tags must be an array"),
 ];
 
+const noteIdValidation = [
+  param("noteId").notEmpty().withMessage("Valid note ID is required"),
+];
+
 const attachmentValidation = [
   body("url").optional().trim().notEmpty().withMessage("Attachment url cannot be empty"),
   body("name")
@@ -534,6 +539,13 @@ router.put(
   updateNoteValidation,
   validate,
   updateSubmissionNote
+);
+router.delete(
+  "/submissions/:submissionId/notes/:noteId",
+  submissionDetailsValidation,
+  noteIdValidation,
+  validate,
+  deleteSubmissionNote
 );
 router.post(
   "/submissions/:submissionId/attachments",
