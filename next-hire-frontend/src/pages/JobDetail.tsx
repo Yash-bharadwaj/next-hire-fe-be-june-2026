@@ -1,4 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  useDraggable,
+  useDroppable,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -119,6 +131,111 @@ interface Document {
   status?: string;
   description?: string;
 }
+
+const kanbanColumns = [
+  { id: "new_candidate",   title: "Pipeline",                color: "bg-gray-50",   border: "border-gray-300" },
+  { id: "initial_scanning", title: "Initial Scanning",       color: "bg-blue-50",   border: "border-blue-300" },
+  { id: "first_round",    title: "First Round",              color: "bg-purple-50", border: "border-purple-300" },
+  { id: "technical_round", title: "Technical Manager Round", color: "bg-yellow-50", border: "border-yellow-300" },
+  { id: "final_round",    title: "Final Round",              color: "bg-orange-50", border: "border-orange-300" },
+  { id: "hired",          title: "Hired",                    color: "bg-green-50",  border: "border-green-400" },
+  { id: "rejected",       title: "Rejected",                 color: "bg-red-50",    border: "border-red-300" },
+];
+
+// Card body shared between the column list and the floating DragOverlay
+// preview, so the dragged card looks identical to its resting state.
+const KanbanCardBody = ({
+  candidate,
+  onMoveCandidate,
+  dragging,
+}: {
+  candidate: any;
+  onMoveCandidate?: (submissionId: string, newStatus: string) => void;
+  dragging?: boolean;
+}) => (
+  <div
+    className={`p-3 bg-white rounded-lg border shadow-sm transition-shadow ${
+      dragging ? "border-blue-300 shadow-lg rotate-1" : "border-gray-100 hover:shadow-md"
+    }`}
+  >
+    <div className="flex items-start justify-between gap-1 mb-1">
+      <h4 className="font-semibold text-sm text-gray-800 leading-tight">{candidate.name}</h4>
+      <Badge variant="outline" className="text-xs px-1.5 py-0 flex-shrink-0">
+        {candidate.score != null ? `${candidate.score}%` : "—"}
+      </Badge>
+    </div>
+    <p className="text-xs text-gray-500 mb-1">{candidate.experience}</p>
+    <p className="text-xs text-gray-400 mb-2">{candidate.location}</p>
+    {onMoveCandidate && (
+      <Select
+        value={candidate.submission?.status || candidate.stage}
+        onValueChange={(newStatus) => {
+          if (!candidate.submission?.id) return;
+          onMoveCandidate(candidate.submission.id, newStatus);
+        }}
+      >
+        <SelectTrigger
+          className="h-7 text-xs border-gray-200 bg-gray-50"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="bg-white">
+          {kanbanColumns.map((col) => (
+            <SelectItem key={col.id} value={col.id} className="text-xs">
+              {col.title}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    )}
+  </div>
+);
+
+const DraggableCandidateCard = ({
+  candidate,
+  onMoveCandidate,
+}: {
+  candidate: any;
+  onMoveCandidate: (submissionId: string, newStatus: string) => void;
+}) => {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: candidate.id,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`cursor-grab active:cursor-grabbing touch-none ${isDragging ? "opacity-30" : ""}`}
+    >
+      <KanbanCardBody candidate={candidate} onMoveCandidate={onMoveCandidate} />
+    </div>
+  );
+};
+
+const DroppableKanbanColumn = ({
+  id,
+  className,
+  children,
+}: {
+  id: string;
+  className?: string;
+  children: ReactNode;
+}) => {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className} transition-colors duration-150 ${
+        isOver ? "bg-blue-50 ring-2 ring-inset ring-blue-300" : ""
+      }`}
+    >
+      {children}
+    </div>
+  );
+};
 
 const JobDetail = () => {
   const { id } = useParams();
@@ -556,28 +673,43 @@ const JobDetail = () => {
     });
   };
 
-  const kanbanColumns = [
-    { id: "new_candidate",   title: "Pipeline",                color: "bg-gray-50",   border: "border-gray-300" },
-    { id: "initial_scanning", title: "Initial Scanning",       color: "bg-blue-50",   border: "border-blue-300" },
-    { id: "first_round",    title: "First Round",              color: "bg-purple-50", border: "border-purple-300" },
-    { id: "technical_round", title: "Technical Manager Round", color: "bg-yellow-50", border: "border-yellow-300" },
-    { id: "final_round",    title: "Final Round",              color: "bg-orange-50", border: "border-orange-300" },
-    { id: "hired",          title: "Hired",                    color: "bg-green-50",  border: "border-green-400" },
-    { id: "rejected",       title: "Rejected",                 color: "bg-red-50",    border: "border-red-300" },
-  ];
-
   const handleAddCandidate = (stageId: string) => {
     console.log(`Adding candidate to ${stageId}`);
   };
 
-  const handleMoveCandidate = (candidateId: number, newStage: string) => {
+  // Optimistically moves a candidate's card to the new stage immediately
+  // (so drag-and-drop feels instant), then persists the status change and
+  // rolls back + shows an error toast if the request fails.
+  const handleMoveCandidate = async (submissionId: string, newStatus: string) => {
+    const previousCandidates = candidates;
+    const previousSubmissions = submissions;
+
     setCandidates((prev) =>
-      prev.map((candidate) =>
-        candidate.id === candidateId
-          ? { ...candidate, stage: newStage }
-          : candidate
+      prev.map((c) =>
+        c.submission?.id === submissionId
+          ? {
+              ...c,
+              stage: mapSubmissionStatusToStage(newStatus),
+              submission: { ...c.submission, status: newStatus },
+            }
+          : c
       )
     );
+    setSubmissions((prev: any[]) =>
+      prev.map((s) => (s.id === submissionId ? { ...s, status: newStatus } : s))
+    );
+
+    try {
+      await recruiterService.updateSubmissionStatus(submissionId, { status: newStatus as any });
+    } catch (e: any) {
+      setCandidates(previousCandidates);
+      setSubmissions(previousSubmissions);
+      toast({
+        title: "Error",
+        description: e?.response?.data?.message || e?.message || "Failed to update status",
+        variant: "destructive",
+      });
+    }
   };
 
   const getCandidatesByStage = (stageId: string) => {
@@ -586,6 +718,29 @@ const JobDetail = () => {
 
   const getStageCount = (stageId: string) => {
     return getCandidatesByStage(stageId).length;
+  };
+
+  // ── Sourcing funnel drag-and-drop ──────────────────────────────────────
+  const [draggingCandidate, setDraggingCandidate] = useState<any | null>(null);
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  const handleKanbanDragStart = (event: DragStartEvent) => {
+    const candidate = candidates.find((c) => c.id === event.active.id);
+    setDraggingCandidate(candidate || null);
+  };
+
+  const handleKanbanDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setDraggingCandidate(null);
+    if (!over) return;
+
+    const candidate = candidates.find((c) => c.id === active.id);
+    const newStatus = String(over.id);
+    if (!candidate?.submission?.id || candidate.submission.status === newStatus) return;
+
+    handleMoveCandidate(candidate.submission.id, newStatus);
   };
 
   // Team management removed - not needed for this version
@@ -1494,87 +1649,50 @@ const JobDetail = () => {
 
             <TabsContent value="sourcing-funnel" className="space-y-4 mt-0">
               {/* Kanban Sourcing Funnel */}
-              <div className="flex gap-4 overflow-x-auto pb-4">
-                {kanbanColumns.map((column) => (
-                  <Card
-                    key={column.id}
-                    className={`min-w-[270px] max-w-[270px] ${column.color} border-2 ${column.border}`}
-                  >
-                    <CardHeader className="pb-2 pt-3 px-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                          {column.title}
-                        </CardTitle>
-                        <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                          {getStageCount(column.id)}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-2 px-3 pb-3">
-                      {getCandidatesByStage(column.id).map((candidate: any) => (
-                        <div
-                          key={candidate.id}
-                          className="p-3 bg-white rounded-lg border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
-                        >
-                          <div className="flex items-start justify-between gap-1 mb-1">
-                            <h4 className="font-semibold text-sm text-gray-800 leading-tight">
-                              {candidate.name}
-                            </h4>
-                            <Badge variant="outline" className="text-xs px-1.5 py-0 flex-shrink-0">
-                              {candidate.score != null ? `${candidate.score}%` : "—"}
-                            </Badge>
+              <DndContext
+                sensors={dndSensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleKanbanDragStart}
+                onDragEnd={handleKanbanDragEnd}
+                onDragCancel={() => setDraggingCandidate(null)}
+              >
+                <div className="flex gap-4 overflow-x-auto pb-4">
+                  {kanbanColumns.map((column) => (
+                    <Card
+                      key={column.id}
+                      className={`min-w-[270px] max-w-[270px] ${column.color} border-2 ${column.border}`}
+                    >
+                      <CardHeader className="pb-2 pt-3 px-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                            {column.title}
+                          </CardTitle>
+                          <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                            {getStageCount(column.id)}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <DroppableKanbanColumn id={column.id} className="space-y-2 px-3 pb-3 min-h-[80px] rounded-b-lg">
+                        {getCandidatesByStage(column.id).map((candidate: any) => (
+                          <DraggableCandidateCard
+                            key={candidate.id}
+                            candidate={candidate}
+                            onMoveCandidate={handleMoveCandidate}
+                          />
+                        ))}
+                        {getCandidatesByStage(column.id).length === 0 && (
+                          <div className="text-center py-6 text-gray-400 text-xs">
+                            No candidates in this stage
                           </div>
-                          <p className="text-xs text-gray-500 mb-1">{candidate.experience}</p>
-                          <p className="text-xs text-gray-400 mb-2">{candidate.location}</p>
-                          {/* Move to stage dropdown */}
-                          <Select
-                            value={candidate.submission?.status || column.id}
-                            onValueChange={async (newStatus) => {
-                              if (!candidate.submission?.id) return;
-                              try {
-                                await recruiterService.updateSubmissionStatus(candidate.submission.id, { status: newStatus as any });
-                                // Refresh kanban
-                                const statsRes = await recruiterService.getJobSubmissions(id!, { limit: 100 });
-                                const subs = statsRes.data?.submissions || [];
-                                setSubmissions(subs as any);
-                                const mapped = subs.map((sub: any, i: number) => ({
-                                  id: sub.id || `sub-${i}`,
-                                  name: `${sub.candidate?.first_name || ""} ${sub.candidate?.last_name || ""}`.trim() || "Unknown",
-                                  experience: `${sub.candidate?.experience_years || 0} years`,
-                                  location: sub.candidate?.location || "Unknown",
-                                  score: sub.ai_score ?? null,
-                                  stage: mapSubmissionStatusToStage(sub.status),
-                                  notes: sub.notes,
-                                  submission: sub,
-                                }));
-                                setCandidates(mapped);
-                              } catch (e: any) {
-                                toast({ title: "Error", description: e?.message || "Failed to update status", variant: "destructive" });
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="h-7 text-xs border-gray-200 bg-gray-50">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white">
-                              {kanbanColumns.map((col) => (
-                                <SelectItem key={col.id} value={col.id} className="text-xs">
-                                  {col.title}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      ))}
-                      {getCandidatesByStage(column.id).length === 0 && (
-                        <div className="text-center py-6 text-gray-400 text-xs">
-                          No candidates in this stage
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                        )}
+                      </DroppableKanbanColumn>
+                    </Card>
+                  ))}
+                </div>
+                <DragOverlay>
+                  {draggingCandidate && <KanbanCardBody candidate={draggingCandidate} dragging />}
+                </DragOverlay>
+              </DndContext>
             </TabsContent>
 
             <TabsContent value="notes" className="space-y-6 mt-0">
