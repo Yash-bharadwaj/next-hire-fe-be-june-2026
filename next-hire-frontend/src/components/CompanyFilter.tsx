@@ -1,5 +1,3 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,89 +5,60 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Building2, ChevronDown, Check, Package, Monitor, Search, Apple, Facebook, Film, Zap, Cloud, Car, Home } from "lucide-react";
-
-const companies = [
-  { id: "all", name: "All Companies", icon: null },
-  { id: "amazon", name: "Amazon", icon: Package },
-  { id: "microsoft", name: "Microsoft", icon: Monitor },
-  { id: "google", name: "Google", icon: Search },
-  { id: "apple", name: "Apple", icon: Apple },
-  { id: "meta", name: "Meta", icon: Facebook },
-  { id: "netflix", name: "Netflix", icon: Film },
-  { id: "tesla", name: "Tesla", icon: Zap },
-  { id: "salesforce", name: "Salesforce", icon: Cloud },
-  { id: "uber", name: "Uber", icon: Car },
-  { id: "airbnb", name: "Airbnb", icon: Home },
-];
+import { Button } from "@/components/ui/button";
+import { Building2, ChevronDown, Check } from "lucide-react";
 
 interface CompanyFilterProps {
+  companies: string[];
   selectedCompany?: string;
-  onCompanyChange?: (companyId: string) => void;
+  onCompanyChange: (company: string) => void;
 }
 
-export function CompanyFilter({ selectedCompany = "all", onCompanyChange }: CompanyFilterProps) {
-  const [selected, setSelected] = useState(selectedCompany);
-
-  const handleCompanySelect = (companyId: string) => {
-    setSelected(companyId);
-    onCompanyChange?.(companyId);
-  };
-
-  const selectedCompanyData = companies.find(c => c.id === selected);
+// Filters by the real client/company names present in the current data set
+// (passed in via `companies`), rather than a fixed list.
+export function CompanyFilter({ companies, selectedCompany = "all", onCompanyChange }: CompanyFilterProps) {
+  const label = selectedCompany === "all" ? "All Companies" : selectedCompany;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button 
-          variant="outline" 
-          size="sm" 
+        <Button
+          variant="outline"
+          size="sm"
           className="border-blue-200 hover:bg-blue-50 hover:border-blue-300 text-xs gap-2 min-w-[140px] justify-between bg-white/90 backdrop-blur-sm shadow-sm"
         >
           <div className="flex items-center gap-2">
-            {selectedCompanyData?.icon ? (
-              <selectedCompanyData.icon className="w-3 h-3" />
-            ) : (
-              <Building2 className="w-3 h-3" />
-            )}
-            <span className="font-medium truncate max-w-[80px]">
-              {selectedCompanyData?.name || "All Companies"}
-            </span>
+            <Building2 className="w-3 h-3" />
+            <span className="font-medium truncate max-w-[100px]">{label}</span>
           </div>
           <ChevronDown className="w-3 h-3 opacity-50" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent 
-        align="end" 
-        className="bg-white border-gray-200 z-50 min-w-[160px] shadow-lg"
-      >
+      <DropdownMenuContent align="end" className="bg-white border-gray-200 z-50 min-w-[180px] shadow-lg">
+        <DropdownMenuItem
+          onClick={() => onCompanyChange("all")}
+          className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-blue-50 focus:bg-blue-50"
+        >
+          <div className="flex items-center gap-2 flex-1">
+            <Building2 className="w-4 h-4 text-gray-500" />
+            <span className="font-medium text-sm">All Companies</span>
+          </div>
+          {selectedCompany === "all" && <Check className="w-4 h-4 text-blue-600" />}
+        </DropdownMenuItem>
+        {companies.length > 0 && <DropdownMenuSeparator />}
         {companies.map((company) => (
           <DropdownMenuItem
-            key={company.id}
-            onClick={() => handleCompanySelect(company.id)}
+            key={company}
+            onClick={() => onCompanyChange(company)}
             className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-blue-50 focus:bg-blue-50"
           >
-            <div className="flex items-center gap-2 flex-1">
-              {company.icon ? (
-                <company.icon className="w-4 h-4 text-gray-500" />
-              ) : (
-                <Building2 className="w-4 h-4 text-gray-500" />
-              )}
-              <span className="font-medium text-sm">{company.name}</span>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <Building2 className="w-4 h-4 text-gray-500 flex-shrink-0" />
+              <span className="font-medium text-sm truncate">{company}</span>
             </div>
-            {selected === company.id && (
-              <Check className="w-4 h-4 text-blue-600" />
-            )}
+            {selectedCompany === company && <Check className="w-4 h-4 text-blue-600 flex-shrink-0" />}
           </DropdownMenuItem>
         ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem 
-          onClick={() => handleCompanySelect("all")}
-          className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50 focus:bg-gray-50 text-gray-600"
-        >
-          <Building2 className="w-4 h-4" />
-          <span className="font-medium text-sm">Clear Filter</span>
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

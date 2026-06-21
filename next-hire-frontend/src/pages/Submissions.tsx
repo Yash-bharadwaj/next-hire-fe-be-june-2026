@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -86,6 +86,8 @@ import { downloadCsv } from "@/utils/csv";
 import { toast } from "sonner";
 import { ScheduleInterviewDialog } from "@/components/ScheduleInterviewDialog";
 import { getSubmissionStatusMeta } from "@/lib/submissionStatus";
+import { CompanyFilter } from "@/components/CompanyFilter";
+import { candidateSearchService } from "@/services/candidateSearchService";
 
 const Submissions = () => {
   const navigate = useNavigate();
@@ -127,6 +129,7 @@ const Submissions = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [jobFilter, setJobFilter] = useState("all");
+  const [companyFilter, setCompanyFilter] = useState("all");
   const [expandedSubmissions, setExpandedSubmissions] = useState<Set<string>>(
     new Set()
   );
@@ -144,8 +147,36 @@ const Submissions = () => {
   const [jobsLoading, setJobsLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  // ── New Submission dialog ──────────────────────────────────────────────
+  const [showNewSubmissionDialog, setShowNewSubmissionDialog] = useState(false);
+  const [newSubmissionJobId, setNewSubmissionJobId] = useState("");
+  const [candidateSearchQuery, setCandidateSearchQuery] = useState("");
+  const [candidateSearchResults, setCandidateSearchResults] = useState<any[]>([]);
+  const [candidateSearchLoading, setCandidateSearchLoading] = useState(false);
+  const [selectedNewCandidate, setSelectedNewCandidate] = useState<any>(null);
+  const [creatingSubmission, setCreatingSubmission] = useState(false);
+
+  // Real distinct client/company names from the recruiter's own submissions
+  // (not a fixed list), for the Company filter dropdown.
+  const availableCompanies = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          submissions
+            .map((s: any) => s.job?.company_name)
+            .filter((name: string | undefined): name is string => Boolean(name))
+        )
+      ).sort(),
+    [submissions]
+  );
+
+  const companyFilteredSubmissions =
+    companyFilter === "all"
+      ? submissions
+      : submissions.filter((s: any) => s.job?.company_name === companyFilter);
+
   // Group submissions by job for better organization
-  const submissionsByJob = submissions.reduce((acc, submission) => {
+  const submissionsByJob = companyFilteredSubmissions.reduce((acc, submission) => {
     const jobKey = submission.job?.id || "unknown";
     if (!acc[jobKey]) {
       acc[jobKey] = {
@@ -158,12 +189,12 @@ const Submissions = () => {
   }, {} as Record<string, any>);
 
   // Calculate nav stats (align with previous UI)
-  const totalSubmissions = submissions.length;
+  const totalSubmissions = companyFilteredSubmissions.length;
   const activeJobs = Object.keys(submissionsByJob).length;
-  const inProgress = submissions.filter(
+  const inProgress = companyFilteredSubmissions.filter(
     (s) => !["rejected", "withdrawn", "hired"].includes(s.status || "")
   ).length;
-  const interviewCount = submissions.filter((s) =>
+  const interviewCount = companyFilteredSubmissions.filter((s) =>
     ["interview_scheduled", "interviewed"].includes(s.status || "")
   ).length;
 
@@ -201,6 +232,59 @@ const Submissions = () => {
         "bg-gradient-to-br from-purple-400/30 via-purple-500/20 to-purple-600/30",
     },
   ];
+
+  // Debounced candidate search for the New Submission dialog
+  useEffect(() => {
+    if (!showNewSubmissionDialog || !candidateSearchQuery.trim()) {
+      setCandidateSearchResults([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setCandidateSearchLoading(true);
+      try {
+        const res = await candidateSearchService.searchCandidates({
+          search: candidateSearchQuery.trim(),
+          limit: 8,
+        });
+        setCandidateSearchResults((res as any)?.data?.candidates || []);
+      } catch {
+        setCandidateSearchResults([]);
+      } finally {
+        setCandidateSearchLoading(false);
+      }
+    }, 350);
+    return () => clearTimeout(timeout);
+  }, [candidateSearchQuery, showNewSubmissionDialog]);
+
+  const resetNewSubmissionDialog = () => {
+    setShowNewSubmissionDialog(false);
+    setNewSubmissionJobId("");
+    setCandidateSearchQuery("");
+    setCandidateSearchResults([]);
+    setSelectedNewCandidate(null);
+  };
+
+  const handleCreateSubmission = async () => {
+    if (!newSubmissionJobId || !selectedNewCandidate) return;
+    setCreatingSubmission(true);
+    try {
+      const res = await recruiterService.sourceCandidates(newSubmissionJobId, [selectedNewCandidate.id]);
+      const { added = [], skipped = [] } = (res as any).data || {};
+      if (added.length > 0) {
+        toast.success("Submission created");
+        resetNewSubmissionDialog();
+        refresh();
+      } else if (skipped.length > 0) {
+        toast.error("This candidate is already submitted to that job");
+      } else {
+        toast.error("Failed to create submission");
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to create submission");
+    } finally {
+      setCreatingSubmission(false);
+    }
+  };
 
   const handleExport = async () => {
     if (user?.role !== "recruiter") {
@@ -427,9 +511,48 @@ const Submissions = () => {
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               {exporting ? "Exporting..." : "Export CSV"}
             </Button>
-            <Button variant="outline">
-              <Bot className="h-4 w-4 mr-2" />
-              AI Insights
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Actions
+                  <ChevronDown className="h-3 w-3 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-white border-gray-200 z-50">
+                <DropdownMenuItem>
+                  <PlusCircle className="w-4 h-4 mr-2" />
+                  Create Task
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <Send className="w-4 h-4 mr-2" />
+                  Send Follow-up
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Change Status
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <Trash className="w-4 h-4 mr-2" />
+                  Mark for Deletion
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>
+                  <Bot className="w-4 h-4 mr-2" />
+                  AI Recruiter
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <ListChecks className="w-4 h-4 mr-2" />
+                  Mass Changes
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              className="button-gradient text-white shadow-lg hover:shadow-xl transition-all duration-300"
+              onClick={() => setShowNewSubmissionDialog(true)}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              New Submission
             </Button>
           </div>
         )}
@@ -501,6 +624,13 @@ const Submissions = () => {
                   </SelectContent>
                 </Select>
               )}
+              {user.role === "recruiter" && (
+                <CompanyFilter
+                  companies={availableCompanies}
+                  selectedCompany={companyFilter}
+                  onCompanyChange={setCompanyFilter}
+                />
+              )}
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Status" />
@@ -535,7 +665,11 @@ const Submissions = () => {
         <CardHeader>
           <CardTitle>
             {user.role === "recruiter" ? "Applications by Job" : "Applications"}{" "}
-            ({pagination.totalItems})
+            (
+            {user.role === "recruiter"
+              ? Object.keys(submissionsByJob).length
+              : pagination.totalItems}
+            )
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -627,14 +761,30 @@ const Submissions = () => {
                           <Badge variant="secondary">
                             Total: {jobData.submissions.length}
                           </Badge>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenuItem
+                                onClick={() => navigate(`/dashboard/jobs/${jobData.job?.id}`)}
+                              >
+                                <Briefcase className="h-4 w-4 mr-2" />
+                                View Job Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setNewSubmissionJobId(jobData.job?.id || "");
+                                  setShowNewSubmissionDialog(true);
+                                }}
+                              >
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Candidate to Pipeline
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
                     </CollapsibleTrigger>
@@ -1042,6 +1192,102 @@ const Submissions = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* New Submission Dialog */}
+      <Dialog
+        open={showNewSubmissionDialog}
+        onOpenChange={(open) => (open ? setShowNewSubmissionDialog(true) : resetNewSubmissionDialog())}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Submission</DialogTitle>
+            <DialogDescription>
+              Add a candidate to a job's pipeline (status starts at Pipeline).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">Job</label>
+              <Select value={newSubmissionJobId} onValueChange={setNewSubmissionJobId} disabled={jobsLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={jobsLoading ? "Loading jobs..." : "Select a job"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {recruiterJobs.map((job) => (
+                    <SelectItem key={job.id} value={job.id}>
+                      {job.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">Candidate</label>
+              {selectedNewCandidate ? (
+                <div className="flex items-center justify-between border rounded-md p-2.5">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {selectedNewCandidate.first_name} {selectedNewCandidate.last_name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {selectedNewCandidate.email || selectedNewCandidate.user?.email}
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedNewCandidate(null)}>
+                    Change
+                  </Button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Input
+                    placeholder="Search candidates by name..."
+                    value={candidateSearchQuery}
+                    onChange={(e) => setCandidateSearchQuery(e.target.value)}
+                  />
+                  {candidateSearchQuery.trim() && (
+                    <div className="border rounded-md mt-1 max-h-48 overflow-y-auto">
+                      {candidateSearchLoading ? (
+                        <p className="text-sm text-gray-500 p-2.5">Searching...</p>
+                      ) : candidateSearchResults.length === 0 ? (
+                        <p className="text-sm text-gray-500 p-2.5">No candidates found.</p>
+                      ) : (
+                        candidateSearchResults.map((c: any) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedNewCandidate(c);
+                              setCandidateSearchQuery("");
+                            }}
+                            className="w-full text-left px-2.5 py-2 hover:bg-gray-50 border-b last:border-b-0"
+                          >
+                            <p className="text-sm font-medium text-gray-900">
+                              {c.first_name} {c.last_name}
+                            </p>
+                            <p className="text-xs text-gray-500">{c.email || c.user?.email}</p>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={resetNewSubmissionDialog}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateSubmission}
+              disabled={!newSubmissionJobId || !selectedNewCandidate || creatingSubmission}
+            >
+              {creatingSubmission ? "Creating..." : "Create Submission"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Status Update Dialog */}
       <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>

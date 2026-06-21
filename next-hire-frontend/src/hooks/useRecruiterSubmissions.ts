@@ -29,20 +29,24 @@ export const useRecruiterSubmissions = (initialFilters: SubmissionFilters = {}) 
   const [filters, setFilters] = useState<SubmissionFilters>(initialFilters);
 
   const { user } = useAuth();
-  const isFetchingRef = useRef(false);
+  // Tracks the most recently-issued request so a slow, stale response
+  // (e.g. from a search term the user has since cleared/changed) can never
+  // overwrite the result of a newer one that resolves first.
+  const latestRequestIdRef = useRef(0);
 
   const fetchAllSubmissions = useCallback(
     async (searchFilters: SubmissionFilters = {}) => {
       if (user?.role !== "recruiter") return;
-      if (isFetchingRef.current) return;
 
+      const requestId = ++latestRequestIdRef.current;
       try {
-        isFetchingRef.current = true;
         setLoading(true);
         setError(null);
 
         const finalFilters = { ...filters, ...searchFilters };
         const response = await submissionService.getAllSubmissions(finalFilters);
+        if (requestId !== latestRequestIdRef.current) return; // superseded by a newer request
+
         const subs = response.data.submissions || [];
         setSubmissions(subs);
 
@@ -63,13 +67,13 @@ export const useRecruiterSubmissions = (initialFilters: SubmissionFilters = {}) 
         });
         setFilters(finalFilters);
       } catch (err: any) {
+        if (requestId !== latestRequestIdRef.current) return;
         const errorMessage =
           err.response?.data?.message || err.message || "Failed to fetch submissions";
         setError(errorMessage);
         toast.error(errorMessage);
       } finally {
-        isFetchingRef.current = false;
-        setLoading(false);
+        if (requestId === latestRequestIdRef.current) setLoading(false);
       }
     },
     [user?.role]

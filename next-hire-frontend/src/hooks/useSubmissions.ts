@@ -24,15 +24,17 @@ export const useSubmissions = (initialFilters: SubmissionFilters = {}) => {
   });
   const [filters, setFilters] = useState<SubmissionFilters>(initialFilters);
   const filtersRef = useRef<SubmissionFilters>(initialFilters);
-  const isFetchingRef = useRef(false);
+  // Tracks the most recently-issued request so a slow, stale response (e.g.
+  // from a search term the user has since cleared/changed) can never
+  // overwrite the result of a newer one that resolves first.
+  const latestRequestIdRef = useRef(0);
 
   const { user } = useAuth();
 
   const fetchSubmissions = useCallback(
     async (searchFilters: SubmissionFilters = {}) => {
-      if (isFetchingRef.current) return;
+      const requestId = ++latestRequestIdRef.current;
       try {
-        isFetchingRef.current = true;
         setLoading(true);
         setError(null);
 
@@ -64,17 +66,19 @@ export const useSubmissions = (initialFilters: SubmissionFilters = {}) => {
           throw new Error("Invalid user role for fetching submissions");
         }
 
+        if (requestId !== latestRequestIdRef.current) return; // superseded by a newer request
+
         setSubmissions(response.data.submissions);
         setPagination(response.data.pagination);
         filtersRef.current = finalFilters;
         setFilters(finalFilters);
       } catch (err: any) {
+        if (requestId !== latestRequestIdRef.current) return;
         const errorMessage = err.response?.data?.message || err.message || "Failed to fetch submissions";
         setError(errorMessage);
         toast.error(errorMessage);
       } finally {
-        isFetchingRef.current = false;
-        setLoading(false);
+        if (requestId === latestRequestIdRef.current) setLoading(false);
       }
     },
     [user?.role]
