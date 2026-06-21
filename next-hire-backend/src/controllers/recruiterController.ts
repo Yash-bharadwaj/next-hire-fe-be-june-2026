@@ -18,6 +18,14 @@ import { AuthenticatedRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../utils/email";
 import { isJobStaff } from "../utils/jobPermissions";
+import { estimatePayRate } from "../services/aiParsingService";
+import {
+  getSetting,
+  setSetting,
+  fillTemplate,
+  PAY_RATE_PROMPT_KEY,
+  DEFAULT_PAY_RATE_PROMPT,
+} from "../services/settingsService";
 
 // Shared `include` for resolving Job's people/client references to
 // human-readable data instead of raw UUIDs.
@@ -151,6 +159,103 @@ export const listTeamMembers = asyncHandler(
   }
 );
 
+const WORK_SCHEDULE_LABELS: Record<string, string> = {
+  day_shift: "Day shift",
+  night_shift: "Night shift",
+  rotating_shift: "Rotating shift",
+  flexible: "Flexible",
+};
+
+const formatExperienceLevel = (min?: number, max?: number): string => {
+  if (min !== undefined && min !== null && max !== undefined && max !== null) {
+    return `${min}-${max} years`;
+  }
+  if (min !== undefined && min !== null) return `Minimum ${min} years`;
+  if (max !== undefined && max !== null) return `Up to ${max} years`;
+  return "Not specified";
+};
+
+// Estimates a market pay/bill rate range for a job via Gemini, using the
+// admin-editable prompt template, and persists it on the job. Non-fatal:
+// if AI estimation fails or is unavailable, the job is left without an
+// estimate rather than blocking the caller.
+export async function triggerPayRateEstimation(jobId: string): Promise<void> {
+  const job = await Job.findByPk(jobId);
+  if (!job) return;
+
+  const promptTemplate = await getSetting(PAY_RATE_PROMPT_KEY, DEFAULT_PAY_RATE_PROMPT);
+  const instructions = fillTemplate(promptTemplate, {
+    job_title: job.title || "this role",
+    location: job.location || "Not specified",
+    skills: (job.required_skills || []).join(", ") || "Not specified",
+    experience_level: formatExperienceLevel(job.experience_min, job.experience_max),
+    work_schedule: job.work_schedule ? WORK_SCHEDULE_LABELS[job.work_schedule] : "Not specified",
+    job_description: (job.description || "").slice(0, 3000),
+  });
+
+  const estimate = await estimatePayRate(instructions);
+  if (!estimate) return;
+
+  await job.update({
+    ai_estimated_pay_min: estimate.min,
+    ai_estimated_pay_max: estimate.max,
+    ai_estimated_pay_currency: estimate.currency,
+    ai_estimated_pay_basis: estimate.basis,
+    ai_estimated_pay_rationale: estimate.rationale,
+    ai_estimated_pay_at: new Date(),
+  } as any);
+}
+
+// Get the current (or default) pay-rate-estimation prompt template
+export const getPayRatePrompt = asyncHandler(
+  async (_req: AuthenticatedRequest, res: Response) => {
+    const prompt = await getSetting(PAY_RATE_PROMPT_KEY, DEFAULT_PAY_RATE_PROMPT);
+    res.json({ success: true, data: { prompt, default: DEFAULT_PAY_RATE_PROMPT } });
+  }
+);
+
+// Update the pay-rate-estimation prompt template (admin/recruiter editable)
+export const updatePayRatePrompt = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.userId;
+    const { prompt } = req.body;
+    const saved = await setSetting(PAY_RATE_PROMPT_KEY, prompt, userId);
+    res.json({ success: true, message: "Prompt updated successfully", data: { prompt: saved } });
+  }
+);
+
+// Re-run the AI pay rate estimate for an existing job (manual refresh)
+export const reestimateJobPayRate = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { jobId } = req.params;
+    const userId = req.user?.userId;
+
+    const job = await Job.findByPk(jobId);
+    if (!job) {
+      throw createError("Job not found", 404);
+    }
+    if (!isJobStaff(job, userId)) {
+      throw createError("You do not have permission to update this job", 403);
+    }
+
+    await triggerPayRateEstimation(jobId);
+    const updatedJob = await Job.findByPk(jobId);
+
+    res.json({
+      success: true,
+      message: "Pay rate estimate updated",
+      data: {
+        ai_estimated_pay_min: updatedJob?.ai_estimated_pay_min,
+        ai_estimated_pay_max: updatedJob?.ai_estimated_pay_max,
+        ai_estimated_pay_currency: updatedJob?.ai_estimated_pay_currency,
+        ai_estimated_pay_basis: updatedJob?.ai_estimated_pay_basis,
+        ai_estimated_pay_rationale: updatedJob?.ai_estimated_pay_rationale,
+        ai_estimated_pay_at: updatedJob?.ai_estimated_pay_at,
+      },
+    });
+  }
+);
+
 // Create a new job
 export const createJob = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -175,6 +280,7 @@ export const createJob = asyncHandler(
       required_skills,
       preferred_skills,
       education_requirements,
+      work_schedule,
       priority,
       positions_available,
       max_submissions_allowed,
@@ -265,6 +371,7 @@ export const createJob = asyncHandler(
         required_skills: required_skills || [],
         preferred_skills: preferred_skills || [],
         education_requirements,
+        work_schedule: work_schedule || undefined,
         priority: priority || "medium",
         positions_available: positions_available || 1,
         max_submissions_allowed,
@@ -289,6 +396,11 @@ export const createJob = asyncHandler(
         message: "Job created successfully",
         data: job,
       });
+
+      // Fire-and-forget: don't make job creation wait on the AI call.
+      triggerPayRateEstimation(job.id).catch((err) =>
+        logger.error(`Pay rate estimation failed for job ${job.id}`, err)
+      );
     } catch (error: any) {
       logger.error(`Error creating job: ${error.message}`, error);
       throw error; // Let asyncHandler handle it

@@ -48,6 +48,8 @@ export type JobType = "full_time" | "part_time" | "contract" | "temporary";
 export type JobStatus = "draft" | "active" | "paused" | "closed";
 export type JobPriority = "low" | "medium" | "high";
 
+export type WorkSchedule = "day_shift" | "night_shift" | "rotating_shift" | "flexible";
+
 export interface Job {
   id: string;
   title: string;
@@ -66,6 +68,15 @@ export interface Job {
   required_skills: string[];
   preferred_skills?: string[];
   education_requirements?: string;
+  work_schedule?: WorkSchedule;
+  // AI-estimated market pay/bill rate range - separate from the
+  // recruiter-entered salary_min/max / bill_rate_min/max above.
+  ai_estimated_pay_min?: number;
+  ai_estimated_pay_max?: number;
+  ai_estimated_pay_currency?: string;
+  ai_estimated_pay_basis?: "hourly" | "annual";
+  ai_estimated_pay_rationale?: string;
+  ai_estimated_pay_at?: string;
   status: JobStatus;
   priority: JobPriority;
   positions_available: number;
@@ -112,6 +123,7 @@ export interface CreateJobRequest {
   required_skills?: string[];
   preferred_skills?: string[];
   education_requirements?: string;
+  work_schedule?: WorkSchedule;
   status?: JobStatus;
   priority?: JobPriority;
   positions_available?: number;
@@ -670,6 +682,42 @@ class RecruiterService {
         `/recruiter/jobs/${jobId}/profitability`,
         data
       );
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get the admin-editable AI pay-rate-estimation prompt template
+   */
+  async getPayRatePrompt(): Promise<{ success: boolean; data: { prompt: string; default: string } }> {
+    try {
+      const response = await apiClient.get("/recruiter/settings/pay-rate-prompt");
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Update the AI pay-rate-estimation prompt template
+   */
+  async updatePayRatePrompt(prompt: string): Promise<{ success: boolean; data: { prompt: string } }> {
+    try {
+      const response = await apiClient.put("/recruiter/settings/pay-rate-prompt", { prompt });
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Re-run the AI pay rate estimate for an existing job
+   */
+  async reestimateJobPayRate(jobId: string): Promise<{ success: boolean; data: Partial<Job> }> {
+    try {
+      const response = await apiClient.post(`/recruiter/jobs/${jobId}/estimate-pay-rate`);
       return response.data;
     } catch (error: any) {
       throw this.handleError(error);

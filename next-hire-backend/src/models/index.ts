@@ -17,6 +17,7 @@ import { CandidateResume } from "./CandidateResume";
 import { BusinessPartner } from "./BusinessPartner";
 import { BusinessPartnerContact } from "./BusinessPartnerContact";
 import { JobProfitability } from "./JobProfitability";
+import { AppSetting } from "./AppSetting";
 
 let associationsApplied = false;
 
@@ -167,5 +168,6 @@ export {
   BusinessPartner,
   BusinessPartnerContact,
   JobProfitability,
+  AppSetting,
   sequelize,
 };

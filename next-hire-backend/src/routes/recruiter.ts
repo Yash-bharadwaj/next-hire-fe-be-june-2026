@@ -25,6 +25,9 @@ import {
   updateTaskStatus,
   sourceCandidates,
   listTeamMembers,
+  getPayRatePrompt,
+  updatePayRatePrompt,
+  reestimateJobPayRate,
 } from "../controllers/recruiterController";
 import { authenticate, recruiterOnly } from "../middleware/auth";
 import { validate } from "../middleware/validation";
@@ -121,6 +124,10 @@ const createJobValidation = [
     .optional()
     .isArray()
     .withMessage("Preferred skills must be an array"),
+  body("work_schedule")
+    .optional({ nullable: true })
+    .isIn(["day_shift", "night_shift", "rotating_shift", "flexible"])
+    .withMessage("Invalid work schedule"),
   body("priority")
     .optional()
     .isIn(["low", "medium", "high"])
@@ -403,6 +410,15 @@ router.put("/profile", updateProfileValidation, validate, updateProfile);
 // Team members (for Primary Recruiter / Account Manager / Assigned To dropdowns)
 router.get("/team", listTeamMembers);
 
+// AI pay rate estimation prompt (admin/recruiter-editable)
+router.get("/settings/pay-rate-prompt", getPayRatePrompt);
+router.put(
+  "/settings/pay-rate-prompt",
+  [body("prompt").trim().notEmpty().withMessage("Prompt text is required")],
+  validate,
+  updatePayRatePrompt
+);
+
 // Job management
 router.post("/jobs", createJobValidation, validate, createJob);
 router.get("/jobs", listJobsValidation, validate, listJobs);
@@ -434,6 +450,12 @@ router.put(
   jobDetailsValidation,
   validate,
   updateJobProfitability
+);
+router.post(
+  "/jobs/:jobId/estimate-pay-rate",
+  jobDetailsValidation,
+  validate,
+  reestimateJobPayRate
 );
 
 // Source candidates into a job's sourcing funnel

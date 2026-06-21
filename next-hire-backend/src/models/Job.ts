@@ -24,6 +24,16 @@ export interface JobAttributes {
   required_skills: string[]; // Array of required skills
   preferred_skills?: string[]; // Array of preferred skills
   education_requirements?: string;
+  work_schedule?: "day_shift" | "night_shift" | "rotating_shift" | "flexible";
+  // AI-estimated market pay/bill rate range (see aiPayRateService) - kept
+  // separate from the recruiter-entered salary_min/max / bill_rate_min/max,
+  // which are what's actually posted for the role.
+  ai_estimated_pay_min?: number;
+  ai_estimated_pay_max?: number;
+  ai_estimated_pay_currency?: string;
+  ai_estimated_pay_basis?: "hourly" | "annual";
+  ai_estimated_pay_rationale?: string;
+  ai_estimated_pay_at?: Date;
   status: "draft" | "active" | "paused" | "closed";
   priority: "low" | "medium" | "high";
   positions_available: number;
@@ -86,6 +96,13 @@ export class Job
   public required_skills!: string[];
   public preferred_skills?: string[];
   public education_requirements?: string;
+  public work_schedule?: "day_shift" | "night_shift" | "rotating_shift" | "flexible";
+  public ai_estimated_pay_min?: number;
+  public ai_estimated_pay_max?: number;
+  public ai_estimated_pay_currency?: string;
+  public ai_estimated_pay_basis?: "hourly" | "annual";
+  public ai_estimated_pay_rationale?: string;
+  public ai_estimated_pay_at?: Date;
   public status!: "draft" | "active" | "paused" | "closed";
   public priority!: "low" | "medium" | "high";
   public positions_available!: number;
@@ -253,6 +270,34 @@ Job.init(
     },
     education_requirements: {
       type: DataTypes.STRING,
+      allowNull: true,
+    },
+    work_schedule: {
+      type: DataTypes.ENUM("day_shift", "night_shift", "rotating_shift", "flexible"),
+      allowNull: true,
+    },
+    ai_estimated_pay_min: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+    },
+    ai_estimated_pay_max: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+    },
+    ai_estimated_pay_currency: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    ai_estimated_pay_basis: {
+      type: DataTypes.ENUM("hourly", "annual"),
+      allowNull: true,
+    },
+    ai_estimated_pay_rationale: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    ai_estimated_pay_at: {
+      type: DataTypes.DATE,
       allowNull: true,
     },
     status: {

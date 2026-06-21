@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataGrid } from "@/components/ui/data-grid";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -68,6 +69,7 @@ import { useNavigate } from "react-router-dom";
 import { useJobs, useJobManagement } from "@/hooks/useJobs";
 import { useAuth } from "@/contexts/AuthContext";
 import { jobService } from "@/services/jobService";
+import { recruiterService } from "@/services/recruiterService";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
@@ -116,6 +118,41 @@ const Jobs = () => {
   const [parseProgress, setParseProgress] = useState(0);
   const [isDraggingJD, setIsDraggingJD] = useState(false);
   const jdInputRef = useRef<HTMLInputElement>(null);
+
+  // AI pay rate estimation prompt (admin/recruiter-editable)
+  const [showPayRatePromptDialog, setShowPayRatePromptDialog] = useState(false);
+  const [payRatePrompt, setPayRatePrompt] = useState("");
+  const [defaultPayRatePrompt, setDefaultPayRatePrompt] = useState("");
+  const [loadingPayRatePrompt, setLoadingPayRatePrompt] = useState(false);
+  const [savingPayRatePrompt, setSavingPayRatePrompt] = useState(false);
+
+  const openPayRatePromptDialog = async () => {
+    setShowPayRatePromptDialog(true);
+    setLoadingPayRatePrompt(true);
+    try {
+      const res = await recruiterService.getPayRatePrompt();
+      setPayRatePrompt(res.data.prompt);
+      setDefaultPayRatePrompt(res.data.default);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to load prompt");
+    } finally {
+      setLoadingPayRatePrompt(false);
+    }
+  };
+
+  const handleSavePayRatePrompt = async () => {
+    if (!payRatePrompt.trim()) return;
+    setSavingPayRatePrompt(true);
+    try {
+      await recruiterService.updatePayRatePrompt(payRatePrompt.trim());
+      toast.success("AI pay rate prompt updated");
+      setShowPayRatePromptDialog(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to save prompt");
+    } finally {
+      setSavingPayRatePrompt(false);
+    }
+  };
 
   // Initialize from module-level cache so last-known values show instantly on remount
   const [baseStats, setBaseStats] = useState({ ..._jobsStatsCache });
@@ -728,6 +765,13 @@ const Jobs = () => {
                 <Bot className="w-4 h-4 mr-2" />
                 AI Recruiter
               </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                onClick={openPayRatePromptDialog}
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                AI Pay Rate Prompt
+              </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-gray-200" />
               <DropdownMenuItem className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
                 <RotateCcw className="w-4 h-4 mr-2" />
@@ -947,6 +991,52 @@ const Jobs = () => {
               {parsingJD && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
               Upload &amp; Create Draft Job
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Pay Rate Estimation Prompt (admin/recruiter-editable) */}
+      <Dialog open={showPayRatePromptDialog} onOpenChange={setShowPayRatePromptDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>AI Pay Rate Estimation Prompt</DialogTitle>
+            <DialogDescription>
+              This prompt is sent to the AI (with the job's title, location, skills, experience
+              level, work schedule, and description filled in) to estimate a pay/bill rate range
+              automatically when a new job is created. Use {"{{job_title}}"}, {"{{location}}"},{" "}
+              {"{{skills}}"}, {"{{experience_level}}"}, {"{{work_schedule}}"}, and{" "}
+              {"{{job_description}}"} as placeholders.
+            </DialogDescription>
+          </DialogHeader>
+          {loadingPayRatePrompt ? (
+            <div className="flex items-center justify-center py-10 text-gray-500">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" />
+              Loading prompt...
+            </div>
+          ) : (
+            <Textarea
+              value={payRatePrompt}
+              onChange={(e) => setPayRatePrompt(e.target.value)}
+              className="min-h-[220px] font-mono text-sm"
+            />
+          )}
+          <DialogFooter className="flex items-center justify-between sm:justify-between">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setPayRatePrompt(defaultPayRatePrompt)}
+              disabled={loadingPayRatePrompt}
+            >
+              Reset to Default
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowPayRatePromptDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSavePayRatePrompt} disabled={!payRatePrompt.trim() || savingPayRatePrompt}>
+                {savingPayRatePrompt ? "Saving..." : "Save"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

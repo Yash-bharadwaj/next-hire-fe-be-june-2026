@@ -134,6 +134,7 @@ const AddNewJob = () => {
       billRateMax: "",
       experienceMin: "",
       experienceMax: "",
+      workSchedule: "",
       educationRequirements: "",
       priority: "",
       jobStatus: "Active",
@@ -255,6 +256,36 @@ const AddNewJob = () => {
     }
   };
 
+  const mapWorkScheduleFromAPI = (workSchedule?: string) => {
+    switch (workSchedule) {
+      case "day_shift":
+        return "Day Shift";
+      case "night_shift":
+        return "Night Shift";
+      case "rotating_shift":
+        return "Rotating Shift";
+      case "flexible":
+        return "Flexible";
+      default:
+        return "";
+    }
+  };
+
+  const mapWorkScheduleToAPI = (workSchedule: string) => {
+    switch (workSchedule) {
+      case "Day Shift":
+        return "day_shift";
+      case "Night Shift":
+        return "night_shift";
+      case "Rotating Shift":
+        return "rotating_shift";
+      case "Flexible":
+        return "flexible";
+      default:
+        return undefined;
+    }
+  };
+
   const mapStatusFromAPI = (status?: string) => {
     switch (status) {
       case "active":
@@ -364,6 +395,7 @@ const AddNewJob = () => {
             job.experience_max !== undefined && job.experience_max !== null
               ? String(job.experience_max)
               : "",
+          workSchedule: mapWorkScheduleFromAPI((job as any).work_schedule),
           educationRequirements: job.education_requirements || "",
           priority: mapPriorityFromAPI(job.priority),
           jobStatus: mapStatusFromAPI(job.status),
@@ -722,6 +754,11 @@ const AddNewJob = () => {
       // Other optional fields
       if (data.educationRequirements?.trim()) {
         jobData.education_requirements = data.educationRequirements.trim();
+      }
+
+      const mappedWorkSchedule = mapWorkScheduleToAPI(data.workSchedule);
+      if (mappedWorkSchedule) {
+        jobData.work_schedule = mappedWorkSchedule;
       }
 
       // Priority (optional, defaults to medium in backend)
@@ -1595,6 +1632,32 @@ const AddNewJob = () => {
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="workSchedule"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-gray-700 font-medium">
+                    Work Schedule
+                  </FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="border-gray-200 focus:border-green-400">
+                        <SelectValue placeholder="Select work schedule" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="bg-white">
+                      <SelectItem value="Day Shift">Day Shift</SelectItem>
+                      <SelectItem value="Night Shift">Night Shift</SelectItem>
+                      <SelectItem value="Rotating Shift">Rotating Shift</SelectItem>
+                      <SelectItem value="Flexible">Flexible</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

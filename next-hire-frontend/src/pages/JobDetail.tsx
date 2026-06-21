@@ -63,6 +63,7 @@ import {
   Search,
   Brain,
   Bot,
+  Sparkles,
   UserCog,
   MoreHorizontal,
   Settings,
@@ -270,6 +271,26 @@ const JobDetail = () => {
   }, [fetchJob]);
 
   const refresh = fetchJob;
+
+  // ── AI pay rate estimate ────────────────────────────────────────────────
+  const [reestimatingPayRate, setReestimatingPayRate] = useState(false);
+  const handleReestimatePayRate = async () => {
+    if (!id) return;
+    setReestimatingPayRate(true);
+    try {
+      await recruiterService.reestimateJobPayRate(id);
+      toast({ title: "Pay rate estimate updated" });
+      refresh();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to estimate pay rate",
+        variant: "destructive",
+      });
+    } finally {
+      setReestimatingPayRate(false);
+    }
+  };
 
   const getPriorityBadgeClass = (priority?: string) => {
     switch (priority) {
@@ -1494,6 +1515,58 @@ const JobDetail = () => {
                     />
                   </CardContent>
                 </Card>
+
+                {/* AI Estimated Pay Rate */}
+                {user?.role === "recruiter" && (
+                  <Card className="card-gradient border-indigo-200/50 shadow-lg">
+                    <CardHeader>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <CardTitle className="text-xl bg-gradient-to-r from-indigo-700 to-indigo-600 bg-clip-text text-transparent flex items-center gap-2">
+                          <Bot className="w-5 h-5 text-indigo-600" />
+                          AI Estimated Pay Rate
+                        </CardTitle>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                          onClick={handleReestimatePayRate}
+                          disabled={reestimatingPayRate}
+                        >
+                          {reestimatingPayRate ? (
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-4 h-4 mr-1" />
+                          )}
+                          {reestimatingPayRate ? "Estimating..." : "Re-estimate"}
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {job.ai_estimated_pay_min != null && job.ai_estimated_pay_max != null ? (
+                        <div className="space-y-2">
+                          <p className="text-2xl font-bold text-indigo-700">
+                            {formatCompactRange(job.ai_estimated_pay_min, job.ai_estimated_pay_max, {
+                              suffix: job.ai_estimated_pay_basis === "hourly" ? "/hr" : "/yr",
+                              currency: job.ai_estimated_pay_currency || "USD",
+                            })}
+                          </p>
+                          {job.ai_estimated_pay_rationale && (
+                            <p className="text-sm text-gray-600">{job.ai_estimated_pay_rationale}</p>
+                          )}
+                          {job.ai_estimated_pay_at && (
+                            <p className="text-xs text-gray-400">
+                              Estimated {new Date(job.ai_estimated_pay_at).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">
+                          No AI estimate yet. New jobs get one automatically - click "Re-estimate" to generate one now.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Skills Required */}
                 <Card className="card-gradient border-blue-200/50 shadow-lg">
