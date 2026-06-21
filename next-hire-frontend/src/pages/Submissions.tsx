@@ -85,6 +85,7 @@ import { recruiterService } from "@/services/recruiterService";
 import { downloadCsv } from "@/utils/csv";
 import { toast } from "sonner";
 import { ScheduleInterviewDialog } from "@/components/ScheduleInterviewDialog";
+import { getSubmissionStatusMeta } from "@/lib/submissionStatus";
 
 const Submissions = () => {
   const navigate = useNavigate();
@@ -328,35 +329,9 @@ const Submissions = () => {
     setExpandedSubmissions(newExpanded);
   };
 
-  const getStatusColor = (status: string) => {
-    const colors = {
-      submitted: "bg-blue-100 text-blue-800",
-      under_review: "bg-yellow-100 text-yellow-800",
-      shortlisted: "bg-green-100 text-green-800",
-      interview_scheduled: "bg-purple-100 text-purple-800",
-      interviewed: "bg-indigo-100 text-indigo-800",
-      offered: "bg-emerald-100 text-emerald-800",
-      hired: "bg-green-100 text-green-800",
-      rejected: "bg-red-100 text-red-800",
-      withdrawn: "bg-gray-100 text-gray-800",
-    };
-    return colors[status as keyof typeof colors] || "bg-gray-100 text-gray-800";
-  };
+  const getStatusColor = (status: string) => getSubmissionStatusMeta(status).color;
 
-  const getStatusLabel = (status: string) => {
-    const labels = {
-      submitted: "Submitted",
-      under_review: "Under Review",
-      shortlisted: "Shortlisted",
-      interview_scheduled: "Interview Scheduled",
-      interviewed: "Interviewed",
-      offered: "Offered",
-      hired: "Hired",
-      rejected: "Rejected",
-      withdrawn: "Withdrawn",
-    };
-    return labels[status as keyof typeof labels] || status;
-  };
+  const getStatusLabel = (status: string) => getSubmissionStatusMeta(status).label;
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -607,13 +582,27 @@ const Submissions = () => {
           ) : user.role === "recruiter" ? (
             // Group by job for recruiters
             <div className="space-y-6">
-              {Object.entries(submissionsByJob).map(([jobKey, jobData]) => (
+              {Object.entries(submissionsByJob).map(([jobKey, jobData]) => {
+                const statusGroups: [string, any[]][] = Object.entries(
+                  (jobData.submissions as any[]).reduce(
+                    (acc: Record<string, any[]>, sub: any) => {
+                      const key = sub.status || "unknown";
+                      if (!acc[key]) acc[key] = [];
+                      acc[key].push(sub);
+                      return acc;
+                    },
+                    {}
+                  )
+                );
+
+                return (
                 <div key={jobKey} className="border rounded-lg">
                   <Collapsible>
                     <CollapsibleTrigger className="w-full p-4 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between flex-wrap gap-3">
                         <div className="flex items-center space-x-3">
-                          <ChevronRight className="h-4 w-4" />
+                          <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                          <Briefcase className="h-5 w-5 text-blue-600 flex-shrink-0" />
                           <div className="text-left">
                             <h3 className="font-semibold text-gray-900">
                               {jobData.job?.title}
@@ -623,21 +612,51 @@ const Submissions = () => {
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center space-x-4">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {statusGroups.map(([status, subs]) => {
+                            const meta = getSubmissionStatusMeta(status);
+                            return (
+                              <div key={status} className="flex items-center gap-1.5">
+                                <span className={`w-2 h-2 rounded-full ${meta.dot}`} />
+                                <Badge className={meta.color}>
+                                  {meta.label}: {subs.length}
+                                </Badge>
+                              </div>
+                            );
+                          })}
                           <Badge variant="secondary">
-                            {jobData.submissions.length} applications
+                            Total: {jobData.submissions.length}
                           </Badge>
-                          <Badge
-                            className={getStatusColor(jobData.job?.status)}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            {jobData.job?.status}
-                          </Badge>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
-                      <div className="border-t bg-gray-50 p-4 space-y-4">
-                        {jobData.submissions.map((submission: any) => (
+                      <div className="border-t bg-gray-50">
+                        {statusGroups.map(([status, subs]) => {
+                          const meta = getSubmissionStatusMeta(status);
+                          return (
+                          <Collapsible key={status}>
+                            <CollapsibleTrigger className="w-full px-4 py-3 pl-10 hover:bg-white/70 transition-colors border-b border-gray-200 text-left">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <ChevronRight className="h-3 w-3 text-gray-400" />
+                                  <span className={`w-2 h-2 rounded-full ${meta.dot}`} />
+                                  <span className="font-medium text-sm text-gray-700">{meta.label}</span>
+                                </div>
+                                <Badge className={meta.color}>{subs.length}</Badge>
+                              </div>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="p-4 space-y-4 bg-white">
+                        {subs.map((submission: any) => (
                           <div
                             key={submission.id}
                             className="bg-white border rounded-lg p-4"
@@ -845,11 +864,17 @@ const Submissions = () => {
                             </div>
                           </div>
                         ))}
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                          );
+                        })}
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             // Simple list for candidates and vendors

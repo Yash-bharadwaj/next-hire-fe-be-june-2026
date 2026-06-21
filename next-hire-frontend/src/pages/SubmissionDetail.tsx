@@ -66,23 +66,7 @@ import { ScheduleInterviewDialog } from "@/components/ScheduleInterviewDialog";
 import { ExpandableText } from "@/components/ExpandableText";
 import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { formatCompactCurrency, formatCompactRange } from "@/lib/format";
-
-const STATUS_META: Record<string, { label: string; color: string }> = {
-  new_candidate: { label: "Pipeline", color: "bg-gray-100 text-gray-800" },
-  initial_scanning: { label: "Initial Scanning", color: "bg-blue-100 text-blue-800" },
-  first_round: { label: "First Round", color: "bg-purple-100 text-purple-800" },
-  technical_round: { label: "Technical Manager Round", color: "bg-yellow-100 text-yellow-800" },
-  final_round: { label: "Final Round", color: "bg-orange-100 text-orange-800" },
-  sourcing: { label: "Sourcing", color: "bg-gray-100 text-gray-800" },
-  submitted: { label: "Submitted", color: "bg-blue-100 text-blue-800" },
-  under_review: { label: "Under Review", color: "bg-yellow-100 text-yellow-800" },
-  shortlisted: { label: "Shortlisted", color: "bg-green-100 text-green-800" },
-  interview_scheduled: { label: "Interview Scheduled", color: "bg-purple-100 text-purple-800" },
-  interviewed: { label: "Interviewed", color: "bg-indigo-100 text-indigo-800" },
-  offered: { label: "Offered", color: "bg-emerald-100 text-emerald-800" },
-  hired: { label: "Hired", color: "bg-green-100 text-green-800" },
-  rejected: { label: "Rejected", color: "bg-red-100 text-red-800" },
-};
+import { getSubmissionStatusMeta } from "@/lib/submissionStatus";
 
 const formatDateTime = (dateString?: string | null) => {
   if (!dateString) return "—";
@@ -275,8 +259,7 @@ const SubmissionDetail = () => {
 
   const candidate = submission.candidate;
   const job = submission.job;
-  const statusMeta =
-    STATUS_META[submission.status] || { label: submission.status, color: "bg-gray-100 text-gray-800" };
+  const statusMeta = getSubmissionStatusMeta(submission.status);
   const salaryRange = job
     ? job.job_type === "contract"
       ? formatCompactRange(job.bill_rate_min, job.bill_rate_max, { suffix: "/hr" })
