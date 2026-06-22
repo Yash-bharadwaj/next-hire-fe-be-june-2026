@@ -146,7 +146,7 @@ export interface BusinessPartnerFilters {
   assigned_to?: string;
   scope?: "all" | "mine";
   search?: string;
-  sort_by?: "name" | "created_at" | "last_activity_at" | "status" | "priority";
+  sort_by?: "name" | "created_at" | "last_activity_at" | "status" | "priority" | "annual_revenue";
   sort_order?: "ASC" | "DESC";
 }
 
@@ -157,6 +157,7 @@ export interface BusinessPartnerContact {
   title?: string;
   email?: string;
   phone?: string;
+  comments?: string;
   is_primary: boolean;
   created_at: string;
   updated_at: string;
@@ -167,6 +168,7 @@ export interface CreateBusinessPartnerContactRequest {
   title?: string;
   email?: string;
   phone?: string;
+  comments?: string;
   is_primary?: boolean;
 }
 

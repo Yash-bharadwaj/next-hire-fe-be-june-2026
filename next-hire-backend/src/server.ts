@@ -22,6 +22,7 @@ import {
   ensurePgVectorSupport,
   ensureNewSubmissionStatuses,
   ensureHumanReadableIds,
+  ensureNewTaskStatuses,
 } from "./utils/schemaPatcher";
 
 // Routes
@@ -39,6 +40,7 @@ import placementRoutes from "./routes/placements";
 import businessPartnerRoutes from "./routes/businessPartners";
 import dashboardRoutes from "./routes/dashboard";
 import fileRoutes from "./routes/files";
+import calendarEventRoutes from "./routes/calendarEvents";
 
 // Load environment variables
 dotenv.config();
@@ -132,6 +134,7 @@ app.use(`/api/${API_VERSION}/placements`, placementRoutes);
 app.use(`/api/${API_VERSION}/business-partners`, businessPartnerRoutes);
 app.use(`/api/${API_VERSION}/dashboard`, dashboardRoutes);
 app.use(`/api/${API_VERSION}/files`, fileRoutes);
+app.use(`/api/${API_VERSION}/calendar-events`, calendarEventRoutes);
 
 // Error handling middleware
 app.use(notFoundHandler);
@@ -147,6 +150,7 @@ const startServer = async () => {
     await ensureUserProfileImageColumn();
     await ensureEmbeddingColumns();
     await ensureNewSubmissionStatuses();
+    await ensureNewTaskStatuses();
     applyAssociations();
     // Test database connection
     await sequelize.authenticate();
