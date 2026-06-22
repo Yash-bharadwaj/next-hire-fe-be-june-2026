@@ -4,6 +4,12 @@ import { auth } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { generalDocumentUpload } from "../middleware/upload";
 import {
+  buildAddNoteValidation,
+  buildUpdateNoteValidation,
+  buildNoteIdValidation,
+  buildAttachmentValidation,
+} from "../validators/noteValidators";
+import {
   getInterviews,
   getInterviewById,
   createInterview,
@@ -52,43 +58,10 @@ const paginationValidation = [
     .withMessage("Valid submission ID is required"),
 ];
 
-const noteCategories = ["technical", "behavioral", "feedback", "general"];
-
-const addNoteValidation = [
-  param("id").isUUID().withMessage("Valid interview ID is required"),
-  body("content").trim().notEmpty().withMessage("Note content is required"),
-  body("title").optional().isString(),
-  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
-  body("isPrivate").optional().isBoolean(),
-  body("tags").optional().isArray().withMessage("Tags must be an array"),
-];
-
-const updateNoteValidation = [
-  param("id").isUUID().withMessage("Valid interview ID is required"),
-  param("noteId").notEmpty().withMessage("Valid note ID is required"),
-  body("content").optional().trim().notEmpty().withMessage("Note content cannot be empty"),
-  body("title").optional().isString(),
-  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
-  body("isPrivate").optional().isBoolean(),
-  body("tags").optional().isArray().withMessage("Tags must be an array"),
-];
-
-const noteIdValidation = [
-  param("id").isUUID().withMessage("Valid interview ID is required"),
-  param("noteId").notEmpty().withMessage("Valid note ID is required"),
-];
-
-const attachmentValidation = [
-  param("id").isUUID().withMessage("Valid interview ID is required"),
-  body("url").optional().trim().notEmpty().withMessage("Attachment URL cannot be empty"),
-  body("name").optional().isString(),
-  body("document_type")
-    .optional()
-    .isIn(["PDF", "DOC", "DOCX", "IMG", "OTHER"])
-    .withMessage("Invalid document type"),
-  body("valid_from").optional().isISO8601().withMessage("Valid 'valid from' date required"),
-  body("valid_to").optional().isISO8601().withMessage("Valid 'valid to' date required"),
-];
+const addNoteValidation = buildAddNoteValidation("interview");
+const updateNoteValidation = buildUpdateNoteValidation("interview");
+const noteIdValidation = buildNoteIdValidation("interview");
+const attachmentValidation = buildAttachmentValidation("interview");
 
 const createInterviewValidation = [
   body("submission_id")

@@ -4,6 +4,12 @@ import { auth } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { generalDocumentUpload } from "../middleware/upload";
 import {
+  buildAddNoteValidation,
+  buildUpdateNoteValidation,
+  buildNoteIdValidation,
+  buildAttachmentValidation,
+} from "../validators/noteValidators";
+import {
   getBusinessPartners,
   getBusinessPartnerById,
   createBusinessPartner,
@@ -142,43 +148,10 @@ const contactIdValidation = [
   param("contactId").isUUID().withMessage("Valid contact ID is required"),
 ];
 
-const noteCategories = ["technical", "behavioral", "feedback", "general"];
-
-const addNoteValidation = [
-  param("id").isUUID().withMessage("Valid business partner ID is required"),
-  body("content").trim().notEmpty().withMessage("Note content is required"),
-  body("title").optional().isString(),
-  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
-  body("isPrivate").optional().isBoolean(),
-  body("tags").optional().isArray().withMessage("Tags must be an array"),
-];
-
-const updateNoteValidation = [
-  param("id").isUUID().withMessage("Valid business partner ID is required"),
-  param("noteId").notEmpty().withMessage("Valid note ID is required"),
-  body("content").optional().trim().notEmpty().withMessage("Note content cannot be empty"),
-  body("title").optional().isString(),
-  body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
-  body("isPrivate").optional().isBoolean(),
-  body("tags").optional().isArray().withMessage("Tags must be an array"),
-];
-
-const noteIdValidation = [
-  param("id").isUUID().withMessage("Valid business partner ID is required"),
-  param("noteId").notEmpty().withMessage("Valid note ID is required"),
-];
-
-const attachmentValidation = [
-  param("id").isUUID().withMessage("Valid business partner ID is required"),
-  body("url").optional().trim().notEmpty().withMessage("Attachment URL cannot be empty"),
-  body("name").optional().isString(),
-  body("document_type")
-    .optional()
-    .isIn(["PDF", "DOC", "DOCX", "IMG", "OTHER"])
-    .withMessage("Invalid document type"),
-  body("valid_from").optional().isISO8601().withMessage("Valid 'valid from' date required"),
-  body("valid_to").optional().isISO8601().withMessage("Valid 'valid to' date required"),
-];
+const addNoteValidation = buildAddNoteValidation("business partner");
+const updateNoteValidation = buildUpdateNoteValidation("business partner");
+const noteIdValidation = buildNoteIdValidation("business partner");
+const attachmentValidation = buildAttachmentValidation("business partner");
 
 const paginationValidation = [
   query("page")
