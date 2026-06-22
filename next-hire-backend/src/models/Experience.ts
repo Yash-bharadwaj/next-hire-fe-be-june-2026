@@ -1,6 +1,7 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import { sequelize } from "../config/database";
 import { Candidate } from "./Candidate";
+import { jsonArrayColumn } from "../utils/sequelizeFields";
 
 export interface ExperienceAttributes {
   id: string;
@@ -90,30 +91,8 @@ Experience.init(
       type: DataTypes.TEXT,
       allowNull: true,
     },
-    achievements: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("achievements") as unknown as string;
-        return value ? JSON.parse(value) : [];
-      },
-      set(value: string[]) {
-        this.setDataValue("achievements", JSON.stringify(value || []) as any);
-      },
-    },
-    technologies: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("technologies") as unknown as string;
-        return value ? JSON.parse(value) : [];
-      },
-      set(value: string[]) {
-        this.setDataValue("technologies", JSON.stringify(value || []) as any);
-      },
-    },
+    achievements: jsonArrayColumn("achievements", { unsafeParse: true }),
+    technologies: jsonArrayColumn("technologies", { unsafeParse: true }),
   },
   {
     sequelize,

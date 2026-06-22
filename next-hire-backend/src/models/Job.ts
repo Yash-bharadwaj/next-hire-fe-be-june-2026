@@ -1,6 +1,7 @@
 import { DataTypes, Model, Optional, Op } from "sequelize";
 import { sequelize } from "../config/database";
 import { User } from "./User";
+import { jsonArrayColumn } from "../utils/sequelizeFields";
 
 export interface JobAttributes {
   id: string;
@@ -228,46 +229,8 @@ Job.init(
         max: 50,
       },
     },
-    required_skills: {
-      type: DataTypes.TEXT,
-      allowNull: false,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("required_skills") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: string[]) {
-        this.setDataValue(
-          "required_skills",
-          JSON.stringify(value || []) as any
-        );
-      },
-    },
-    preferred_skills: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("preferred_skills") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: string[]) {
-        this.setDataValue(
-          "preferred_skills",
-          JSON.stringify(value || []) as any
-        );
-      },
-    },
+    required_skills: jsonArrayColumn("required_skills", { allowNull: false }),
+    preferred_skills: jsonArrayColumn("preferred_skills"),
     education_requirements: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -344,40 +307,8 @@ Job.init(
       type: DataTypes.DATE,
       allowNull: true,
     },
-    notes_history: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("notes_history") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: any[]) {
-        this.setDataValue("notes_history", JSON.stringify(value || []));
-      },
-    },
-    attachments: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("attachments") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: any[]) {
-        this.setDataValue("attachments", JSON.stringify(value || []));
-      },
-    },
+    notes_history: jsonArrayColumn("notes_history"),
+    attachments: jsonArrayColumn("attachments"),
     embedding: {
       type: DataTypes.TEXT,
       allowNull: true,

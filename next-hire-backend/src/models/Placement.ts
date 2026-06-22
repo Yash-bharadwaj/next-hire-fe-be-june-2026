@@ -4,6 +4,7 @@ import { User } from "./User";
 import { Job } from "./Job";
 import { Candidate } from "./Candidate";
 import { Submission } from "./Submission";
+import { jsonArrayColumn } from "../utils/sequelizeFields";
 
 export interface PlacementAttributes {
   id: string;
@@ -288,40 +289,8 @@ Placement.init(
       type: DataTypes.ENUM("pending", "renewed", "not_renewed"),
       allowNull: true,
     },
-    notes_history: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("notes_history") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: any[]) {
-        this.setDataValue("notes_history", JSON.stringify(value || []));
-      },
-    },
-    attachments: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("attachments") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: any[]) {
-        this.setDataValue("attachments", JSON.stringify(value || []));
-      },
-    },
+    notes_history: jsonArrayColumn("notes_history"),
+    attachments: jsonArrayColumn("attachments"),
     created_by: {
       type: DataTypes.UUID,
       allowNull: false,

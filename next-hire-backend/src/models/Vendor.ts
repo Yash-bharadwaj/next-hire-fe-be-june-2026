@@ -1,6 +1,7 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import { sequelize } from "../config/database";
 import { User } from "./User";
+import { jsonArrayColumn } from "../utils/sequelizeFields";
 
 export interface VendorAttributes {
   id: string;
@@ -105,21 +106,7 @@ Vendor.init(
       type: DataTypes.STRING,
       allowNull: true,
     },
-    specializations: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("specializations") as unknown as string;
-        return value ? JSON.parse(value) : [];
-      },
-      set(value: string[]) {
-        this.setDataValue(
-          "specializations",
-          JSON.stringify(value || []) as any
-        );
-      },
-    },
+    specializations: jsonArrayColumn("specializations", { unsafeParse: true }),
     years_in_business: {
       type: DataTypes.INTEGER,
       allowNull: true,

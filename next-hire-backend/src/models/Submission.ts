@@ -3,6 +3,7 @@ import { sequelize } from "../config/database";
 import { User } from "./User";
 import { Job } from "./Job";
 import { Candidate } from "./Candidate";
+import { jsonArrayColumn } from "../utils/sequelizeFields";
 
 export interface SubmissionAttributes {
   id: string;
@@ -204,57 +205,9 @@ Submission.init(
         key: "id",
       },
     },
-    attachments: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("attachments") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: any[]) {
-        this.setDataValue("attachments", JSON.stringify(value || []));
-      },
-    },
-    notes_history: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("notes_history") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: any[]) {
-        this.setDataValue("notes_history", JSON.stringify(value || []));
-      },
-    },
-    status_history: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("status_history") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: any[]) {
-        this.setDataValue("status_history", JSON.stringify(value || []));
-      },
-    },
+    attachments: jsonArrayColumn("attachments"),
+    notes_history: jsonArrayColumn("notes_history"),
+    status_history: jsonArrayColumn("status_history"),
   },
   {
     sequelize,

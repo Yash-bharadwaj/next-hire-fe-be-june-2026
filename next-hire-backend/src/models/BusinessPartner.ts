@@ -1,6 +1,7 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import { sequelize } from "../config/database";
 import { User } from "./User";
+import { jsonArrayColumn } from "../utils/sequelizeFields";
 
 export interface BusinessPartnerAttributes {
   id: string;
@@ -263,40 +264,8 @@ BusinessPartner.init(
       allowNull: true,
       defaultValue: "[]",
     },
-    notes_history: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("notes_history") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: any[]) {
-        this.setDataValue("notes_history", JSON.stringify(value || []));
-      },
-    },
-    attachments: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("attachments") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: any[]) {
-        this.setDataValue("attachments", JSON.stringify(value || []));
-      },
-    },
+    notes_history: jsonArrayColumn("notes_history"),
+    attachments: jsonArrayColumn("attachments"),
     created_by: {
       type: DataTypes.UUID,
       allowNull: false,

@@ -1,6 +1,7 @@
 import { DataTypes, Model, Optional, Op } from "sequelize";
 import { sequelize } from "../config/database";
 import { User } from "./User";
+import { jsonArrayColumn } from "../utils/sequelizeFields";
 
 export interface CandidateAttributes {
   id: string;
@@ -154,57 +155,14 @@ Candidate.init(
         isUrl: true,
       },
     },
-    skills: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("skills") as unknown as string;
-        return value ? JSON.parse(value) : [];
-      },
-      set(value: string[]) {
-        this.setDataValue("skills", JSON.stringify(value || []) as any);
-      },
-    },
+    skills: jsonArrayColumn("skills", { unsafeParse: true }),
     availability_status: {
       type: DataTypes.ENUM("available", "not_available", "interviewing"),
       allowNull: false,
       defaultValue: "available",
     },
-    preferred_job_types: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue(
-          "preferred_job_types"
-        ) as unknown as string;
-        return value ? JSON.parse(value) : [];
-      },
-      set(value: string[]) {
-        this.setDataValue(
-          "preferred_job_types",
-          JSON.stringify(value || []) as any
-        );
-      },
-    },
-    preferred_locations: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue(
-          "preferred_locations"
-        ) as unknown as string;
-        return value ? JSON.parse(value) : [];
-      },
-      set(value: string[]) {
-        this.setDataValue(
-          "preferred_locations",
-          JSON.stringify(value || []) as any
-        );
-      },
-    },
+    preferred_job_types: jsonArrayColumn("preferred_job_types", { unsafeParse: true }),
+    preferred_locations: jsonArrayColumn("preferred_locations", { unsafeParse: true }),
     bio: {
       type: DataTypes.TEXT,
       allowNull: true,

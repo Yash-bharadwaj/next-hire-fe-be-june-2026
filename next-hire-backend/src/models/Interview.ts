@@ -2,6 +2,7 @@ import { DataTypes, Model, Optional, Op } from "sequelize";
 import { sequelize } from "../config/database";
 import { User } from "./User";
 import { Submission } from "./Submission";
+import { jsonArrayColumn } from "../utils/sequelizeFields";
 
 export interface InterviewAttributes {
   id: string;
@@ -136,40 +137,8 @@ Interview.init(
       type: DataTypes.TEXT,
       allowNull: true,
     },
-    attachments: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("attachments") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: any[]) {
-        this.setDataValue("attachments", JSON.stringify(value || []) as any);
-      },
-    },
-    notes_history: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: "[]",
-      get() {
-        const value = this.getDataValue("notes_history") as unknown as string;
-        if (!value) return [];
-        try {
-          return JSON.parse(value);
-        } catch {
-          return [];
-        }
-      },
-      set(value: any[]) {
-        this.setDataValue("notes_history", JSON.stringify(value || []) as any);
-      },
-    },
+    attachments: jsonArrayColumn("attachments"),
+    notes_history: jsonArrayColumn("notes_history"),
     created_by: {
       type: DataTypes.UUID,
       allowNull: false,
