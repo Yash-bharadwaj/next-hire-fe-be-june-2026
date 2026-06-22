@@ -79,6 +79,7 @@ import { Loader2 } from "lucide-react";
 import { ExpandableText } from "@/components/ExpandableText";
 import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { formatCompactCurrency } from "@/lib/format";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 // Candidate data will be fetched from API - no static data needed
 
@@ -154,7 +155,10 @@ const CandidateDetail = () => {
 
   // Personalization settings state
   const [isPersonalizationOpen, setIsPersonalizationOpen] = useState(false);
-  const [personalizationSettings, setPersonalizationSettings] = useState(null);
+  const [personalizationSettings, setPersonalizationSettings] = useLocalStorage(
+    "candidateDetailPersonalization",
+    (error) => console.error("Failed to parse personalization settings:", error)
+  );
 
   // Notes derived from real submission history (populated after fetch)
   const [notes, setNotes] = useState<any[]>([]);
@@ -446,18 +450,6 @@ const CandidateDetail = () => {
       setSubmitJobSaving(false);
     }
   };
-
-  // Load personalization settings from localStorage on component mount
-  useEffect(() => {
-    const saved = localStorage.getItem("candidateDetailPersonalization");
-    if (saved) {
-      try {
-        setPersonalizationSettings(JSON.parse(saved));
-      } catch (error) {
-        console.error("Failed to parse personalization settings:", error);
-      }
-    }
-  }, []);
 
   // Listen for personalization settings event from TopNavbar
   useEffect(() => {
@@ -1749,13 +1741,7 @@ const CandidateDetail = () => {
       <CandidateDetailPersonalizationSettings
         isOpen={isPersonalizationOpen}
         onClose={() => setIsPersonalizationOpen(false)}
-        onSave={(settings) => {
-          setPersonalizationSettings(settings);
-          localStorage.setItem(
-            "candidateDetailPersonalization",
-            JSON.stringify(settings)
-          );
-        }}
+        onSave={setPersonalizationSettings}
         currentSettings={personalizationSettings}
       />
     </div>

@@ -81,6 +81,7 @@ import {
   BusinessPartnerJob,
 } from "@/services/businessPartnerService";
 import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/recruiterService";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 const formatTeamMemberName = (member: TeamMember) => {
   const name = [member.recruiterProfile?.first_name, member.recruiterProfile?.last_name]
@@ -108,7 +109,7 @@ const BusinessPartnerDetail = () => {
 
   // Personalization settings state
   const [isPersonalizationOpen, setIsPersonalizationOpen] = useState(false);
-  const [personalizationSettings, setPersonalizationSettings] = useState(null);
+  const [personalizationSettings, setPersonalizationSettings] = useLocalStorage('businessPartnerDetailPersonalization');
 
   // Edit/delete state
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -338,13 +339,8 @@ const BusinessPartnerDetail = () => {
     }
   };
 
-  // Load personalization settings and event listener
+  // Personalization settings event listener
   useEffect(() => {
-    const saved = localStorage.getItem('businessPartnerDetailPersonalization');
-    if (saved) {
-      try { setPersonalizationSettings(JSON.parse(saved)); } catch (error) {}
-    }
-
     const handleOpenPersonalization = () => setIsPersonalizationOpen(true);
     window.addEventListener('openPersonalizationSettings', handleOpenPersonalization);
     return () => window.removeEventListener('openPersonalizationSettings', handleOpenPersonalization);
@@ -1170,10 +1166,7 @@ const BusinessPartnerDetail = () => {
         isOpen={isPersonalizationOpen}
         onClose={() => setIsPersonalizationOpen(false)}
         currentSettings={personalizationSettings}
-        onSave={(settings) => {
-          setPersonalizationSettings(settings);
-          localStorage.setItem('businessPartnerDetailPersonalization', JSON.stringify(settings));
-        }}
+        onSave={setPersonalizationSettings}
       />
 
       {/* Edit Partner Dialog */}

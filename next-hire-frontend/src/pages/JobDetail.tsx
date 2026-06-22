@@ -119,6 +119,7 @@ import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
 import { formatCompactRange } from "@/lib/format";
 import type { TeamMember, Task, TaskPriority } from "@/services/recruiterService";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 // Local type definitions
 interface Document {
@@ -706,7 +707,10 @@ const JobDetail = () => {
 
   // Personalization settings state
   const [isPersonalizationOpen, setIsPersonalizationOpen] = useState(false);
-  const [personalizationSettings, setPersonalizationSettings] = useState(null);
+  const [personalizationSettings] = useLocalStorage(
+    "jobDetailPersonalization",
+    (error) => console.error("Failed to parse personalization settings:", error)
+  );
 
   // Mock data for users and roles
   const usersData = {
@@ -765,18 +769,6 @@ const JobDetail = () => {
       { id: 7, name: "Collaborator" },
     ],
   };
-
-  // Load personalization settings from localStorage on component mount
-  useEffect(() => {
-    const saved = localStorage.getItem("jobDetailPersonalization");
-    if (saved) {
-      try {
-        setPersonalizationSettings(JSON.parse(saved));
-      } catch (error) {
-        console.error("Failed to parse personalization settings:", error);
-      }
-    }
-  }, []);
 
   // Listen for personalization settings event from TopNavbar
   useEffect(() => {
