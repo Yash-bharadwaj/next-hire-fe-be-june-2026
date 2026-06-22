@@ -1,6 +1,5 @@
 import { Response } from "express";
 import { Op } from "sequelize";
-import { randomUUID } from "crypto";
 import {
   User,
   Recruiter,
@@ -23,7 +22,8 @@ import { AuthenticatedRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { sendEmail } from "../utils/email";
 import { isJobStaff } from "../utils/jobPermissions";
-import { formatUserName, prepareNotesAndAttachmentsForResponse } from "../utils/notesAndAttachments";
+import { prepareNotesAndAttachmentsForResponse } from "../utils/notesAndAttachments";
+import { createNoteHandlers } from "../utils/noteHandlers";
 import { scoreJobFit } from "../services/aiParsingService";
 import { buildCandidateProfileText, buildJobEmbeddingText } from "./candidateSearchController";
 import { estimatePayRate } from "../services/aiParsingService";
@@ -1032,193 +1032,22 @@ export const getSubmissionDetails = asyncHandler(
 );
 
 // Add note to submission
-export const addSubmissionNote = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
-    const { submissionId } = req.params;
-    const { title, content, category, isPrivate, tags } = req.body;
-    const userId = req.user?.userId;
+// Note/attachment CRUD for submissions - anyone staffing the underlying job
+// may manage these; unlike the other three entities, there's no separate
+// recruiter-role pre-check, just isJobStaff.
+const submissionNoteHandlers = createNoteHandlers<Submission>({
+  idParam: "submissionId",
+  entityLabel: "submission",
+  mirrorToNotesField: true,
+  requireRecruiterRole: false,
+  findRecord: (id) => Submission.findByPk(id, { include: [{ model: Job, as: "job" }] }),
+  canManage: (submission, userId) => isJobStaff(submission.job, userId),
+});
 
-    const submission = await Submission.findByPk(submissionId, {
-      include: [{ model: Job, as: "job" }],
-    });
-
-    if (!submission) {
-      throw createError("Submission not found", 404);
-    }
-
-    if (!isJobStaff(submission.job, userId)) {
-      throw createError(
-        "You do not have permission to update this submission",
-        403
-      );
-    }
-
-    const authorName = await formatUserName(userId);
-    const notesHistory = (submission as any).notes_history || [];
-    const entry = {
-      id: randomUUID(),
-      title: (title || "").trim(),
-      content: content.trim(),
-      category: category || "general",
-      isPrivate: !!isPrivate,
-      tags: Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string" && t.trim()) : [],
-      author: authorName,
-      by: userId,
-      at: new Date().toISOString(),
-    };
-    notesHistory.push(entry);
-
-    await submission.update({
-      notes: entry.content, // keep latest note in notes field for quick view
-      notes_history: notesHistory,
-    } as any);
-
-    res.json({
-      success: true,
-      message: "Note added successfully",
-      data: { notes_history: notesHistory },
-    });
-  }
-);
-
-// Edit an existing submission note
-export const updateSubmissionNote = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
-    const { submissionId, noteId } = req.params;
-    const { title, content, category, isPrivate, tags } = req.body;
-    const userId = req.user?.userId;
-
-    const submission = await Submission.findByPk(submissionId, {
-      include: [{ model: Job, as: "job" }],
-    });
-
-    if (!submission) {
-      throw createError("Submission not found", 404);
-    }
-    if (!isJobStaff(submission.job, userId)) {
-      throw createError("You do not have permission to update this submission", 403);
-    }
-
-    const notesHistory = (submission as any).notes_history || [];
-    const noteIndex = notesHistory.findIndex((n: any) => n.id === noteId);
-    if (noteIndex === -1) {
-      throw createError("Note not found", 404);
-    }
-
-    const existing = notesHistory[noteIndex];
-    notesHistory[noteIndex] = {
-      ...existing,
-      title: title !== undefined ? title.trim() : existing.title,
-      content: content !== undefined ? content.trim() : existing.content,
-      category: category !== undefined ? category : existing.category,
-      isPrivate: isPrivate !== undefined ? !!isPrivate : existing.isPrivate,
-      tags: Array.isArray(tags)
-        ? tags.filter((t: any) => typeof t === "string" && t.trim())
-        : existing.tags,
-      edited_at: new Date().toISOString(),
-    };
-
-    await submission.update({ notes_history: notesHistory } as any);
-
-    res.json({
-      success: true,
-      message: "Note updated successfully",
-      data: { notes_history: notesHistory },
-    });
-  }
-);
-
-// Delete a note from a submission
-export const deleteSubmissionNote = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
-    const { submissionId, noteId } = req.params;
-    const userId = req.user?.userId;
-
-    const submission = await Submission.findByPk(submissionId, {
-      include: [{ model: Job, as: "job" }],
-    });
-
-    if (!submission) {
-      throw createError("Submission not found", 404);
-    }
-    if (!isJobStaff(submission.job, userId)) {
-      throw createError("You do not have permission to update this submission", 403);
-    }
-
-    const notesHistory = (submission as any).notes_history || [];
-    const noteIndex = notesHistory.findIndex((n: any) => n.id === noteId);
-    if (noteIndex === -1) {
-      throw createError("Note not found", 404);
-    }
-
-    notesHistory.splice(noteIndex, 1);
-    await submission.update({ notes_history: notesHistory } as any);
-
-    res.json({
-      success: true,
-      message: "Note deleted successfully",
-      data: { notes_history: notesHistory },
-    });
-  }
-);
-
-// Add a document to a submission - either an uploaded file or a pasted URL
-export const addSubmissionAttachment = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
-    const { submissionId } = req.params;
-    const { name, document_type, valid_from, valid_to } = req.body;
-    const userId = req.user?.userId;
-
-    const submission = await Submission.findByPk(submissionId, {
-      include: [{ model: Job, as: "job" }],
-    });
-
-    if (!submission) {
-      throw createError("Submission not found", 404);
-    }
-
-    if (!isJobStaff(submission.job, userId)) {
-      throw createError(
-        "You do not have permission to update this submission",
-        403
-      );
-    }
-
-    let url: string;
-    let size: number | undefined;
-    const file = (req as any).file;
-    if (file) {
-      const serverBase = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-      url = `${serverBase}/uploads/documents_tmp/${file.filename}`;
-      size = file.size;
-    } else if (req.body.url) {
-      url = req.body.url;
-    } else {
-      throw createError("A file or url is required", 400);
-    }
-
-    const attachments = (submission as any).attachments || [];
-    attachments.push({
-      id: randomUUID(),
-      url,
-      name: name || file?.originalname || url,
-      document_type: document_type || "OTHER",
-      size,
-      valid_from: valid_from || new Date().toISOString(),
-      valid_to: valid_to || undefined,
-      by: userId,
-      at: new Date().toISOString(),
-    });
-
-    await submission.update({ attachments } as any);
-
-    res.json({
-      success: true,
-      message: "Document uploaded successfully",
-      data: { attachments },
-    });
-  }
-);
+export const addSubmissionNote = submissionNoteHandlers.addNote;
+export const updateSubmissionNote = submissionNoteHandlers.updateNote;
+export const deleteSubmissionNote = submissionNoteHandlers.deleteNote;
+export const addSubmissionAttachment = submissionNoteHandlers.addAttachment;
 
 // "Assign to AI Agent" - have Gemini (re-)evaluate this candidate against the
 // job and persist the result as ai_score/ai_reasoning, reusing the exact same

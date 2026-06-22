@@ -1,6 +1,5 @@
 import { Response } from "express";
 import { Op, Sequelize } from "sequelize";
-import { randomUUID } from "crypto";
 import {
   Placement,
   Job,
@@ -14,7 +13,8 @@ import {
 } from "../models";
 import { logger } from "../utils/logger";
 import { AuthenticatedRequest } from "../middleware/auth";
-import { formatUserName, prepareNotesAndAttachmentsForResponse } from "../utils/notesAndAttachments";
+import { prepareNotesAndAttachmentsForResponse } from "../utils/notesAndAttachments";
+import { createNoteHandlers } from "../utils/noteHandlers";
 
 // Get placements with filters and pagination
 export const getPlacements = async (req: AuthenticatedRequest, res: Response) => {
@@ -813,209 +813,14 @@ export const updateOnboardingStatus = async (req: AuthenticatedRequest, res: Res
 };
 
 // Add a note to a placement
-export const addPlacementNote = async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { title, content, category, isPrivate, tags } = req.body;
-    const userId = req.user?.userId;
-    const userRole = req.user?.role;
+// Note/attachment CRUD for placements - the assigned recruiter may manage these.
+const placementNoteHandlers = createNoteHandlers<Placement>({
+  entityLabel: "placement",
+  findRecord: (id) => Placement.findByPk(id),
+  canManage: (placement, userId) => placement.recruiter_id === userId,
+});
 
-    if (!userId || userRole !== "recruiter") {
-      return res.status(403).json({
-        success: false,
-        message: "Only recruiters can add placement notes",
-      });
-    }
-
-    const placement = await Placement.findByPk(id);
-    if (!placement) {
-      return res.status(404).json({ success: false, message: "Placement not found" });
-    }
-    if (placement.recruiter_id !== userId) {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-
-    const authorName = await formatUserName(userId);
-    const history = (placement as any).notes_history || [];
-    const entry = {
-      id: randomUUID(),
-      title: (title || "").trim(),
-      content: content.trim(),
-      category: category || "general",
-      isPrivate: !!isPrivate,
-      tags: Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string" && t.trim()) : [],
-      author: authorName,
-      by: userId,
-      at: new Date().toISOString(),
-    };
-    history.push(entry);
-    await placement.update({ notes_history: history } as any);
-
-    res.json({
-      success: true,
-      message: "Note added successfully",
-      data: { notes_history: history },
-    });
-  } catch (error) {
-    logger.error("Error adding placement note:", error);
-    res.status(500).json({ success: false, message: "Failed to add note" });
-  }
-};
-
-// Edit an existing placement note
-export const updatePlacementNote = async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { id, noteId } = req.params;
-    const { title, content, category, isPrivate, tags } = req.body;
-    const userId = req.user?.userId;
-    const userRole = req.user?.role;
-
-    if (!userId || userRole !== "recruiter") {
-      return res.status(403).json({
-        success: false,
-        message: "Only recruiters can edit placement notes",
-      });
-    }
-
-    const placement = await Placement.findByPk(id);
-    if (!placement) {
-      return res.status(404).json({ success: false, message: "Placement not found" });
-    }
-    if (placement.recruiter_id !== userId) {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-
-    const history = (placement as any).notes_history || [];
-    const noteIndex = history.findIndex((n: any) => n.id === noteId);
-    if (noteIndex === -1) {
-      return res.status(404).json({ success: false, message: "Note not found" });
-    }
-
-    const existing = history[noteIndex];
-    history[noteIndex] = {
-      ...existing,
-      title: title !== undefined ? title.trim() : existing.title,
-      content: content !== undefined ? content.trim() : existing.content,
-      category: category !== undefined ? category : existing.category,
-      isPrivate: isPrivate !== undefined ? !!isPrivate : existing.isPrivate,
-      tags: Array.isArray(tags)
-        ? tags.filter((t: any) => typeof t === "string" && t.trim())
-        : existing.tags,
-      edited_at: new Date().toISOString(),
-    };
-
-    await placement.update({ notes_history: history } as any);
-
-    res.json({
-      success: true,
-      message: "Note updated successfully",
-      data: { notes_history: history },
-    });
-  } catch (error) {
-    logger.error("Error updating placement note:", error);
-    res.status(500).json({ success: false, message: "Failed to update note" });
-  }
-};
-
-// Delete a note from a placement
-export const deletePlacementNote = async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { id, noteId } = req.params;
-    const userId = req.user?.userId;
-    const userRole = req.user?.role;
-
-    if (!userId || userRole !== "recruiter") {
-      return res.status(403).json({
-        success: false,
-        message: "Only recruiters can delete placement notes",
-      });
-    }
-
-    const placement = await Placement.findByPk(id);
-    if (!placement) {
-      return res.status(404).json({ success: false, message: "Placement not found" });
-    }
-    if (placement.recruiter_id !== userId) {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-
-    const history = (placement as any).notes_history || [];
-    const noteIndex = history.findIndex((n: any) => n.id === noteId);
-    if (noteIndex === -1) {
-      return res.status(404).json({ success: false, message: "Note not found" });
-    }
-
-    history.splice(noteIndex, 1);
-    await placement.update({ notes_history: history } as any);
-
-    res.json({
-      success: true,
-      message: "Note deleted successfully",
-      data: { notes_history: history },
-    });
-  } catch (error) {
-    logger.error("Error deleting placement note:", error);
-    res.status(500).json({ success: false, message: "Failed to delete note" });
-  }
-};
-
-// Add a document to a placement - either an uploaded file or a pasted URL
-export const addPlacementAttachment = async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { name, document_type, valid_from, valid_to } = req.body;
-    const userId = req.user?.userId;
-    const userRole = req.user?.role;
-
-    if (!userId || userRole !== "recruiter") {
-      return res.status(403).json({
-        success: false,
-        message: "Only recruiters can add placement attachments",
-      });
-    }
-
-    const placement = await Placement.findByPk(id);
-    if (!placement) {
-      return res.status(404).json({ success: false, message: "Placement not found" });
-    }
-    if (placement.recruiter_id !== userId) {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-
-    let url: string;
-    let size: number | undefined;
-    const file = (req as any).file;
-    if (file) {
-      const serverBase = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-      url = `${serverBase}/uploads/documents_tmp/${file.filename}`;
-      size = file.size;
-    } else if (req.body.url) {
-      url = req.body.url;
-    } else {
-      return res.status(400).json({ success: false, message: "A file or url is required" });
-    }
-
-    const attachments = (placement as any).attachments || [];
-    attachments.push({
-      id: randomUUID(),
-      url,
-      name: name || file?.originalname || url,
-      document_type: document_type || "OTHER",
-      size,
-      valid_from: valid_from || new Date().toISOString(),
-      valid_to: valid_to || undefined,
-      by: userId,
-      at: new Date().toISOString(),
-    });
-    await placement.update({ attachments } as any);
-
-    res.json({
-      success: true,
-      message: "Document uploaded successfully",
-      data: { attachments },
-    });
-  } catch (error) {
-    logger.error("Error adding placement attachment:", error);
-    res.status(500).json({ success: false, message: "Failed to add attachment" });
-  }
-};
+export const addPlacementNote = placementNoteHandlers.addNote;
+export const updatePlacementNote = placementNoteHandlers.updateNote;
+export const deletePlacementNote = placementNoteHandlers.deleteNote;
+export const addPlacementAttachment = placementNoteHandlers.addAttachment;

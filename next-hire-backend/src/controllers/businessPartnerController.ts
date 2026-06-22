@@ -1,12 +1,12 @@
 import { Response } from "express";
 import { Op, Sequelize } from "sequelize";
-import { randomUUID } from "crypto";
 import { BusinessPartner } from "../models/BusinessPartner";
 import { BusinessPartnerContact } from "../models/BusinessPartnerContact";
 import { User, Recruiter, Job, Placement, sequelize } from "../models";
 import { logger } from "../utils/logger";
 import { AuthenticatedRequest } from "../middleware/auth";
-import { formatUserName, prepareNotesAndAttachmentsForResponse } from "../utils/notesAndAttachments";
+import { prepareNotesAndAttachmentsForResponse } from "../utils/notesAndAttachments";
+import { createNoteHandlers } from "../utils/noteHandlers";
 
 // A recruiter can act on a business partner they created or were assigned to manage.
 const canManagePartner = (partner: BusinessPartner, userId?: string): boolean =>
@@ -836,179 +836,17 @@ export const getBusinessPartnerRevenueTrend = async (req: AuthenticatedRequest, 
 };
 
 // Add a note to a business partner
-export const addBusinessPartnerNote = async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { title, content, category, isPrivate, tags } = req.body;
-    const userId = req.user?.userId;
-    const userRole = req.user?.role;
+// Note/attachment CRUD for business partners - the creator or assigned
+// account manager may manage these; add operations also bump
+// last_activity_at, which edits/deletes don't.
+const businessPartnerNoteHandlers = createNoteHandlers<BusinessPartner>({
+  entityLabel: "business partner",
+  findRecord: (id) => BusinessPartner.findByPk(id),
+  canManage: (partner, userId) => canManagePartner(partner, userId),
+  extraFieldsOnWrite: () => ({ last_activity_at: new Date() }),
+});
 
-    if (!userId || userRole !== "recruiter") {
-      return res.status(403).json({ success: false, message: "Only recruiters can add notes" });
-    }
-
-    const businessPartner = await BusinessPartner.findByPk(id);
-    if (!businessPartner) {
-      return res.status(404).json({ success: false, message: "Business partner not found" });
-    }
-    if (!canManagePartner(businessPartner, userId)) {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-
-    const authorName = await formatUserName(userId);
-    const history = (businessPartner as any).notes_history || [];
-    const entry = {
-      id: randomUUID(),
-      title: (title || "").trim(),
-      content: content.trim(),
-      category: category || "general",
-      isPrivate: !!isPrivate,
-      tags: Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string" && t.trim()) : [],
-      author: authorName,
-      by: userId,
-      at: new Date().toISOString(),
-    };
-    history.push(entry);
-    await businessPartner.update({ notes_history: history, last_activity_at: new Date() } as any);
-
-    res.json({ success: true, message: "Note added successfully", data: { notes_history: history } });
-  } catch (error) {
-    logger.error("Error adding business partner note:", error);
-    res.status(500).json({ success: false, message: "Failed to add note" });
-  }
-};
-
-// Edit an existing note
-export const updateBusinessPartnerNote = async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { id, noteId } = req.params;
-    const { title, content, category, isPrivate, tags } = req.body;
-    const userId = req.user?.userId;
-    const userRole = req.user?.role;
-
-    if (!userId || userRole !== "recruiter") {
-      return res.status(403).json({ success: false, message: "Only recruiters can edit notes" });
-    }
-
-    const businessPartner = await BusinessPartner.findByPk(id);
-    if (!businessPartner) {
-      return res.status(404).json({ success: false, message: "Business partner not found" });
-    }
-    if (!canManagePartner(businessPartner, userId)) {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-
-    const history = (businessPartner as any).notes_history || [];
-    const noteIndex = history.findIndex((n: any) => n.id === noteId);
-    if (noteIndex === -1) {
-      return res.status(404).json({ success: false, message: "Note not found" });
-    }
-
-    const existing = history[noteIndex];
-    history[noteIndex] = {
-      ...existing,
-      title: title !== undefined ? title.trim() : existing.title,
-      content: content !== undefined ? content.trim() : existing.content,
-      category: category !== undefined ? category : existing.category,
-      isPrivate: isPrivate !== undefined ? !!isPrivate : existing.isPrivate,
-      tags: Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string" && t.trim()) : existing.tags,
-      edited_at: new Date().toISOString(),
-    };
-
-    await businessPartner.update({ notes_history: history } as any);
-
-    res.json({ success: true, message: "Note updated successfully", data: { notes_history: history } });
-  } catch (error) {
-    logger.error("Error updating business partner note:", error);
-    res.status(500).json({ success: false, message: "Failed to update note" });
-  }
-};
-
-// Delete a note
-export const deleteBusinessPartnerNote = async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { id, noteId } = req.params;
-    const userId = req.user?.userId;
-    const userRole = req.user?.role;
-
-    if (!userId || userRole !== "recruiter") {
-      return res.status(403).json({ success: false, message: "Only recruiters can delete notes" });
-    }
-
-    const businessPartner = await BusinessPartner.findByPk(id);
-    if (!businessPartner) {
-      return res.status(404).json({ success: false, message: "Business partner not found" });
-    }
-    if (!canManagePartner(businessPartner, userId)) {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-
-    const history = (businessPartner as any).notes_history || [];
-    const noteIndex = history.findIndex((n: any) => n.id === noteId);
-    if (noteIndex === -1) {
-      return res.status(404).json({ success: false, message: "Note not found" });
-    }
-
-    history.splice(noteIndex, 1);
-    await businessPartner.update({ notes_history: history } as any);
-
-    res.json({ success: true, message: "Note deleted successfully", data: { notes_history: history } });
-  } catch (error) {
-    logger.error("Error deleting business partner note:", error);
-    res.status(500).json({ success: false, message: "Failed to delete note" });
-  }
-};
-
-// Add a document to a business partner - either an uploaded file or a pasted URL
-export const addBusinessPartnerAttachment = async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { name, document_type, valid_from, valid_to } = req.body;
-    const userId = req.user?.userId;
-    const userRole = req.user?.role;
-
-    if (!userId || userRole !== "recruiter") {
-      return res.status(403).json({ success: false, message: "Only recruiters can add attachments" });
-    }
-
-    const businessPartner = await BusinessPartner.findByPk(id);
-    if (!businessPartner) {
-      return res.status(404).json({ success: false, message: "Business partner not found" });
-    }
-    if (!canManagePartner(businessPartner, userId)) {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-
-    let url: string;
-    let size: number | undefined;
-    const file = (req as any).file;
-    if (file) {
-      const serverBase = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-      url = `${serverBase}/uploads/documents_tmp/${file.filename}`;
-      size = file.size;
-    } else if (req.body.url) {
-      url = req.body.url;
-    } else {
-      return res.status(400).json({ success: false, message: "A file or url is required" });
-    }
-
-    const attachments = (businessPartner as any).attachments || [];
-    attachments.push({
-      id: randomUUID(),
-      url,
-      name: name || file?.originalname || url,
-      document_type: document_type || "OTHER",
-      size,
-      valid_from: valid_from || new Date().toISOString(),
-      valid_to: valid_to || undefined,
-      by: userId,
-      at: new Date().toISOString(),
-    });
-    await businessPartner.update({ attachments, last_activity_at: new Date() } as any);
-
-    res.json({ success: true, message: "Document uploaded successfully", data: { attachments } });
-  } catch (error) {
-    logger.error("Error adding business partner attachment:", error);
-    res.status(500).json({ success: false, message: "Failed to add attachment" });
-  }
-};
+export const addBusinessPartnerNote = businessPartnerNoteHandlers.addNote;
+export const updateBusinessPartnerNote = businessPartnerNoteHandlers.updateNote;
+export const deleteBusinessPartnerNote = businessPartnerNoteHandlers.deleteNote;
+export const addBusinessPartnerAttachment = businessPartnerNoteHandlers.addAttachment;

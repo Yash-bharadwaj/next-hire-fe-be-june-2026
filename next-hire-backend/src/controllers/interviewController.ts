@@ -1,6 +1,5 @@
 import { Response } from "express";
 import { Op } from "sequelize";
-import { randomUUID } from "crypto";
 import {
   Interview,
   Submission,
@@ -23,11 +22,11 @@ import { sendEmail } from "../utils/email";
 import { scoreJobFit } from "../services/aiParsingService";
 import { buildCandidateProfileText, buildJobEmbeddingText } from "./candidateSearchController";
 import {
-  formatUserName,
   normalizeNotesHistory,
   normalizeAttachments,
   prepareNotesAndAttachmentsForResponse as prepareInterviewForResponse,
 } from "../utils/notesAndAttachments";
+import { createNoteHandlers } from "../utils/noteHandlers";
 
 // Get interviews (role-based access)
 export const getInterviews = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -645,189 +644,22 @@ export const updateInterview = asyncHandler(async (req: AuthRequest, res: Respon
   });
 });
 
-// Add a note to an interview (recruiters who staff the underlying job)
-export const addInterviewNote = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
-  const { title, content, category, isPrivate, tags } = req.body;
-  const userId = req.user?.userId;
-  const userRole = req.user?.role;
-
-  if (userRole !== "recruiter") {
-    throw createError("Only recruiters can add interview notes", 403);
-  }
-
-  const interview = await Interview.findByPk(id, {
-    include: [{ model: Submission, as: "submission", include: [{ model: Job, as: "job" }] }],
-  });
-  if (!interview) {
-    throw createError("Interview not found", 404);
-  }
-  if (!isJobStaff(interview.submission?.job, userId)) {
-    throw createError("You do not have permission to update this interview", 403);
-  }
-
-  const authorName = await formatUserName(userId);
-  const history = (interview as any).notes_history || [];
-  const entry = {
-    id: randomUUID(),
-    title: (title || "").trim(),
-    content: content.trim(),
-    category: category || "general",
-    isPrivate: !!isPrivate,
-    tags: Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string" && t.trim()) : [],
-    author: authorName,
-    by: userId,
-    at: new Date().toISOString(),
-  };
-  history.push(entry);
-  await interview.update({ notes_history: history, notes: entry.content } as any);
-
-  res.json({
-    success: true,
-    message: "Note added successfully",
-    data: { notes_history: history },
-  });
+// Note/attachment CRUD for interviews - any recruiter staffing the
+// underlying job (via the interview's submission -> job) may manage these.
+const interviewNoteHandlers = createNoteHandlers<Interview>({
+  entityLabel: "interview",
+  mirrorToNotesField: true,
+  findRecord: (id) =>
+    Interview.findByPk(id, {
+      include: [{ model: Submission, as: "submission", include: [{ model: Job, as: "job" }] }],
+    }),
+  canManage: (interview, userId) => isJobStaff(interview.submission?.job, userId),
 });
 
-// Edit an existing note (recruiters who staff the underlying job)
-export const updateInterviewNote = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { id, noteId } = req.params;
-  const { title, content, category, isPrivate, tags } = req.body;
-  const userId = req.user?.userId;
-  const userRole = req.user?.role;
-
-  if (userRole !== "recruiter") {
-    throw createError("Only recruiters can edit interview notes", 403);
-  }
-
-  const interview = await Interview.findByPk(id, {
-    include: [{ model: Submission, as: "submission", include: [{ model: Job, as: "job" }] }],
-  });
-  if (!interview) {
-    throw createError("Interview not found", 404);
-  }
-  if (!isJobStaff(interview.submission?.job, userId)) {
-    throw createError("You do not have permission to update this interview", 403);
-  }
-
-  const history = (interview as any).notes_history || [];
-  const noteIndex = history.findIndex((n: any) => n.id === noteId);
-  if (noteIndex === -1) {
-    throw createError("Note not found", 404);
-  }
-
-  const existing = history[noteIndex];
-  history[noteIndex] = {
-    ...existing,
-    title: title !== undefined ? title.trim() : existing.title,
-    content: content !== undefined ? content.trim() : existing.content,
-    category: category !== undefined ? category : existing.category,
-    isPrivate: isPrivate !== undefined ? !!isPrivate : existing.isPrivate,
-    tags: Array.isArray(tags)
-      ? tags.filter((t: any) => typeof t === "string" && t.trim())
-      : existing.tags,
-    edited_at: new Date().toISOString(),
-  };
-
-  await interview.update({ notes_history: history } as any);
-
-  res.json({
-    success: true,
-    message: "Note updated successfully",
-    data: { notes_history: history },
-  });
-});
-
-// Delete a note from an interview
-export const deleteInterviewNote = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { id, noteId } = req.params;
-  const userId = req.user?.userId;
-  const userRole = req.user?.role;
-
-  if (userRole !== "recruiter") {
-    throw createError("Only recruiters can delete interview notes", 403);
-  }
-
-  const interview = await Interview.findByPk(id, {
-    include: [{ model: Submission, as: "submission", include: [{ model: Job, as: "job" }] }],
-  });
-  if (!interview) {
-    throw createError("Interview not found", 404);
-  }
-  if (!isJobStaff(interview.submission?.job, userId)) {
-    throw createError("You do not have permission to update this interview", 403);
-  }
-
-  const history = (interview as any).notes_history || [];
-  const noteIndex = history.findIndex((n: any) => n.id === noteId);
-  if (noteIndex === -1) {
-    throw createError("Note not found", 404);
-  }
-
-  history.splice(noteIndex, 1);
-  await interview.update({ notes_history: history } as any);
-
-  res.json({
-    success: true,
-    message: "Note deleted successfully",
-    data: { notes_history: history },
-  });
-});
-
-// Add a document to an interview - either an uploaded file or a pasted URL
-export const addInterviewAttachment = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
-  const { name, document_type, valid_from, valid_to } = req.body;
-  const userId = req.user?.userId;
-  const userRole = req.user?.role;
-
-  if (userRole !== "recruiter") {
-    throw createError("Only recruiters can add interview attachments", 403);
-  }
-
-  const interview = await Interview.findByPk(id, {
-    include: [{ model: Submission, as: "submission", include: [{ model: Job, as: "job" }] }],
-  });
-  if (!interview) {
-    throw createError("Interview not found", 404);
-  }
-  if (!isJobStaff(interview.submission?.job, userId)) {
-    throw createError("You do not have permission to update this interview", 403);
-  }
-
-  let url: string;
-  let size: number | undefined;
-  const file = (req as any).file;
-  if (file) {
-    const serverBase = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-    url = `${serverBase}/uploads/documents_tmp/${file.filename}`;
-    size = file.size;
-  } else if (req.body.url) {
-    url = req.body.url;
-  } else {
-    throw createError("A file or url is required", 400);
-  }
-
-  const attachments = (interview as any).attachments || [];
-  attachments.push({
-    id: randomUUID(),
-    url,
-    name: name || file?.originalname || url,
-    document_type: document_type || "OTHER",
-    size,
-    valid_from: valid_from || new Date().toISOString(),
-    valid_to: valid_to || undefined,
-    by: userId,
-    at: new Date().toISOString(),
-  });
-  await interview.update({ attachments } as any);
-
-  res.json({
-    success: true,
-    message: "Document uploaded successfully",
-    data: { attachments },
-  });
-});
+export const addInterviewNote = interviewNoteHandlers.addNote;
+export const updateInterviewNote = interviewNoteHandlers.updateNote;
+export const deleteInterviewNote = interviewNoteHandlers.deleteNote;
+export const addInterviewAttachment = interviewNoteHandlers.addAttachment;
 
 // "Assign to AI Agent" - have Gemini (re-)evaluate this candidate against the
 // job and persist the result as the submission's real ai_score, the same
