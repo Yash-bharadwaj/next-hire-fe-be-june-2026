@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +43,6 @@ import {
   Bot,
   UserCog,
   Settings,
-  Save,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -81,6 +81,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { PageLoadingState } from "@/components/PageLoadingState";
 import { ActionsMenuTrigger } from "@/components/ActionsMenuTrigger";
+import { NotesPanel, NoteRecord } from "@/components/NotesPanel";
 
 // Candidate data will be fetched from API - no static data needed
 
@@ -126,6 +127,7 @@ const CandidateDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   // All state hooks must be called before any conditional returns
   const [candidate, setCandidate] = useState<any>(null);
@@ -162,7 +164,7 @@ const CandidateDetail = () => {
   );
 
   // Notes derived from real submission history (populated after fetch)
-  const [notes, setNotes] = useState<any[]>([]);
+  const [notes, setNotes] = useState<NoteRecord[]>([]);
 
   // Submit to Job dialog state
   const [isSubmitJobOpen, setIsSubmitJobOpen] = useState(false);
@@ -170,16 +172,9 @@ const CandidateDetail = () => {
   const [submitJobId, setSubmitJobId] = useState("");
   const [submitJobSaving, setSubmitJobSaving] = useState(false);
 
-  // Add Note inline state
-  const [showAddNote, setShowAddNote] = useState(false);
-  const [addNoteText, setAddNoteText] = useState("");
+  // Which submission a new note is about - surfaced as NotesPanel's
+  // extraAddField since a candidate can have multiple active submissions.
   const [addNoteSubmissionId, setAddNoteSubmissionId] = useState("");
-  const [addNoteSaving, setAddNoteSaving] = useState(false);
-
-  // Notes filter and sort state
-  const [notesFilter, setNotesFilter] = useState("all");
-  const [notesSort, setNotesSort] = useState("newest");
-  const [notesSearch, setNotesSearch] = useState("");
 
   // Mock tasks
   const [tasks, setTasks] = useState([
@@ -261,84 +256,95 @@ const CandidateDetail = () => {
   // handleDocumentUpload) are appended on top of that.
   const [candidateDocuments, setCandidateDocuments] = useState<Document[]>([]);
 
+  // noteId -> submissionId, so NotesPanel's onUpdate/onDelete (which only
+  // receive a noteId) can route to the right submission's note endpoints.
+  const noteSubmissionMapRef = useRef<Record<string, string>>({});
+
   // Fetch candidate data from API
-  useEffect(() => {
-    const fetchCandidateData = async () => {
-      if (!id) return;
+  const fetchCandidateData = useCallback(async () => {
+    if (!id) return;
 
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await candidateSearchService.getCandidateDetails(id);
-        const candidateData = response.data.candidate;
-        setCandidate(candidateData);
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await candidateSearchService.getCandidateDetails(id);
+      const candidateData = response.data.candidate;
+      setCandidate(candidateData);
 
-        const candidateName = candidateSearchService.formatCandidateName(candidateData);
-        setCandidateDocuments(
-          (candidateData.resumes || []).map((resume) => ({
-            id: resume.id,
-            name: resume.file_name,
-            type: (resume.file_name.split(".").pop() || "FILE").toUpperCase(),
-            uploadDate: resume.created_at || new Date().toISOString(),
-            uploadedBy: candidateName,
-            url: `${API_BASE_URL}${resume.file_url}`,
-            description: resume.is_primary ? "Primary resume" : undefined,
-          }))
-        );
+      const candidateName = candidateSearchService.formatCandidateName(candidateData);
+      setCandidateDocuments(
+        (candidateData.resumes || []).map((resume) => ({
+          id: resume.id,
+          name: resume.file_name,
+          type: (resume.file_name.split(".").pop() || "FILE").toUpperCase(),
+          uploadDate: resume.created_at || new Date().toISOString(),
+          uploadedBy: candidateName,
+          url: `${API_BASE_URL}${resume.file_url}`,
+          description: resume.is_primary ? "Primary resume" : undefined,
+        }))
+      );
 
-        const apiSubmissions = response.data.submissions || [];
-        setSubmissions(apiSubmissions);
+      const apiSubmissions = response.data.submissions || [];
+      setSubmissions(apiSubmissions);
 
-        // Derive notes from submissions' notes_history / notes fields
-        const aggregatedNotes: any[] = [];
-        apiSubmissions.forEach((submission: any) => {
-          const history = Array.isArray(submission.notes_history)
-            ? submission.notes_history
-            : [];
+      // Derive notes from submissions' notes_history (preferring the richer
+      // id/title/category/isPrivate/tags/author shape written by the
+      // createNoteHandlers-backed endpoints; falling back to a synthesized
+      // shape for older entries that predate that migration).
+      const noteSubmissionMap: Record<string, string> = {};
+      const aggregatedNotes: NoteRecord[] = [];
+      apiSubmissions.forEach((submission: any) => {
+        const history = Array.isArray(submission.notes_history)
+          ? submission.notes_history
+          : [];
 
-          // If no history but a latest notes string exists, synthesize one entry
-          const effectiveHistory =
-            history.length > 0 || !submission.notes
-              ? history
-              : [
-                  {
-                    note: submission.notes,
-                    at: submission.submitted_at,
-                  },
-                ];
+        // If no history but a latest notes string exists, synthesize one entry
+        const effectiveHistory =
+          history.length > 0 || !submission.notes
+            ? history
+            : [{ note: submission.notes, at: submission.submitted_at }];
 
-          effectiveHistory.forEach((entry: any, idx: number) => {
-            if (!entry?.note) return;
-            aggregatedNotes.push({
-              id: `${submission.id}-${idx}`,
-              date: entry.at || submission.submitted_at,
-              author: "Recruiter",
-              content: entry.note,
-              category: "general",
-              priority: "medium",
-              jobTitle: submission.job?.title,
-              company: submission.job?.company_name,
-            });
+        const jobContext = submission.job?.title
+          ? `${submission.job.title}${submission.job?.company_name ? ` — ${submission.job.company_name}` : ""}`
+          : undefined;
+
+        effectiveHistory.forEach((entry: any, idx: number) => {
+          const content = entry?.content || entry?.note;
+          if (!content) return;
+          const noteId = entry.id || `${submission.id}-${idx}`;
+          noteSubmissionMap[noteId] = submission.id;
+          aggregatedNotes.push({
+            id: noteId,
+            title: entry.title || jobContext || "",
+            content,
+            category: entry.category || "general",
+            isPrivate: entry.isPrivate ?? false,
+            tags: entry.tags || [],
+            author: entry.author || (entry.by === user?.id ? "You" : "Recruiter"),
+            at: entry.at || submission.submitted_at,
           });
         });
-        setNotes(aggregatedNotes);
-      } catch (err: any) {
-        console.error("Error fetching candidate:", err);
-        setError(
-          err.response?.data?.message || "Failed to load candidate details"
-        );
-        toast({
-          title: "Error",
-          description: "Failed to load candidate details",
-          variant: "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
+      });
+      noteSubmissionMapRef.current = noteSubmissionMap;
+      setNotes(aggregatedNotes);
+    } catch (err: any) {
+      console.error("Error fetching candidate:", err);
+      setError(
+        err.response?.data?.message || "Failed to load candidate details"
+      );
+      toast({
+        title: "Error",
+        description: "Failed to load candidate details",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [id, toast, user?.id]);
 
+  useEffect(() => {
     fetchCandidateData();
-  }, [id, toast]);
+  }, [fetchCandidateData]);
 
   const openEditDialog = () => {
     if (!candidate) return;
@@ -383,41 +389,11 @@ const CandidateDetail = () => {
     }
   };
 
-  const handleAddNote = async () => {
-    if (!addNoteText.trim() || !addNoteSubmissionId) return;
-    setAddNoteSaving(true);
-    try {
-      await recruiterService.addSubmissionNote(addNoteSubmissionId, { content: addNoteText.trim() });
-      const linkedSub = (submissions as any[]).find((s: any) => s.id === addNoteSubmissionId);
-      setNotes((prev) => [
-        {
-          id: `local-${Date.now()}`,
-          date: new Date().toISOString(),
-          author: "Recruiter",
-          content: addNoteText.trim(),
-          category: "general",
-          priority: "medium",
-          jobTitle: linkedSub?.job?.title,
-          company: linkedSub?.job?.company_name,
-        },
-        ...prev,
-      ]);
-      setAddNoteText("");
-      setShowAddNote(false);
-      toast({ title: "Note added", description: "Note saved successfully." });
-    } catch (err: any) {
-      toast({ title: "Failed to save note", description: err?.response?.data?.message || err?.message || "Unknown error", variant: "destructive" });
-    } finally {
-      setAddNoteSaving(false);
-    }
-  };
-
-  const openAddNote = () => {
+  // Pre-select the submission for a new note when there's only one option,
+  // matching the picker's old auto-select-on-open behavior.
+  useEffect(() => {
     if (submissions.length === 1) setAddNoteSubmissionId((submissions as any[])[0].id);
-    else setAddNoteSubmissionId("");
-    setAddNoteText("");
-    setShowAddNote(true);
-  };
+  }, [submissions]);
 
   const openSubmitToJob = async () => {
     setSubmitJobId("");
@@ -486,37 +462,6 @@ const CandidateDetail = () => {
   };
 
   // Filter and sort functions
-  const getFilteredAndSortedNotes = () => {
-    let filtered = notes.filter((note) => {
-      const matchesFilter =
-        notesFilter === "all" || note.category === notesFilter;
-      const matchesSearch =
-        notesSearch === "" ||
-        note.content.toLowerCase().includes(notesSearch.toLowerCase()) ||
-        note.author.toLowerCase().includes(notesSearch.toLowerCase());
-      return matchesFilter && matchesSearch;
-    });
-
-    return filtered.sort((a, b) => {
-      switch (notesSort) {
-        case "newest":
-          return new Date(b.date).getTime() - new Date(a.date).getTime();
-        case "oldest":
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
-        case "author":
-          return a.author.localeCompare(b.author);
-        case "priority":
-          const priorityOrder = { high: 3, medium: 2, low: 1 };
-          return (
-            (priorityOrder[b.priority as keyof typeof priorityOrder] || 0) -
-            (priorityOrder[a.priority as keyof typeof priorityOrder] || 0)
-          );
-        default:
-          return 0;
-      }
-    });
-  };
-
   const getFilteredAndSortedTasks = () => {
     let filtered = tasks.filter((task) => {
       const matchesFilter =
@@ -725,10 +670,11 @@ const CandidateDetail = () => {
 
       const noteHistory = Array.isArray(s.notes_history) ? s.notes_history : [];
       noteHistory.forEach((n: any) => {
-        if (!n?.note) return;
+        const text = n?.content || n?.note;
+        if (!text) return;
         events.push({
           label: "Note Added",
-          detail: n.note.substring(0, 100) + (n.note.length > 100 ? "…" : ""),
+          detail: text.substring(0, 100) + (text.length > 100 ? "…" : ""),
           date: new Date(n.at || s.created_at),
           color: "from-orange-400 to-orange-500",
           icon: "message",
@@ -1162,7 +1108,7 @@ const CandidateDetail = () => {
                                 return (
                                   <>
                                     <p className="line-clamp-2">
-                                      {latest.note}
+                                      {latest.content || latest.note}
                                     </p>
                                     {latest.at && (
                                       <p className="text-xs text-gray-400 mt-1">
@@ -1241,96 +1187,39 @@ const CandidateDetail = () => {
             </TabsContent>
 
             <TabsContent value="notes" className="space-y-6 mt-0">
-              <Card className="card-gradient border-orange-200/50 shadow-lg">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xl bg-gradient-to-r from-orange-700 to-orange-600 bg-clip-text text-transparent">
-                      Candidate Notes & Comments
-                    </CardTitle>
-                    <Button size="sm" className="button-gradient" onClick={openAddNote} disabled={submissions.length === 0}>
-                      <Plus className="w-4 h-4 mr-1" />
-                      Add Note
-                    </Button>
-                  </div>
-
-                  {/* Inline Add Note form */}
-                  {showAddNote && (
-                    <div className="mt-4 pt-4 border-t space-y-3">
-                      {submissions.length > 1 && (
-                        <Select value={addNoteSubmissionId} onValueChange={setAddNoteSubmissionId}>
-                          <SelectTrigger className="border-orange-300">
-                            <SelectValue placeholder="Select a job / submission..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(submissions as any[]).map((s: any) => (
-                              <SelectItem key={s.id} value={s.id}>
-                                {s.job?.title || "Unknown job"}{s.job?.company_name ? ` — ${s.job.company_name}` : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      <Textarea
-                        placeholder="Write your note..."
-                        value={addNoteText}
-                        onChange={(e) => setAddNoteText(e.target.value)}
-                        className="min-h-[80px] border-orange-300 focus:border-orange-500"
-                        autoFocus
-                      />
-                      <div className="flex gap-2 justify-end">
-                        <Button size="sm" variant="outline" onClick={() => { setShowAddNote(false); setAddNoteText(""); }}>
-                          Cancel
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="button-gradient"
-                          onClick={handleAddNote}
-                          disabled={addNoteSaving || !addNoteText.trim() || !addNoteSubmissionId}
-                        >
-                          {addNoteSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Save className="w-4 h-4 mr-1" />}
-                          Save Note
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {notes.map((note, idx) => (
-                      <div
-                        key={note.id ?? idx}
-                        className="border border-orange-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center text-white flex-shrink-0">
-                              <User className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-800 text-sm">{note.author}</p>
-                              <p className="text-xs text-gray-500">
-                                {note.date ? new Date(note.date).toLocaleString() : ""}
-                              </p>
-                            </div>
-                          </div>
-                          {(note.jobTitle || note.company) && (
-                            <p className="text-xs text-gray-400">
-                              {[note.jobTitle, note.company].filter(Boolean).join(" • ")}
-                            </p>
-                          )}
-                        </div>
-                        <p className="text-gray-700 text-sm whitespace-pre-wrap">{note.content}</p>
-                      </div>
-                    ))}
-                    {notes.length === 0 && (
-                      <div className="text-center py-8 text-gray-500">
-                        <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                        <p>No notes yet. Add the first note above.</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <NotesPanel
+                title="Candidate Notes & Comments"
+                description="Notes are scoped to a specific job submission"
+                notes={notes}
+                extraAddField={{
+                  label: "Job / Submission",
+                  value: addNoteSubmissionId,
+                  onChange: setAddNoteSubmissionId,
+                  options: (submissions as any[]).map((s: any) => ({
+                    value: s.id,
+                    label: `${s.job?.title || "Unknown job"}${s.job?.company_name ? ` — ${s.job.company_name}` : ""}`,
+                  })),
+                  placeholder: "Select a job / submission...",
+                  required: true,
+                }}
+                onAdd={async (data) => {
+                  if (!addNoteSubmissionId) throw new Error("Select a job/submission first");
+                  await recruiterService.addSubmissionNote(addNoteSubmissionId, data);
+                  await fetchCandidateData();
+                }}
+                onUpdate={async (noteId, data) => {
+                  const submissionId = noteSubmissionMapRef.current[noteId];
+                  if (!submissionId) throw new Error("Could not find the submission this note belongs to");
+                  await recruiterService.updateSubmissionNote(submissionId, noteId, data);
+                  await fetchCandidateData();
+                }}
+                onDelete={async (noteId) => {
+                  const submissionId = noteSubmissionMapRef.current[noteId];
+                  if (!submissionId) throw new Error("Could not find the submission this note belongs to");
+                  await recruiterService.deleteSubmissionNote(submissionId, noteId);
+                  await fetchCandidateData();
+                }}
+              />
             </TabsContent>
 
             <TabsContent value="tasks" className="space-y-6 mt-0">
