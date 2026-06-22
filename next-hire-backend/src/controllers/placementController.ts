@@ -9,12 +9,12 @@ import {
   Recruiter,
   BusinessPartner,
   BusinessPartnerContact,
-  sequelize,
 } from "../models";
 import { logger } from "../utils/logger";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { prepareNotesAndAttachmentsForResponse } from "../utils/notesAndAttachments";
 import { createNoteHandlers } from "../utils/noteHandlers";
+import { monthGroupExpr } from "../utils/dateGrouping";
 
 // Get placements with filters and pagination
 export const getPlacements = async (req: AuthenticatedRequest, res: Response) => {
@@ -632,14 +632,7 @@ export const getPlacementStats = async (req: AuthenticatedRequest, res: Response
 
     const whereConditions: any = { recruiter_id: userId };
 
-    // Check database dialect for date formatting
-    const dialect = sequelize.getDialect();
-    const dateFormatFn =
-      dialect === "sqlite"
-        ? Sequelize.fn("strftime", "%Y-%m", Sequelize.col("created_at"))
-        : dialect === "postgres"
-        ? Sequelize.fn("to_char", Sequelize.col("created_at"), "YYYY-MM")
-        : Sequelize.fn("DATE_FORMAT", Sequelize.col("created_at"), "%Y-%m");
+    const dateFormatFn = monthGroupExpr("created_at");
 
     const [
       totalPlacements,

@@ -2,11 +2,12 @@ import { Response } from "express";
 import { Op, Sequelize } from "sequelize";
 import { BusinessPartner } from "../models/BusinessPartner";
 import { BusinessPartnerContact } from "../models/BusinessPartnerContact";
-import { User, Recruiter, Job, Placement, sequelize } from "../models";
+import { User, Recruiter, Job, Placement } from "../models";
 import { logger } from "../utils/logger";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { prepareNotesAndAttachmentsForResponse } from "../utils/notesAndAttachments";
 import { createNoteHandlers } from "../utils/noteHandlers";
+import { monthGroupExpr } from "../utils/dateGrouping";
 
 // A recruiter can act on a business partner they created or were assigned to manage.
 const canManagePartner = (partner: BusinessPartner, userId?: string): boolean =>
@@ -463,7 +464,7 @@ export const getBusinessPartnerStats = async (req: AuthenticatedRequest, res: Re
         where: whereConditions,
         attributes: [
           "source",
-          [require("sequelize").fn("COUNT", "*"), "count"],
+          [Sequelize.fn("COUNT", "*"), "count"],
         ],
         group: ["source"],
         raw: true,
@@ -472,7 +473,7 @@ export const getBusinessPartnerStats = async (req: AuthenticatedRequest, res: Re
         where: whereConditions,
         attributes: [
           "priority",
-          [require("sequelize").fn("COUNT", "*"), "count"],
+          [Sequelize.fn("COUNT", "*"), "count"],
         ],
         group: ["priority"],
         raw: true,
@@ -801,13 +802,7 @@ export const getBusinessPartnerRevenueTrend = async (req: AuthenticatedRequest, 
     sixMonthsAgo.setDate(1);
     sixMonthsAgo.setHours(0, 0, 0, 0);
 
-    const dialect = sequelize.getDialect();
-    const monthExpr =
-      dialect === "sqlite"
-        ? Sequelize.fn("strftime", "%Y-%m", Sequelize.col("Placement.created_at"))
-        : dialect === "postgres"
-        ? Sequelize.fn("to_char", Sequelize.col("Placement.created_at"), "YYYY-MM")
-        : Sequelize.fn("DATE_FORMAT", Sequelize.col("Placement.created_at"), "%Y-%m");
+    const monthExpr = monthGroupExpr("Placement.created_at");
 
     const placements = await Placement.findAll({
       include: [{ model: Job, as: "job", where: { business_partner_id: id }, attributes: [] }],
