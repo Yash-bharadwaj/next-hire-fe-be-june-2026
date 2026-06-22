@@ -568,7 +568,7 @@ export const createBusinessPartnerContact = async (
       });
     }
 
-    const { name, title, email, phone, is_primary = false } = req.body;
+    const { name, title, email, phone, comments, is_primary = false } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -583,6 +583,7 @@ export const createBusinessPartnerContact = async (
       title,
       email,
       phone,
+      comments,
       is_primary,
       created_by: userId,
     });
@@ -618,12 +619,13 @@ export const updateBusinessPartnerContact = async (req: AuthenticatedRequest, re
       return res.status(404).json({ success: false, message: "Contact not found" });
     }
 
-    const { name, title, email, phone, is_primary } = req.body;
+    const { name, title, email, phone, comments, is_primary } = req.body;
     await contact.update({
       name: name !== undefined ? name : contact.name,
       title: title !== undefined ? title : contact.title,
       email: email !== undefined ? email : contact.email,
       phone: phone !== undefined ? phone : contact.phone,
+      comments: comments !== undefined ? comments : contact.comments,
       is_primary: is_primary !== undefined ? is_primary : contact.is_primary,
     });
 

@@ -9,6 +9,7 @@ export interface BusinessPartnerContactAttributes {
   title?: string;
   email?: string;
   phone?: string;
+  comments?: string;
   is_primary: boolean;
   created_by: string; // User ID
   created_at?: Date;
@@ -31,6 +32,7 @@ export class BusinessPartnerContact
   public title?: string;
   public email?: string;
   public phone?: string;
+  public comments?: string;
   public is_primary!: boolean;
   public created_by!: string;
 
@@ -74,6 +76,10 @@ BusinessPartnerContact.init(
     },
     phone: {
       type: DataTypes.STRING,
+      allowNull: true,
+    },
+    comments: {
+      type: DataTypes.TEXT,
       allowNull: true,
     },
     is_primary: {

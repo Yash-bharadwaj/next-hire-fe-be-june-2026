@@ -130,6 +130,7 @@ const createContactValidation = [
   body("title").optional().isString(),
   body("email").optional().isEmail().withMessage("Valid email is required"),
   body("phone").optional().isString(),
+  body("comments").optional().isString(),
   body("is_primary").optional().isBoolean().withMessage("is_primary must be a boolean"),
 ];
 
@@ -140,6 +141,7 @@ const updateContactValidation = [
   body("title").optional().isString(),
   body("email").optional().isEmail().withMessage("Valid email is required"),
   body("phone").optional().isString(),
+  body("comments").optional().isString(),
   body("is_primary").optional().isBoolean().withMessage("is_primary must be a boolean"),
 ];
 
