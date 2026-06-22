@@ -74,13 +74,6 @@ export const useCandidateSearch = (initialFilters: CandidateSearchFilters = {}) 
     [searchCandidates, filters]
   );
 
-  // Load initial data
-  useEffect(() => {
-    if (user?.role === "recruiter") {
-      searchCandidates();
-    }
-  }, [user?.role]);
-
   return {
     candidates,
     loading,
