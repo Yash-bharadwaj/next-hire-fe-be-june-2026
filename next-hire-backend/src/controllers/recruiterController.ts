@@ -652,87 +652,18 @@ export const getJobDetails = asyncHandler(
   }
 );
 
-// Add internal note to a job
-export const addJobNote = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
-    const { jobId } = req.params;
-    const { note } = req.body;
-    const userId = req.user?.userId;
+// Note/attachment CRUD for jobs - any recruiter staffing the job may manage these.
+const jobNoteHandlers = createNoteHandlers<Job>({
+  idParam: "jobId",
+  entityLabel: "job",
+  findRecord: (id) => Job.findByPk(id),
+  canManage: (job, userId) => isJobStaff(job, userId),
+});
 
-    const job = await Job.findByPk(jobId);
-    if (!job) {
-      throw createError("Job not found", 404);
-    }
-
-    if (!isJobStaff(job, userId)) {
-      throw createError("You do not have permission to update this job", 403);
-    }
-
-    const history = (job as any).notes_history || [];
-    history.push({
-      note,
-      by: userId,
-      at: new Date().toISOString(),
-    });
-
-    await job.update({ notes_history: history });
-
-    res.json({
-      success: true,
-      message: "Note added successfully",
-      data: { notes_history: history },
-    });
-  }
-);
-
-// Add attachment to a job (URL-based or file upload)
-export const addJobAttachment = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
-    const { jobId } = req.params;
-    const userId = req.user?.userId;
-
-    const job = await Job.findByPk(jobId);
-    if (!job) {
-      throw createError("Job not found", 404);
-    }
-
-    if (!isJobStaff(job, userId)) {
-      throw createError("You do not have permission to update this job", 403);
-    }
-
-    let attachmentUrl: string;
-    let attachmentName: string;
-
-    if ((req as any).file) {
-      // File upload path: serve from /uploads/documents_tmp
-      const file = (req as any).file;
-      const serverBase = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-      attachmentUrl = `${serverBase}/uploads/documents_tmp/${file.filename}`;
-      attachmentName = req.body.name || file.originalname;
-    } else {
-      const { url, name } = req.body;
-      if (!url) throw createError("url or file is required", 400);
-      attachmentUrl = url;
-      attachmentName = name || url;
-    }
-
-    const attachments = (job as any).attachments || [];
-    attachments.push({
-      url: attachmentUrl,
-      name: attachmentName,
-      by: userId,
-      at: new Date().toISOString(),
-    });
-
-    await job.update({ attachments });
-
-    res.json({
-      success: true,
-      message: "Attachment added successfully",
-      data: { attachments },
-    });
-  }
-);
+export const addJobNote = jobNoteHandlers.addNote;
+export const updateJobNote = jobNoteHandlers.updateNote;
+export const deleteJobNote = jobNoteHandlers.deleteNote;
+export const addJobAttachment = jobNoteHandlers.addAttachment;
 
 // Get a job's profitability breakdown (creates a zeroed-out row on first view)
 export const getJobProfitability = asyncHandler(

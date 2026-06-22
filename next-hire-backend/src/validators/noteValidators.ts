@@ -10,8 +10,8 @@ export const noteCategories = ["technical", "behavioral", "feedback", "general"]
 // covered by a separate submissionDetailsValidation chain - so they're left
 // as-is rather than forced into this shape.)
 
-export const buildAddNoteValidation = (entityLabel: string) => [
-  param("id").isUUID().withMessage(`Valid ${entityLabel} ID is required`),
+export const buildAddNoteValidation = (entityLabel: string, idParamName = "id") => [
+  param(idParamName).isUUID().withMessage(`Valid ${entityLabel} ID is required`),
   body("content").trim().notEmpty().withMessage("Note content is required"),
   body("title").optional().isString(),
   body("category").optional().isIn(noteCategories).withMessage("Invalid note category"),
@@ -19,8 +19,8 @@ export const buildAddNoteValidation = (entityLabel: string) => [
   body("tags").optional().isArray().withMessage("Tags must be an array"),
 ];
 
-export const buildUpdateNoteValidation = (entityLabel: string) => [
-  param("id").isUUID().withMessage(`Valid ${entityLabel} ID is required`),
+export const buildUpdateNoteValidation = (entityLabel: string, idParamName = "id") => [
+  param(idParamName).isUUID().withMessage(`Valid ${entityLabel} ID is required`),
   param("noteId").notEmpty().withMessage("Valid note ID is required"),
   body("content").optional().trim().notEmpty().withMessage("Note content cannot be empty"),
   body("title").optional().isString(),
@@ -29,13 +29,13 @@ export const buildUpdateNoteValidation = (entityLabel: string) => [
   body("tags").optional().isArray().withMessage("Tags must be an array"),
 ];
 
-export const buildNoteIdValidation = (entityLabel: string) => [
-  param("id").isUUID().withMessage(`Valid ${entityLabel} ID is required`),
+export const buildNoteIdValidation = (entityLabel: string, idParamName = "id") => [
+  param(idParamName).isUUID().withMessage(`Valid ${entityLabel} ID is required`),
   param("noteId").notEmpty().withMessage("Valid note ID is required"),
 ];
 
-export const buildAttachmentValidation = (entityLabel: string) => [
-  param("id").isUUID().withMessage(`Valid ${entityLabel} ID is required`),
+export const buildAttachmentValidation = (entityLabel: string, idParamName = "id") => [
+  param(idParamName).isUUID().withMessage(`Valid ${entityLabel} ID is required`),
   body("url").optional().trim().notEmpty().withMessage("Attachment URL cannot be empty"),
   body("name").optional().isString(),
   body("document_type")

@@ -12,6 +12,8 @@ import {
   getSubmissionDetails,
   updateSubmissionStatus,
   addJobNote,
+  updateJobNote,
+  deleteJobNote,
   addJobAttachment,
   getJobProfitability,
   updateJobProfitability,
@@ -36,6 +38,12 @@ import {
 import { authenticate, recruiterOnly } from "../middleware/auth";
 import { validate } from "../middleware/validation";
 import { documentUpload, generalDocumentUpload } from "../middleware/upload";
+import {
+  buildAddNoteValidation,
+  buildUpdateNoteValidation,
+  buildNoteIdValidation,
+  buildAttachmentValidation,
+} from "../validators/noteValidators";
 
 const router = Router();
 
@@ -266,13 +274,6 @@ const submissionDetailsValidation = [
   param("submissionId").isUUID().withMessage("Valid submission ID is required"),
 ];
 
-const noteValidation = [
-  body("note")
-    .notEmpty()
-    .isLength({ max: 2000 })
-    .withMessage("Note is required and must be less than 2000 characters"),
-];
-
 const noteCategories = ["technical", "behavioral", "feedback", "general"];
 
 const addNoteValidation = [
@@ -469,15 +470,26 @@ router.get("/jobs/:jobId", jobDetailsValidation, validate, getJobDetails);
 router.put("/jobs/:jobId", updateJobValidation, validate, updateJob);
 router.post(
   "/jobs/:jobId/notes",
-  jobDetailsValidation,
-  noteValidation,
+  buildAddNoteValidation("job", "jobId"),
   validate,
   addJobNote
+);
+router.put(
+  "/jobs/:jobId/notes/:noteId",
+  buildUpdateNoteValidation("job", "jobId"),
+  validate,
+  updateJobNote
+);
+router.delete(
+  "/jobs/:jobId/notes/:noteId",
+  buildNoteIdValidation("job", "jobId"),
+  validate,
+  deleteJobNote
 );
 router.post(
   "/jobs/:jobId/attachments",
   documentUpload.single("file"),
-  jobDetailsValidation,
+  buildAttachmentValidation("job", "jobId"),
   validate,
   addJobAttachment
 );
