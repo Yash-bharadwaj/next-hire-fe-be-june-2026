@@ -12,7 +12,6 @@ import {
   Search,
   Calendar,
   Mail,
-  Clock,
   BarChart3,
   Ticket,
   Shield,
@@ -93,11 +92,6 @@ const menuItems = [
     icon: Building2,
   },
   {
-    title: "Time Sheets",
-    url: "/dashboard/time-sheets",
-    icon: Clock,
-  },
-  {
     title: "Reports",
     url: "/dashboard/reports",
     icon: BarChart3,
@@ -123,7 +117,6 @@ const getMenuItemsForRole = (role?: string) => {
       "Dashboards",
       "Business Partners",
       "Placements",
-      "Time Sheets",
       "Reports",
     ];
     return menuItems.filter((item) => !hidden.includes(item.title));

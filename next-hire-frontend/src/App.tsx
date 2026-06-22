@@ -26,12 +26,11 @@ import Interviews from "./pages/Interviews";
 import Onboarding from "./pages/Onboarding";
 import BusinessPartners from "./pages/BusinessPartners";
 import BusinessPartnerDetail from "./pages/BusinessPartnerDetail";
-import TimeSheets from "./pages/TimeSheets";
 import Reports from "./pages/Reports";
 import Tickets from "./pages/Tickets";
 import AdvancedSearch from "./pages/AdvancedSearch";
 import SearchJobs from "./pages/SearchJobs";
-import Calendar from "./pages/Calendar";
+import TaskPlanner from "./pages/TaskPlanner";
 import EmailCenter from "./pages/EmailCenter";
 import Settings from "./pages/Settings";
 import AccountManagement from "./pages/AccountManagement";
@@ -129,14 +128,13 @@ const App = () => (
                 path="business-partners/:id"
                 element={<BusinessPartnerDetail />}
               />
-              <Route path="time-sheets" element={<TimeSheets />} />
               <Route path="reports" element={<Reports />} />
               <Route path="tickets" element={<Tickets />} />
               <Route path="sourcing-pipeline" element={<SourcingPipeline />} />
               <Route path="search" element={<AdvancedSearch />} />
               <Route path="search-jobs" element={<SearchJobs />} />
               <Route path="advanced-search" element={<AdvancedSearch />} />
-              <Route path="calendar" element={<Calendar />} />
+              <Route path="calendar" element={<TaskPlanner />} />
               <Route path="emails" element={<EmailCenter />} />
               <Route path="settings" element={<Settings />} />
               <Route path="account" element={<AccountManagement />} />
