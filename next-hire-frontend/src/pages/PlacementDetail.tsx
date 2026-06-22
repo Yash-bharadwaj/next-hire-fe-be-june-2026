@@ -41,7 +41,6 @@ import {
   UserCheck,
   Globe,
   Send,
-  MessageSquare,
   StickyNote,
   ClipboardList,
   FolderOpen,
@@ -146,31 +145,6 @@ const PlacementDetail: React.FC = () => {
     if (result) {
       setShowEditDialog(false);
       refresh();
-    }
-  };
-
-  // ── Comments (flat internal notes field) ────────────────────────────────
-  const [commentsDraft, setCommentsDraft] = useState("");
-  const [savingComments, setSavingComments] = useState(false);
-  useEffect(() => {
-    setCommentsDraft(placement?.notes || "");
-  }, [placement?.notes]);
-
-  const handleSaveComments = async () => {
-    if (!placement) return;
-    setSavingComments(true);
-    try {
-      await placementService.updatePlacement(placement.id, { notes: commentsDraft.trim() || undefined });
-      toast({ title: "Comments saved" });
-      refresh();
-    } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err?.response?.data?.message || "Failed to save comments",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingComments(false);
     }
   };
 
@@ -508,10 +482,6 @@ const PlacementDetail: React.FC = () => {
             <TabsTrigger value="submission" className={tabTriggerClass}>
               <Send className="w-4 h-4 mr-2" />
               Submission
-            </TabsTrigger>
-            <TabsTrigger value="comments" className={tabTriggerClass}>
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Comments
             </TabsTrigger>
             <TabsTrigger value="notes-tasks" className={tabTriggerClass}>
               <StickyNote className="w-4 h-4 mr-2" />
@@ -852,32 +822,6 @@ const PlacementDetail: React.FC = () => {
                 ) : (
                   <p className="text-sm text-gray-500">No linked submission data available.</p>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Comments (internal, flat notes field) */}
-          <TabsContent value="comments" className="mt-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-orange-500" /> Internal Comments
-                </CardTitle>
-                <p className="text-sm text-gray-500">Internal notes about this placement — not visible to the candidate.</p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Textarea
-                  value={commentsDraft}
-                  onChange={(e) => setCommentsDraft(e.target.value)}
-                  placeholder="Add internal comments about this placement..."
-                  className="min-h-[140px]"
-                />
-                <div className="flex justify-end">
-                  <Button onClick={handleSaveComments} disabled={savingComments}>
-                    {savingComments ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                    {savingComments ? "Saving..." : "Save Comments"}
-                  </Button>
-                </div>
               </CardContent>
             </Card>
           </TabsContent>

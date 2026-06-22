@@ -54,6 +54,28 @@ export const normalizeAttachments = (attachments: any[]): any[] => {
   }));
 };
 
+// A few entities (Placement, ...) predate notes_history and only ever had a
+// flat `notes` string column - a single overwritable field, not a real
+// comment list. If a record still has old text sitting there and has never
+// had a notes_history entry, migrate it into one (persisted, once) so it's
+// visible, editable, and deletable like any other note instead of being
+// stuck behind a single textbox forever.
+const migrateLegacyFlatNote = async (record: any, plain: any) => {
+  if (typeof record.update !== "function" || (plain.notes_history?.length ?? 0) > 0 || !plain.notes) return;
+  const migratedNote = {
+    id: randomUUID(),
+    title: "",
+    content: plain.notes,
+    category: "general",
+    isPrivate: false,
+    tags: [],
+    by: plain.created_by || plain.recruiter_id,
+    at: plain.updated_at || plain.created_at || new Date().toISOString(),
+  };
+  await record.update({ notes_history: [migratedNote] });
+  plain.notes_history = [migratedNote];
+};
+
 // Normalizes a record's notes_history/attachments to their current shape and,
 // for non-staff viewers (e.g. candidates), strips notes marked private.
 export const prepareNotesAndAttachmentsForResponse = async (
@@ -61,6 +83,7 @@ export const prepareNotesAndAttachmentsForResponse = async (
   userRole?: string
 ) => {
   const plain = record.toJSON ? record.toJSON() : record;
+  await migrateLegacyFlatNote(record, plain);
   plain.notes_history = await normalizeNotesHistory(plain.notes_history);
   plain.attachments = normalizeAttachments(plain.attachments);
   if (userRole !== "recruiter" && userRole !== "vendor") {
