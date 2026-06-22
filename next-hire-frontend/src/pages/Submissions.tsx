@@ -89,6 +89,7 @@ import { getSubmissionStatusMeta } from "@/lib/submissionStatus";
 import { CompanyFilter } from "@/components/CompanyFilter";
 import { candidateSearchService } from "@/services/candidateSearchService";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
+import { EmptyState } from "@/components/EmptyState";
 
 const Submissions = () => {
   const navigate = useNavigate();
@@ -691,29 +692,34 @@ const Submissions = () => {
               </Button>
             </div>
           ) : submissions.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-600">No submissions found</p>
-              <p className="text-sm text-gray-500 mt-1">
-                {user.role === "candidate"
+            <EmptyState
+              className="text-center py-8"
+              icon={FileText}
+              iconClassName="h-8 w-8 text-gray-400 mx-auto mb-2"
+              title="No submissions found"
+              description={
+                user.role === "candidate"
                   ? "Start applying to jobs to see your applications here"
                   : user.role === "recruiter"
                   ? jobFilter === "all"
                     ? "No candidates have been submitted to your jobs yet."
                     : "No submissions for the selected job yet."
-                  : "Submissions will appear here after you submit candidates to client jobs"}
-              </p>
-              {user.role === "recruiter" && (
-                <Button
-                  onClick={() => navigate("/dashboard/jobs")}
-                  className="mt-4"
-                  variant="outline"
-                >
-                  <Briefcase className="h-4 w-4 mr-2" />
-                  Go to Jobs
-                </Button>
-              )}
-            </div>
+                  : "Submissions will appear here after you submit candidates to client jobs"
+              }
+              descriptionClassName="text-sm text-gray-500 mt-1"
+              action={
+                user.role === "recruiter" && (
+                  <Button
+                    onClick={() => navigate("/dashboard/jobs")}
+                    className="mt-4"
+                    variant="outline"
+                  >
+                    <Briefcase className="h-4 w-4 mr-2" />
+                    Go to Jobs
+                  </Button>
+                )
+              }
+            />
           ) : user.role === "recruiter" ? (
             // Group by job for recruiters
             <div className="space-y-6">

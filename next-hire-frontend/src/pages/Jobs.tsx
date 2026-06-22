@@ -79,6 +79,7 @@ import { cn } from "@/lib/utils";
 import { formatCompactRange } from "@/lib/format";
 import { type CsvColumn } from "@/utils/csv";
 import { useEntityExport } from "@/hooks/useEntityExport";
+import { EmptyState } from "@/components/EmptyState";
 
 // Module-level cache — survives component remount so cards never flash 0
 const _jobsStatsCache = {
@@ -867,16 +868,16 @@ const Jobs = () => {
               </Button>
             </div>
           ) : tableRows.length === 0 ? (
-            <div className="p-8 text-center">
-              <Briefcase className="h-10 w-10 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-600">No jobs found</p>
-              <Button
-                onClick={() => navigate("/dashboard/jobs/new")}
-                className="mt-3"
-              >
-                Create Job
-              </Button>
-            </div>
+            <EmptyState
+              icon={Briefcase}
+              iconClassName="h-10 w-10 text-gray-400 mx-auto mb-3"
+              title="No jobs found"
+              action={
+                <Button onClick={() => navigate("/dashboard/jobs/new")} className="mt-3">
+                  Create Job
+                </Button>
+              }
+            />
           ) : (
             <DataGrid
               rows={tableRows}

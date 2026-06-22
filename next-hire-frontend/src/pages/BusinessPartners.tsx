@@ -61,6 +61,7 @@ import { type CsvColumn } from "@/utils/csv";
 import { useEntityExport } from "@/hooks/useEntityExport";
 import { useAuth } from "@/contexts/AuthContext";
 import BusinessPartnerFormDialog from "@/components/BusinessPartnerFormDialog";
+import { EmptyState } from "@/components/EmptyState";
 
 const BusinessPartners = () => {
   const navigate = useNavigate();
@@ -647,17 +648,21 @@ const BusinessPartners = () => {
             </div>
           ) : businessPartners.length === 0 ? (
             // Empty state
-            <div className="text-center py-12">
-              <Building2 className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No business partners found</h3>
-              <p className="text-gray-600 mb-4">
-                Get started by adding your first business partner.
-              </p>
-              <Button className="bg-green-600 hover:bg-green-700" onClick={() => setShowCreateDialog(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Business Partner
-              </Button>
-            </div>
+            <EmptyState
+              className="text-center py-12"
+              icon={Building2}
+              iconClassName="h-16 w-16 text-gray-300 mx-auto mb-4"
+              title="No business partners found"
+              titleAs="h3"
+              titleClassName="text-xl font-semibold text-gray-900 mb-2"
+              description="Get started by adding your first business partner."
+              action={
+                <Button className="bg-green-600 hover:bg-green-700" onClick={() => setShowCreateDialog(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Business Partner
+                </Button>
+              }
+            />
           ) : (
             <div className="overflow-x-auto min-h-0">
               <div className="min-w-full">

@@ -70,6 +70,7 @@ import { useEntityExport } from "@/hooks/useEntityExport";
 import { CompanyFilter } from "@/components/CompanyFilter";
 import { toast } from "sonner";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
+import { EmptyState } from "@/components/EmptyState";
 
 const _placementsStatsCache = {
   activePlacements: 0, completedPlacements: 0, totalPlacements: 0,
@@ -995,19 +996,18 @@ const Placements = () => {
                 initialFilters={{}}
               />
             ) : (
-              <div className="p-8 text-center">
-                <Trophy className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">No placements found</p>
-                {user?.role === "recruiter" && (
-                  <Button 
-                    onClick={() => navigate('/dashboard/jobs')} 
-                    className="mt-4"
-                    variant="outline"
-                  >
-                    View Jobs
-                  </Button>
-                )}
-              </div>
+              <EmptyState
+                icon={Trophy}
+                iconClassName="h-12 w-12 text-gray-400 mx-auto mb-4"
+                title="No placements found"
+                action={
+                  user?.role === "recruiter" && (
+                    <Button onClick={() => navigate('/dashboard/jobs')} className="mt-4" variant="outline">
+                      View Jobs
+                    </Button>
+                  )
+                }
+              />
             )}
           </CardContent>
         </Card>

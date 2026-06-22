@@ -68,6 +68,7 @@ import { downloadCsv } from "@/utils/csv";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/EmptyState";
 
 // Animated step messages shown while the AI parses a resume. Purely
 // presentational - the backend does this in one request, so progress is
@@ -710,10 +711,11 @@ const Candidates = () => {
               </Button>
             </div>
           ) : tableRows.length === 0 ? (
-            <div className="p-8 text-center">
-              <Users className="h-10 w-10 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-600">No candidates found</p>
-            </div>
+            <EmptyState
+              icon={Users}
+              iconClassName="h-10 w-10 text-gray-400 mx-auto mb-3"
+              title="No candidates found"
+            />
           ) : (
             <DataGrid
               rows={tableRows}

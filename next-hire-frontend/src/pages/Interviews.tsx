@@ -75,6 +75,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { downloadCsv, type CsvColumn } from "@/utils/csv";
 import { downloadPdf, downloadExcel, exportToGoogleSheets } from "@/utils/exportData";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
+import { EmptyState } from "@/components/EmptyState";
 
 const _interviewsStatsCache = { total: 0, scheduled: 0, completed: 0, totalJobs: 0 };
 
@@ -845,18 +846,26 @@ const Interviews = () => {
           {!interviewsLoading && !interviewsError && safeInterviews.length === 0 && (
             <Card className="border-gray-200 shadow-sm bg-white/95 backdrop-blur-sm">
               <CardContent className="p-8 text-center">
-                <Users className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No interviews found</h3>
-                <p className="text-gray-600 mb-4">
-                  {statusFilter || typeFilter || searchQuery 
-                    ? "No interviews match your current filters." 
-                    : "No interviews have been scheduled yet."}
-                </p>
-                {(statusFilter || typeFilter || searchQuery) && (
-                  <Button onClick={handleClearFilters} variant="outline">
-                    Clear Filters
-                  </Button>
-                )}
+                <EmptyState
+                  className=""
+                  icon={Users}
+                  iconClassName="w-12 h-12 mx-auto mb-4 text-gray-400"
+                  title="No interviews found"
+                  titleAs="h3"
+                  titleClassName="text-lg font-semibold text-gray-900 mb-2"
+                  description={
+                    statusFilter || typeFilter || searchQuery
+                      ? "No interviews match your current filters."
+                      : "No interviews have been scheduled yet."
+                  }
+                  action={
+                    (statusFilter || typeFilter || searchQuery) && (
+                      <Button onClick={handleClearFilters} variant="outline">
+                        Clear Filters
+                      </Button>
+                    )
+                  }
+                />
               </CardContent>
             </Card>
           )}
