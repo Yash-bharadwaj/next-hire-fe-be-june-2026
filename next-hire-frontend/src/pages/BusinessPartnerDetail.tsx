@@ -83,6 +83,7 @@ import {
 import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/recruiterService";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
+import { PageLoadingState } from "@/components/PageLoadingState";
 
 const formatTeamMemberName = (member: TeamMember) => {
   const name = [member.recruiterProfile?.first_name, member.recruiterProfile?.last_name]
@@ -418,10 +419,12 @@ const BusinessPartnerDetail = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        <span className="ml-2 text-gray-600">Loading business partner...</span>
-      </div>
+      <PageLoadingState
+        label="Loading business partner..."
+        minHeightClassName="h-96"
+        iconClassName="w-8 h-8 animate-spin text-blue-600"
+        contentClassName="flex items-center space-x-2 text-gray-600"
+      />
     );
   }
 

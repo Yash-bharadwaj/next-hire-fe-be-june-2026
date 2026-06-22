@@ -96,6 +96,7 @@ import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
 import { formatCompactCurrency, formatCompactRange } from "@/lib/format";
 import { getSubmissionStatusMeta } from "@/lib/submissionStatus";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
+import { PageLoadingState } from "@/components/PageLoadingState";
 import { computeSkillMatrix, summarizeSkillMatrix, getMatchLevelLabel } from "@/lib/skillMatching";
 
 const formatDateTime = (dateString?: string | null) => {
@@ -420,12 +421,11 @@ const SubmissionDetail = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="flex items-center space-x-2 text-gray-600">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Loading submission...</span>
-        </div>
-      </div>
+      <PageLoadingState
+        label="Loading submission..."
+        minHeightClassName="min-h-[60vh]"
+        contentClassName="flex items-center space-x-2 text-gray-600"
+      />
     );
   }
 

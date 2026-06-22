@@ -121,6 +121,7 @@ import { formatCompactRange } from "@/lib/format";
 import type { TeamMember, Task, TaskPriority } from "@/services/recruiterService";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
+import { PageLoadingState } from "@/components/PageLoadingState";
 
 // Local type definitions
 interface Document {
@@ -1099,14 +1100,7 @@ const JobDetail = () => {
 
   // Loading state
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Loading job details...</span>
-        </div>
-      </div>
-    );
+    return <PageLoadingState label="Loading job details..." />;
   }
 
   // Error state

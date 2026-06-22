@@ -81,6 +81,7 @@ import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { formatCompactCurrency } from "@/lib/format";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
+import { PageLoadingState } from "@/components/PageLoadingState";
 
 // Candidate data will be fetched from API - no static data needed
 
@@ -631,14 +632,7 @@ const CandidateDetail = () => {
 
   // Loading and error states
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Loading candidate details...</span>
-        </div>
-      </div>
-    );
+    return <PageLoadingState label="Loading candidate details..." />;
   }
 
   if (error || !candidate) {
