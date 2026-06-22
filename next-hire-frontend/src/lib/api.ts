@@ -194,6 +194,29 @@ export const apiClient = {
     api.post(url, formData, { headers: { "Content-Type": undefined }, timeout }),
 };
 
+// Resolves a stored document key/path (resume file_url, attachment url,
+// etc.) to a fresh, currently-fetchable URL just before the browser
+// navigates to it. Needed because S3-backed keys aren't directly fetchable
+// (private bucket) and presigned URLs resolved at upload time expire after
+// an hour - this always asks the backend for a current one. Already-absolute
+// URLs (e.g. the local-disk attachments flow, which builds a full URL at
+// upload time) are returned as-is since they need no resolution.
+export const resolveDocumentUrl = async (key?: string | null): Promise<string> => {
+  if (!key) return "";
+  if (key.startsWith("http://") || key.startsWith("https://")) return key;
+
+  const response = await apiClient.get<{ url: string }>("/files/resolve", { key });
+  const url = response.data.data?.url || "";
+  if (!url) return "";
+  // Local-storage mode resolves to a server-relative path (e.g.
+  // "/uploads/documents/xyz.pdf") rather than an absolute URL - needs the
+  // API origin prefixed, since the browser would otherwise resolve it
+  // against the frontend's own origin.
+  return url.startsWith("http://") || url.startsWith("https://")
+    ? url
+    : `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+};
+
 // Health check
 export const healthCheck = async (): Promise<boolean> => {
   try {

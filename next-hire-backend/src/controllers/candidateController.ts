@@ -1,7 +1,5 @@
 import { Response } from "express";
 import { Op } from "sequelize";
-import fs from "fs";
-import path from "path";
 import {
   User,
   Candidate,
@@ -18,6 +16,7 @@ import {
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import { uploadDocument, deleteStoredDocument } from "../services/storageService";
 
 // Get candidate profile
 export const getProfile = asyncHandler(
@@ -682,12 +681,11 @@ export const deleteResume = asyncHandler(
     }
 
     const wasPrimary = resume.is_primary;
-    const filePath = path.join(__dirname, "../../", resume.file_url);
 
     await resume.destroy();
 
-    // Best-effort removal of the file from disk
-    fs.unlink(filePath, () => {});
+    // Best-effort removal of the underlying file (S3 or local disk)
+    deleteStoredDocument(resume.file_url).catch(() => {});
 
     let newPrimaryUrl: string | null = candidate.resume_url ?? null;
     if (wasPrimary) {
@@ -760,7 +758,8 @@ export const uploadResumeFile = asyncHandler(
 
     await migrateLegacyResumeIfNeeded(candidate);
 
-    const file_url = `/uploads/resumes/${req.file.filename}`;
+    const uploaded = await uploadDocument(req.file.path, req.file.filename, req.file.mimetype);
+    const file_url = uploaded.key;
     const existingCount = await CandidateResume.count({
       where: { candidate_id: candidate.id },
     });

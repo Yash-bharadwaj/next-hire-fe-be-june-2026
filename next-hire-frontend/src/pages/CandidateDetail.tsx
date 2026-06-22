@@ -67,11 +67,10 @@ import {
 } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { DocumentsManager, Document } from "@/components/DocumentsManager";
+import { DocumentsPanel, DocumentRecord, DocumentType } from "@/components/DocumentsPanel";
 import CandidateDetailPersonalizationSettings from "@/components/CandidateDetailPersonalizationSettings";
 import { candidateSearchService } from "@/services/candidateSearchService";
 import { recruiterService } from "@/services/recruiterService";
-import { API_BASE_URL } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { ExpandableText } from "@/components/ExpandableText";
@@ -251,11 +250,6 @@ const CandidateDetail = () => {
   const [todosSort, setTodosSort] = useState("dueDate");
   const [todosSearch, setTodosSearch] = useState("");
 
-  // Documents tab: derived from the candidate's uploaded resumes (real data,
-  // loaded alongside the candidate below). Locally-added uploads (via
-  // handleDocumentUpload) are appended on top of that.
-  const [candidateDocuments, setCandidateDocuments] = useState<Document[]>([]);
-
   // noteId -> submissionId, so NotesPanel's onUpdate/onDelete (which only
   // receive a noteId) can route to the right submission's note endpoints.
   const noteSubmissionMapRef = useRef<Record<string, string>>({});
@@ -270,19 +264,6 @@ const CandidateDetail = () => {
       const response = await candidateSearchService.getCandidateDetails(id);
       const candidateData = response.data.candidate;
       setCandidate(candidateData);
-
-      const candidateName = candidateSearchService.formatCandidateName(candidateData);
-      setCandidateDocuments(
-        (candidateData.resumes || []).map((resume) => ({
-          id: resume.id,
-          name: resume.file_name,
-          type: (resume.file_name.split(".").pop() || "FILE").toUpperCase(),
-          uploadDate: resume.created_at || new Date().toISOString(),
-          uploadedBy: candidateName,
-          url: `${API_BASE_URL}${resume.file_url}`,
-          description: resume.is_primary ? "Primary resume" : undefined,
-        }))
-      );
 
       const apiSubmissions = response.data.submissions || [];
       setSubmissions(apiSubmissions);
@@ -361,6 +342,7 @@ const CandidateDetail = () => {
       expected_salary: candidate.expected_salary ?? "",
       linkedin_url: candidate.linkedin_url || "",
       portfolio_url: candidate.portfolio_url || "",
+      rating: candidate.rating ?? null,
     });
     setIsEditOpen(true);
   };
@@ -535,14 +517,26 @@ const CandidateDetail = () => {
     });
   };
 
-  // Document upload handler
-  const handleDocumentUpload = (newDocument: Omit<Document, "id">) => {
-    const documentWithId = {
-      ...newDocument,
-      id: candidateDocuments.length + 1,
-    };
-    setCandidateDocuments((prev) => [...prev, documentWithId]);
+  // Documents tab: derived from the candidate's uploaded resumes. Resumes
+  // have no document_type/valid_from of their own, so those are synthesized
+  // for display - DocumentsPanel requires them, but they don't carry real
+  // meaning here (a resume doesn't expire).
+  const resumeDocumentType = (fileName: string): DocumentType => {
+    const ext = (fileName.split(".").pop() || "").toLowerCase();
+    if (ext === "pdf") return "PDF";
+    if (ext === "doc") return "DOC";
+    if (ext === "docx") return "DOCX";
+    return "OTHER";
   };
+
+  const normalizedCandidateDocuments: DocumentRecord[] = (candidate?.resumes || []).map((resume) => ({
+    id: resume.id,
+    url: resume.file_url,
+    name: resume.file_name,
+    document_type: resumeDocumentType(resume.file_name),
+    valid_from: resume.created_at || new Date().toISOString(),
+    at: resume.created_at || new Date().toISOString(),
+  }));
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -1434,10 +1428,19 @@ const CandidateDetail = () => {
             </TabsContent>
 
             <TabsContent value="documents" className="space-y-6 mt-0">
-              <DocumentsManager
-                documents={candidateDocuments}
-                onUpload={handleDocumentUpload}
+              <DocumentsPanel
                 title="Candidate Documents"
+                documents={normalizedCandidateDocuments}
+                onUpload={async (data) => {
+                  if (!id || !data.file) return;
+                  await candidateSearchService.addResume(id, data.file);
+                  await fetchCandidateData();
+                }}
+                onDelete={async (resumeId) => {
+                  if (!id) return;
+                  await candidateSearchService.deleteResume(id, resumeId);
+                  await fetchCandidateData();
+                }}
               />
             </TabsContent>
 
@@ -1588,6 +1591,36 @@ const CandidateDetail = () => {
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-gray-700">Years of Experience</Label>
                 <Input type="number" min={0} max={50} value={editForm.experience_years ?? ""} onChange={e => setEditForm(p => ({ ...p, experience_years: e.target.value === "" ? "" : Number(e.target.value) }))} className="h-9 text-sm" placeholder="0" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-gray-700">Rating</Label>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setEditForm((p: any) => ({ ...p, rating: p.rating === star ? null : star }))}
+                    className="p-0.5"
+                  >
+                    <Star
+                      className={`w-5 h-5 ${
+                        editForm.rating && star <= editForm.rating
+                          ? "text-yellow-500 fill-current"
+                          : "text-gray-300"
+                      }`}
+                    />
+                  </button>
+                ))}
+                {editForm.rating != null && (
+                  <button
+                    type="button"
+                    onClick={() => setEditForm((p: any) => ({ ...p, rating: null }))}
+                    className="text-xs text-gray-400 hover:text-gray-600 ml-2"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

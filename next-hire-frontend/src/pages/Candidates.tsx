@@ -68,6 +68,7 @@ import { downloadCsv } from "@/utils/csv";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { formatShortId } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 
 // Animated step messages shown while the AI parses a resume. Purely
@@ -359,7 +360,7 @@ const Candidates = () => {
           ? candidateSearchService.formatSalary(c.expected_salary)
           : "—",
         submissions: c.submissions_count || 0,
-        rating: (c as any).rating || "—",
+        rating: c.rating != null ? c.rating.toFixed(1) : "Not Rated",
         lastContact: c.updated_at || c.created_at,
         email: c.user?.email,
         phone: c.phone,
@@ -371,17 +372,26 @@ const Candidates = () => {
     {
       field: "candidate_id",
       headerName: "ID",
-      width: 130,
+      width: 70,
       renderCell: (value: string, row: any) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleViewCandidate(row.id);
-          }}
-          className="text-blue-600 hover:text-blue-800 hover:underline font-medium font-mono text-xs whitespace-nowrap"
-        >
-          {value}
-        </button>
+        <TooltipProvider delayDuration={100}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleViewCandidate(row.id);
+                }}
+                className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-xs whitespace-nowrap"
+              >
+                {formatShortId(value, row.id)}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="font-mono text-xs">
+              {value || row.id}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       ),
     },
     {

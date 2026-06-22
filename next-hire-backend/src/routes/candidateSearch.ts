@@ -13,6 +13,8 @@ import {
   parseResumeAndCreateCandidate,
   matchCandidatesForJob,
   matchCandidatesByText,
+  addCandidateResume,
+  deleteCandidateResume,
 } from "../controllers/candidateSearchController";
 
 const router = Router();
@@ -126,5 +128,22 @@ router.put("/:id", candidateIdValidation, validate, updateCandidateByRecruiter);
 
 // Delete candidate profile (recruiters only)
 router.delete("/:id", candidateIdValidation, validate, deleteCandidate);
+
+// Upload a resume on the candidate's behalf (recruiters only)
+router.post(
+  "/:id/resumes",
+  documentUpload.single("resume"),
+  candidateIdValidation,
+  validate,
+  addCandidateResume
+);
+
+// Delete one of a candidate's resumes (recruiters only)
+router.delete(
+  "/:id/resumes/:resumeId",
+  [...candidateIdValidation, param("resumeId").isUUID().withMessage("Valid resume ID is required")],
+  validate,
+  deleteCandidateResume
+);
 
 export default router;

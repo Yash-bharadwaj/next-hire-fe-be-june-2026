@@ -38,6 +38,7 @@ import interviewRoutes from "./routes/interviews";
 import placementRoutes from "./routes/placements";
 import businessPartnerRoutes from "./routes/businessPartners";
 import dashboardRoutes from "./routes/dashboard";
+import fileRoutes from "./routes/files";
 
 // Load environment variables
 dotenv.config();
@@ -130,6 +131,7 @@ app.use(`/api/${API_VERSION}/interviews`, interviewRoutes);
 app.use(`/api/${API_VERSION}/placements`, placementRoutes);
 app.use(`/api/${API_VERSION}/business-partners`, businessPartnerRoutes);
 app.use(`/api/${API_VERSION}/dashboard`, dashboardRoutes);
+app.use(`/api/${API_VERSION}/files`, fileRoutes);
 
 // Error handling middleware
 app.use(notFoundHandler);

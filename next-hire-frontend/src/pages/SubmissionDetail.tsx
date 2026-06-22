@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { API_BASE_URL } from "@/lib/api";
+import { resolveDocumentUrl } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -118,12 +118,6 @@ const formatDateOnly = (dateString?: string | null) => {
   });
 };
 
-const resolveFileUrl = (url?: string | null) => {
-  if (!url) return null;
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  return `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
-};
-
 const tabTriggerClass = "data-[state=active]:bg-white data-[state=active]:shadow-sm";
 
 const SubmissionDetail = () => {
@@ -135,6 +129,7 @@ const SubmissionDetail = () => {
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [resumeOpening, setResumeOpening] = useState(false);
 
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [newStatus, setNewStatus] = useState("");
@@ -455,7 +450,25 @@ const SubmissionDetail = () => {
       : formatCompactRange(job.salary_min, job.salary_max)
     : "Not specified";
 
-  const resumeUrl = resolveFileUrl(submission.resume_url || candidate?.resume_url);
+  const resumeKey = submission.resume_url || candidate?.resume_url;
+
+  const handleOpenResume = async () => {
+    if (!resumeKey) return;
+    setResumeOpening(true);
+    try {
+      const url = await resolveDocumentUrl(resumeKey);
+      if (!url) throw new Error("No URL returned");
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to open resume",
+        variant: "destructive",
+      });
+    } finally {
+      setResumeOpening(false);
+    }
+  };
 
   const skillMatrix = computeSkillMatrix(job, candidate);
   const skillSummary = summarizeSkillMatrix(skillMatrix);
@@ -1288,16 +1301,19 @@ const SubmissionDetail = () => {
               <CardTitle className="text-base">Resume</CardTitle>
             </CardHeader>
             <CardContent>
-              {resumeUrl ? (
-                <a
-                  href={resumeUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-2 text-blue-700 hover:underline text-sm"
+              {resumeKey ? (
+                <button
+                  onClick={handleOpenResume}
+                  disabled={resumeOpening}
+                  className="flex items-center gap-2 text-blue-700 hover:underline text-sm disabled:opacity-60"
                 >
-                  <Download className="h-4 w-4" />
+                  {resumeOpening ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
                   Download Resume
-                </a>
+                </button>
               ) : (
                 <p className="text-sm text-gray-500">No resume on file.</p>
               )}

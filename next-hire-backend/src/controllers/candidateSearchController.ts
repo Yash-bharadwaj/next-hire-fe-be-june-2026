@@ -31,7 +31,7 @@ import {
   scoreJobFit,
 } from "../services/aiParsingService";
 import { persistEmbedding, findTopMatches, MatchResult } from "../services/embeddingService";
-import { uploadDocument } from "../services/storageService";
+import { uploadDocument, deleteStoredDocument } from "../services/storageService";
 
 // Search candidates (for recruiters)
 export const searchCandidates = asyncHandler(
@@ -307,7 +307,7 @@ export const updateCandidateByRecruiter = asyncHandler(
     const allowedFields = [
       "first_name", "last_name", "phone", "location", "bio",
       "current_salary", "expected_salary", "experience_years",
-      "availability_status", "linkedin_url", "portfolio_url",
+      "availability_status", "linkedin_url", "portfolio_url", "rating",
     ];
     // Fields with Sequelize isUrl validation — empty string must become null
     const urlFields = new Set(["linkedin_url", "portfolio_url"]);
@@ -1153,6 +1153,134 @@ export const matchCandidatesByText = asyncHandler(
     res.json({
       success: true,
       data: { candidates, skipped_count: skippedCount },
+    });
+  }
+);
+
+// A candidate created before the CandidateResume table existed may still
+// only have its legacy resume_url set - lazily backfill a resumes row for
+// it, mirroring candidateController.ts's self-service equivalent.
+const migrateLegacyResumeIfNeeded = async (candidate: Candidate) => {
+  const existingCount = await CandidateResume.count({
+    where: { candidate_id: candidate.id },
+  });
+
+  if (existingCount === 0 && candidate.resume_url) {
+    const fileName = candidate.resume_url.split("/").pop() || "resume";
+    await CandidateResume.create({
+      candidate_id: candidate.id,
+      file_url: candidate.resume_url,
+      file_name: fileName,
+      is_primary: true,
+    });
+  }
+};
+
+// Upload a resume on a candidate's behalf (recruiter-only) - the
+// self-service equivalent (candidateController.uploadResumeFile) scopes by
+// the logged-in candidate's own user id, which doesn't help a recruiter
+// managing someone else's profile.
+export const addCandidateResume = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+
+    if (req.user?.role !== "recruiter") {
+      throw createError("Only recruiters can upload a candidate's resume", 403);
+    }
+    if (!req.file) {
+      throw createError("A resume file is required", 400);
+    }
+
+    const candidate = await Candidate.findByPk(id);
+    if (!candidate) {
+      throw createError("Candidate not found", 404);
+    }
+
+    await migrateLegacyResumeIfNeeded(candidate);
+
+    const uploaded = await uploadDocument(req.file.path, req.file.filename, req.file.mimetype);
+    const file_url = uploaded.key;
+    const existingCount = await CandidateResume.count({
+      where: { candidate_id: candidate.id },
+    });
+    const isPrimary = existingCount === 0;
+
+    await CandidateResume.create({
+      candidate_id: candidate.id,
+      file_url,
+      file_name: req.file.originalname,
+      is_primary: isPrimary,
+    });
+
+    if (isPrimary) {
+      await candidate.update({ resume_url: file_url });
+    }
+
+    const resumes = await CandidateResume.findAll({
+      where: { candidate_id: candidate.id },
+      order: [["created_at", "DESC"]],
+    });
+
+    res.json({
+      success: true,
+      message: "Resume uploaded successfully",
+      data: { resumes },
+    });
+  }
+);
+
+// Delete one of a candidate's resumes (recruiter-only) - see addCandidateResume.
+export const deleteCandidateResume = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id, resumeId } = req.params;
+
+    if (req.user?.role !== "recruiter") {
+      throw createError("Only recruiters can delete a candidate's resume", 403);
+    }
+
+    const candidate = await Candidate.findByPk(id);
+    if (!candidate) {
+      throw createError("Candidate not found", 404);
+    }
+
+    const resume = await CandidateResume.findOne({
+      where: { id: resumeId, candidate_id: candidate.id },
+    });
+    if (!resume) {
+      throw createError("Resume not found", 404);
+    }
+
+    const wasPrimary = resume.is_primary;
+
+    await resume.destroy();
+
+    // Best-effort removal of the underlying file (S3 or local disk)
+    deleteStoredDocument(resume.file_url).catch(() => {});
+
+    let newPrimaryUrl: string | null = candidate.resume_url ?? null;
+    if (wasPrimary) {
+      const nextPrimary = await CandidateResume.findOne({
+        where: { candidate_id: candidate.id },
+        order: [["created_at", "DESC"]],
+      });
+
+      newPrimaryUrl = nextPrimary ? nextPrimary.file_url : null;
+      if (nextPrimary) {
+        await nextPrimary.update({ is_primary: true });
+      }
+    }
+
+    await candidate.update({ resume_url: newPrimaryUrl } as Partial<Candidate>);
+
+    const resumes = await CandidateResume.findAll({
+      where: { candidate_id: candidate.id },
+      order: [["created_at", "DESC"]],
+    });
+
+    res.json({
+      success: true,
+      message: "Resume deleted successfully",
+      data: { resumes },
     });
   }
 );

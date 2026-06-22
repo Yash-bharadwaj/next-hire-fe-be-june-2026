@@ -17,7 +17,7 @@ import {
 } from "../controllers/candidateController";
 import { authenticate, candidateOnly } from "../middleware/auth";
 import { validate } from "../middleware/validation";
-import { resumeUpload } from "../middleware/upload";
+import { documentUpload } from "../middleware/upload";
 
 const router = Router();
 
@@ -157,7 +157,7 @@ router.put("/profile", updateProfileValidation, validate, updateProfile);
 
 // Resume upload & management
 router.post("/resume", uploadResumeValidation, validate, uploadResume);
-router.post("/resume/upload", resumeUpload.single("resume"), uploadResumeFile);
+router.post("/resume/upload", documentUpload.single("resume"), uploadResumeFile);
 router.get("/resumes", getResumes);
 router.patch(
   "/resumes/:id/primary",

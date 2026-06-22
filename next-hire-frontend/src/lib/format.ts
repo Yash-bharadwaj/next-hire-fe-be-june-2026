@@ -56,6 +56,31 @@ export const formatCompactCurrency = (
   }).format(numeric);
 };
 
+// Short display ID, e.g. "JOB-2026-006" -> "#6", "CAND-2026-010" -> "#10".
+// Falls back to "#<rawId>" for plain numeric/UUID ids with no trailing
+// number, and "—" when nothing usable is present.
+export const formatShortId = (
+  humanId?: string | null,
+  rawId?: string | number | null
+): string => {
+  const trailingNumber = humanId?.match(/(\d+)\D*$/)?.[1];
+  if (trailingNumber) return `#${parseInt(trailingNumber, 10)}`;
+  if (typeof rawId === "number") return `#${rawId}`;
+  return humanId || (rawId ? `#${rawId}` : "—");
+};
+
+// Resolves a User record (optionally with an included Recruiter profile)
+// to a human display name, falling back to their email.
+export const formatPersonName = (person: any): string | null => {
+  if (!person) return null;
+  const profile = person.recruiterProfile;
+  const name = [profile?.first_name, profile?.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return name || person.email || null;
+};
+
 // A min-max range on one line, e.g. "$120K - $150K" or "$95/hr - $130/hr".
 // Falls back gracefully when only one bound is present.
 export const formatCompactRange = (

@@ -76,7 +76,7 @@ import { recruiterService } from "@/services/recruiterService";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { formatCompactRange } from "@/lib/format";
+import { formatCompactRange, formatShortId, formatPersonName } from "@/lib/format";
 import { type CsvColumn } from "@/utils/csv";
 import { useEntityExport } from "@/hooks/useEntityExport";
 import { EmptyState } from "@/components/EmptyState";
@@ -431,6 +431,7 @@ const Jobs = () => {
         salary: formatSalary(job),
         status: job.status,
         priority: job.priority,
+        assignedTo: formatPersonName(job.assignee) || "Unassigned",
         submissions: job.submission_count || 0,
         createdAt: job.created_at ? formatDate(job.created_at) : "—",
         deadline: job.application_deadline
@@ -451,7 +452,8 @@ const Jobs = () => {
     { header: "Salary", accessor: (row) => row.salary },
     { header: "Status", accessor: (row) => row.status },
     { header: "Priority", accessor: (row) => row.priority },
-    { header: "Applications", accessor: (row) => row.submissions },
+    { header: "Assigned To", accessor: (row) => row.assignedTo },
+    { header: "Submissions", accessor: (row) => row.submissions },
     { header: "Created", accessor: (row) => row.createdAt },
     { header: "Deadline", accessor: (row) => row.deadline },
   ];
@@ -469,10 +471,9 @@ const Jobs = () => {
     {
       field: "jobId",
       headerName: "Job ID",
-      width: 110,
+      width: 80,
       renderCell: (value: string, row: any) => {
-        const full = value || row.id;
-        const truncated = full && full.length > 10 ? full.slice(0, 10) + "…" : full;
+        const short = formatShortId(value, row.id);
         return (
           <TooltipProvider delayDuration={100}>
             <Tooltip>
@@ -482,13 +483,13 @@ const Jobs = () => {
                     e.stopPropagation();
                     handleViewJob(row.id);
                   }}
-                  className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-xs truncate max-w-[100px] block"
+                  className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-xs block"
                 >
-                  {truncated}
+                  {short}
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="font-mono text-xs">
-                {full}
+                {value || row.id}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -568,8 +569,16 @@ const Jobs = () => {
       ),
     },
     {
+      field: "assignedTo",
+      headerName: "Assigned To",
+      width: 150,
+      renderCell: (value: string) => (
+        <span className="text-gray-700 text-xs truncate block max-w-[140px]">{value}</span>
+      ),
+    },
+    {
       field: "submissions",
-      headerName: "Applications",
+      headerName: "Submissions",
       width: 120,
       renderCell: (value: number) => (
         <span className="font-medium text-gray-800 text-xs">{value}</span>

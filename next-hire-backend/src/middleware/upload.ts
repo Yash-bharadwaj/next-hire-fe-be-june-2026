@@ -7,10 +7,9 @@ import { AuthenticatedRequest } from "./auth";
 
 const uploadsRoot = path.join(__dirname, "../../uploads");
 const avatarsDir = path.join(uploadsRoot, "avatars");
-const resumesDir = path.join(uploadsRoot, "resumes");
 const documentsTmpDir = path.join(uploadsRoot, "documents_tmp");
 
-[avatarsDir, resumesDir, documentsTmpDir].forEach((dir) => {
+[avatarsDir, documentsTmpDir].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -50,20 +49,6 @@ export const avatarUpload = wrapUpload(
         cb(null, true);
       } else {
         cb(createError("Only JPG, PNG, GIF, or WEBP images are allowed", 400));
-      }
-    },
-  })
-);
-
-export const resumeUpload = wrapUpload(
-  multer({
-    storage: makeStorage(resumesDir),
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-    fileFilter: (_req, file, cb) => {
-      if (ALLOWED_DOCUMENT_TYPES.includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(createError("Only PDF, DOC, or DOCX files are allowed", 400));
       }
     },
   })

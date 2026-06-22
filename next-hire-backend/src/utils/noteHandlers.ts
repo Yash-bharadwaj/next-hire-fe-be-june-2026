@@ -4,6 +4,7 @@ import { Model } from "sequelize";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { asyncHandler, createError } from "../middleware/errorHandler";
 import { formatUserName } from "./notesAndAttachments";
+import { uploadDocument } from "../services/storageService";
 
 interface NoteableRecord extends Model {
   notes_history?: any;
@@ -155,8 +156,12 @@ export function createNoteHandlers<T extends NoteableRecord>(opts: NoteHandlersO
     let size: number | undefined;
     const file = (req as any).file;
     if (file) {
-      const serverBase = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
-      url = `${serverBase}/uploads/documents_tmp/${file.filename}`;
+      // Moves the file out of the temp upload dir into permanent storage
+      // (S3, or the local documents dir) - storing the resulting key, not a
+      // baked-in URL, so it can be resolved to a fresh link on every view
+      // (S3 presigned URLs expire after an hour).
+      const uploaded = await uploadDocument(file.path, file.filename, file.mimetype);
+      url = uploaded.key;
       size = file.size;
     } else if (req.body.url) {
       url = req.body.url;

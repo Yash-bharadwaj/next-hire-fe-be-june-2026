@@ -23,6 +23,7 @@ export interface CandidateAttributes {
   preferred_job_types?: string[]; // Array of job types
   preferred_locations?: string[]; // Array of locations
   bio?: string;
+  rating?: number | null; // Recruiter-assigned rating, 0-5 in 0.5 increments
   embedding?: number[] | null; // Vector embedding for semantic matching
   created_at?: Date;
   updated_at?: Date;
@@ -57,6 +58,7 @@ export class Candidate
   public preferred_job_types?: string[];
   public preferred_locations?: string[];
   public bio?: string;
+  public rating?: number | null;
   public embedding?: number[] | null;
 
   // Timestamps
@@ -166,6 +168,18 @@ Candidate.init(
     bio: {
       type: DataTypes.TEXT,
       allowNull: true,
+    },
+    rating: {
+      type: DataTypes.DECIMAL(2, 1),
+      allowNull: true,
+      validate: {
+        min: 0,
+        max: 5,
+      },
+      get() {
+        const value = this.getDataValue("rating");
+        return value === null || value === undefined ? null : Number(value);
+      },
     },
     embedding: {
       type: DataTypes.TEXT,

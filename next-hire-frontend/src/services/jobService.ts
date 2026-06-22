@@ -50,6 +50,15 @@ export interface Job {
       company_name: string;
     };
   };
+  assignee?: {
+    id: string;
+    email: string;
+    recruiterProfile?: {
+      first_name: string;
+      last_name: string;
+      company_name: string;
+    };
+  };
 }
 
 export interface JobSearchFilters {

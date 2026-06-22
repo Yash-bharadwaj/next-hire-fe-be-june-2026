@@ -14,6 +14,7 @@ export interface CandidateProfile {
   expected_salary?: number;
   experience_years?: number;
   bio?: string;
+  rating?: number | null;
   resume_url?: string;
   linkedin_url?: string;
   portfolio_url?: string;
@@ -205,6 +206,23 @@ class CandidateSearchService {
     return response.data;
   }
 
+  // Upload a resume on the candidate's behalf (recruiter-only)
+  async addResume(candidateId: string, file: File): Promise<{ success: boolean; data: { resumes: CandidateResume[] } }> {
+    const formData = new FormData();
+    formData.append("resume", file);
+    const response = await apiClient.upload<{ resumes: CandidateResume[] }>(
+      `${this.baseUrl}/${candidateId}/resumes`,
+      formData
+    );
+    return response.data as { success: boolean; data: { resumes: CandidateResume[] } };
+  }
+
+  // Delete one of a candidate's resumes (recruiter-only)
+  async deleteResume(candidateId: string, resumeId: string): Promise<{ success: boolean; data: { resumes: CandidateResume[] } }> {
+    const response = await apiClient.delete(`${this.baseUrl}/${candidateId}/resumes/${resumeId}`);
+    return response.data;
+  }
+
   async getCandidateStats(): Promise<CandidateStatsResponse> {
     const response = await apiClient.get(`${this.baseUrl}/stats`);
     return response.data;
@@ -255,7 +273,7 @@ class CandidateSearchService {
   async updateCandidate(id: string, data: Partial<Pick<CandidateProfile,
     "first_name" | "last_name" | "phone" | "location" | "bio" |
     "current_salary" | "expected_salary" | "experience_years" |
-    "availability_status" | "linkedin_url" | "portfolio_url"
+    "availability_status" | "linkedin_url" | "portfolio_url" | "rating"
   >>): Promise<{ success: boolean; data: { candidate: CandidateProfile } }> {
     const response = await apiClient.put(`${this.baseUrl}/${id}`, data);
     return response.data;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
-import { FileText, Upload, Download, AlertTriangle, CheckCircle, XCircle, Filter, Plus, Loader2 } from "lucide-react";
+import { FileText, Upload, Download, AlertTriangle, CheckCircle, XCircle, Filter, Plus, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { resolveDocumentUrl } from "@/lib/api";
 
 export type DocumentType = "PDF" | "DOC" | "DOCX" | "IMG" | "OTHER";
 
@@ -183,12 +184,34 @@ interface DocumentsPanelProps {
   title?: string;
   documents: DocumentRecord[];
   onUpload: (data: DocumentUploadData) => Promise<void>;
+  // Optional - most entities' generic "attachments" have no delete endpoint
+  // at all on the backend. Only provide this where one genuinely exists.
+  onDelete?: (documentId: string) => Promise<void>;
 }
 
-export const DocumentsPanel = ({ title = "Documents", documents, onUpload }: DocumentsPanelProps) => {
+export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDelete }: DocumentsPanelProps) => {
   const [filter, setFilter] = useState<FilterStatus>("all");
   const [showUpload, setShowUpload] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const handleOpen = async (doc: DocumentRecord) => {
+    setOpeningId(doc.id);
+    try {
+      const url = await resolveDocumentUrl(doc.url);
+      if (!url) throw new Error("No URL returned");
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to open document",
+        variant: "destructive",
+      });
+    } finally {
+      setOpeningId(null);
+    }
+  };
 
   const filteredDocuments = documents.filter((doc) => filter === "all" || getDocumentStatus(doc.valid_to) === filter);
 
@@ -208,6 +231,24 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload }: Doc
         description: err?.response?.data?.message || "Failed to upload document",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleDelete = async (doc: DocumentRecord) => {
+    if (!onDelete) return;
+    if (!window.confirm(`Delete "${doc.name}"? This cannot be undone.`)) return;
+    setDeletingId(doc.id);
+    try {
+      await onDelete(doc.id);
+      toast({ title: "Document deleted" });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to delete document",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -290,12 +331,38 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload }: Doc
                         </p>
                       </div>
                     </div>
-                    <a href={doc.url} target="_blank" rel="noreferrer">
-                      <Button size="sm" variant="outline" className="border-gray-300 text-gray-700 hover:bg-gray-50">
-                        <Download className="w-4 h-4 mr-1" />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                        onClick={() => handleOpen(doc)}
+                        disabled={openingId === doc.id}
+                      >
+                        {openingId === doc.id ? (
+                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4 mr-1" />
+                        )}
                         Download
                       </Button>
-                    </a>
+                      {onDelete && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-red-200 text-red-600 hover:bg-red-50"
+                          onClick={() => handleDelete(doc)}
+                          disabled={deletingId === doc.id}
+                        >
+                          {deletingId === doc.id ? (
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4 mr-1" />
+                          )}
+                          Delete
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

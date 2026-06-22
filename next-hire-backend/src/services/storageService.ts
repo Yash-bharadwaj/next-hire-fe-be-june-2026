@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { logger } from "../utils/logger";
 
@@ -86,4 +86,24 @@ export async function getFileUrl(storedKey: string): Promise<string> {
     logger.error(`Failed to generate presigned URL for ${storedKey}`, error);
     return storedKey;
   }
+}
+
+/**
+ * Best-effort delete of a previously-uploaded file, given the key/path
+ * stored in the DB. Mirrors getFileUrl's storage-mode branching.
+ */
+export async function deleteStoredDocument(storedKey: string): Promise<void> {
+  if (!storedKey) return;
+
+  if (isS3Enabled && s3Client && !storedKey.startsWith("/uploads/")) {
+    try {
+      await s3Client.send(new DeleteObjectCommand({ Bucket: DOCUMENTS_BUCKET, Key: storedKey }));
+    } catch (error) {
+      logger.warn(`Failed to delete S3 object ${storedKey}`, error);
+    }
+    return;
+  }
+
+  const localPath = path.join(__dirname, "../../", storedKey);
+  await fs.unlink(localPath).catch(() => {});
 }
