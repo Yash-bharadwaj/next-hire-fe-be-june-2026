@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api";
+import { formatDate as formatDateUtil, formatDateTime as formatDateTimeUtil, formatCurrency } from "@/lib/format";
 
 export type PlacementStatus = "active" | "completed" | "terminated" | "on_hold";
 export type PlacementType = "permanent" | "contract" | "temporary" | "temp_to_perm";
@@ -417,30 +418,15 @@ class PlacementService {
   }
 
   formatSalary(amount: number, currency: string = "USD"): string {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
+    return formatCurrency(amount, currency);
   }
 
   formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+    return formatDateUtil(dateString);
   }
 
   formatDateTime(dateString: string): string {
-    return new Date(dateString).toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatDateTimeUtil(dateString);
   }
 
   calculateDuration(startDate: string, endDate?: string): string {

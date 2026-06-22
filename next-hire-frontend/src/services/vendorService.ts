@@ -1,4 +1,5 @@
 import { apiClient, ApiResponse, PaginatedResponse } from "@/lib/api";
+import { getPriorityColor as getPriorityColorUtil, formatCurrency } from "@/lib/format";
 
 // Types for vendor profile
 export interface VendorProfile {
@@ -486,14 +487,7 @@ class VendorService {
     if (!job.salary_min && !job.salary_max) return "Salary not specified";
 
     const currency = job.salary_currency || "USD";
-    const formatAmount = (amount: number) => {
-      return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency,
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(amount);
-    };
+    const formatAmount = (amount: number) => formatCurrency(amount, currency);
 
     if (job.salary_min && job.salary_max) {
       return `${formatAmount(job.salary_min)} - ${formatAmount(
@@ -531,12 +525,7 @@ class VendorService {
   }
 
   getPriorityColor(priority: JobPriority): string {
-    const colorMap: Record<JobPriority, string> = {
-      low: "bg-blue-100 text-blue-800",
-      medium: "bg-yellow-100 text-yellow-800",
-      high: "bg-red-100 text-red-800",
-    };
-    return colorMap[priority] || "bg-gray-100 text-gray-800";
+    return getPriorityColorUtil(priority);
   }
 }
 

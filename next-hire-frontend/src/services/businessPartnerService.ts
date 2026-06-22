@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api";
+import { formatDate as formatDateUtil } from "@/lib/format";
 
 export type BusinessPartnerStatus = "active" | "prospect" | "inactive" | "on_hold";
 export type BusinessPartnerSource = "referral" | "website" | "cold_call" | "trade_show" | "linkedin" | "email_campaign" | "other";
@@ -464,11 +465,7 @@ class BusinessPartnerService {
   }
 
   formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+    return formatDateUtil(dateString);
   }
 
 }

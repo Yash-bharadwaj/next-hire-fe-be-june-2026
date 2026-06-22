@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api";
+import { formatDate as formatDateUtil, formatDateTime as formatDateTimeUtil } from "@/lib/format";
 
 export type InterviewStatus = "scheduled" | "in_progress" | "completed" | "cancelled" | "no_show";
 export type InterviewType = "phone" | "video" | "in_person" | "technical" | "behavioral";
@@ -316,21 +317,11 @@ class InterviewService {
   }
 
   formatDateTime(dateString: string): string {
-    return new Date(dateString).toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatDateTimeUtil(dateString);
   }
 
   formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+    return formatDateUtil(dateString);
   }
 
   formatTime(dateString: string): string {

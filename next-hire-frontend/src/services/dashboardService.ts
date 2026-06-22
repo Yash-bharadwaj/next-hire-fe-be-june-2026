@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api";
+import { formatDateTime as formatDateTimeUtil } from "@/lib/format";
 
 export interface DashboardStats {
   overview: {
@@ -181,13 +182,7 @@ class DashboardService {
   }
 
   formatDateTime(dateString: string): string {
-    return new Date(dateString).toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatDateTimeUtil(dateString);
   }
 }
 
