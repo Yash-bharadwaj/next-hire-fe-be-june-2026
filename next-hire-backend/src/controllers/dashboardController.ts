@@ -8,11 +8,13 @@ import {
   Job,
   Submission,
   Interview,
+  Placement,
 } from "../models";
 import { sequelize } from "../config/database";
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthRequest } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import { hoursDiffExpr } from "../utils/dateGrouping";
 
 // Get dashboard statistics based on user role
 export const getDashboardStats = asyncHandler(
@@ -147,9 +149,33 @@ const getRecruiterStats = async (userId: string) => {
           })
         : 0;
 
-    // Simplified interview count (skip for now to avoid association issues)
-    const totalInterviews = 0;
-    const upcomingInterviews = 0;
+    // Interviews this recruiter is the interviewer for - scoped directly by
+    // interviewer_id, no join needed.
+    const totalInterviews = await Interview.count({ where: { interviewer_id: userId } });
+    const upcomingInterviews = await Interview.count({
+      where: { interviewer_id: userId, status: "scheduled", scheduled_at: { [Op.gte]: new Date() } },
+    });
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+    const interviewsToday = await Interview.count({
+      where: { interviewer_id: userId, scheduled_at: { [Op.gte]: todayStart, [Op.lte]: todayEnd } },
+    });
+
+    // Active candidates = available in the shared candidate pool (not scoped
+    // to this recruiter - candidates aren't owned by a single recruiter).
+    const activeCandidates = await Candidate.count({ where: { availability_status: "available" } });
+
+    // Pending submissions = not yet reviewed and not already at a final outcome.
+    const pendingSubmissions =
+      finalJobIds.length > 0
+        ? await Submission.count({
+            where: {
+              job_id: { [Op.in]: finalJobIds },
+              reviewed_at: { [Op.is]: null } as any,
+              status: { [Op.notIn]: ["hired", "rejected"] },
+            },
+          })
+        : 0;
 
     // Get placements
     const totalPlacements =
@@ -182,6 +208,49 @@ const getRecruiterStats = async (userId: string) => {
       `Final stats - Jobs: ${finalTotalJobs}, Active: ${finalActiveJobs}, Submissions: ${totalSubmissions}`
     );
 
+    const now = new Date();
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    // Revenue = commission earned on placements this recruiter made,
+    // compared against last month for the trend arrow shown on the card.
+    const revenueForRange = async (from: Date, to: Date) => {
+      const result = await Placement.sum("commission_amount", {
+        where: { recruiter_id: userId, start_date: { [Op.gte]: from, [Op.lt]: to } },
+      });
+      return Number(result) || 0;
+    };
+    const totalRevenue = await revenueForRange(startOfThisMonth, now);
+    const lastMonthRevenue = await revenueForRange(startOfLastMonth, startOfThisMonth);
+    const revenueChangePercent = lastMonthRevenue > 0
+      ? Math.round(((totalRevenue - lastMonthRevenue) / lastMonthRevenue) * 1000) / 10
+      : null;
+
+    // Response time = average hours between a submission coming in and the
+    // recruiter first reviewing it, for submissions on this recruiter's jobs.
+    const avgResponseHoursForRange = async (from: Date, to: Date) => {
+      if (finalJobIds.length === 0) return null;
+      const result: any = await Submission.findOne({
+        where: {
+          job_id: { [Op.in]: finalJobIds },
+          // No explicit "is not null" needed - a NULL reviewed_at never
+          // satisfies the gte/lt range comparison below.
+          reviewed_at: { [Op.gte]: from, [Op.lt]: to },
+        },
+        attributes: [
+          [sequelize.fn("AVG", sequelize.literal(hoursDiffExpr("reviewed_at", "submitted_at"))), "avgHours"],
+        ],
+        raw: true,
+      });
+      const avg = result?.avgHours;
+      return avg !== null && avg !== undefined ? Number(avg) : null;
+    };
+    const avgResponseHours = await avgResponseHoursForRange(startOfThisMonth, now);
+    const lastMonthAvgResponseHours = await avgResponseHoursForRange(startOfLastMonth, startOfThisMonth);
+    const responseTimeChangePercent = avgResponseHours !== null && lastMonthAvgResponseHours
+      ? Math.round(((avgResponseHours - lastMonthAvgResponseHours) / lastMonthAvgResponseHours) * 1000) / 10
+      : null;
+
     return {
       overview: {
         totalJobs: finalTotalJobs,
@@ -190,7 +259,14 @@ const getRecruiterStats = async (userId: string) => {
         newSubmissions,
         totalInterviews,
         upcomingInterviews,
+        interviewsToday,
+        activeCandidates,
+        pendingSubmissions,
         totalPlacements,
+        totalRevenue,
+        revenueChangePercent,
+        avgResponseHours,
+        responseTimeChangePercent,
       },
       submissionsByStatus: [],
       recentSubmissions,
@@ -207,7 +283,14 @@ const getRecruiterStats = async (userId: string) => {
         newSubmissions: 0,
         totalInterviews: 0,
         upcomingInterviews: 0,
+        interviewsToday: 0,
+        activeCandidates: 0,
+        pendingSubmissions: 0,
         totalPlacements: 0,
+        totalRevenue: 0,
+        revenueChangePercent: null,
+        avgResponseHours: null,
+        responseTimeChangePercent: null,
       },
       submissionsByStatus: [],
       recentSubmissions: [],

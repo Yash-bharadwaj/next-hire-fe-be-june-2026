@@ -9,6 +9,9 @@ export interface DashboardStats {
     newSubmissions?: number;
     totalInterviews?: number;
     upcomingInterviews?: number;
+    interviewsToday?: number;
+    activeCandidates?: number;
+    pendingSubmissions?: number;
     totalPlacements?: number;
     totalApplications?: number;
     activeApplications?: number;
@@ -16,6 +19,10 @@ export interface DashboardStats {
     offers?: number;
     placements?: number;
     availableJobs?: number;
+    totalRevenue?: number;
+    revenueChangePercent?: number | null;
+    avgResponseHours?: number | null;
+    responseTimeChangePercent?: number | null;
   };
   submissionsByStatus?: Array<{
     status: string;

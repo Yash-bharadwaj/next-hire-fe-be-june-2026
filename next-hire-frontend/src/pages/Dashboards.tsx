@@ -1,12 +1,23 @@
 
-import React from "react";
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { 
-  BarChart3, 
-  TrendingUp, 
-  Users, 
-  Briefcase, 
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  BarChart3,
+  TrendingUp,
+  Users,
+  Briefcase,
   DollarSign,
   Clock,
   Target,
@@ -16,28 +27,88 @@ import {
   ArrowRight,
   Loader2,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Download
 } from "lucide-react";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useAuth } from "@/contexts/AuthContext";
+import { recruiterService, RecruiterGoals } from "@/services/recruiterService";
+import { downloadCsv } from "@/utils/csv";
 
 const Dashboards = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { stats, loading, error, refresh } = useDashboard();
+
+  const [showGoalsDialog, setShowGoalsDialog] = useState(false);
+  const [goalsForm, setGoalsForm] = useState<RecruiterGoals>({});
+  const [loadingGoals, setLoadingGoals] = useState(false);
+  const [savingGoals, setSavingGoals] = useState(false);
+
+  const openGoalsDialog = async () => {
+    setShowGoalsDialog(true);
+    setLoadingGoals(true);
+    try {
+      const res = await recruiterService.getGoals();
+      setGoalsForm(res.data.goals || {});
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to load goals");
+    } finally {
+      setLoadingGoals(false);
+    }
+  };
+
+  const handleSaveGoals = async () => {
+    setSavingGoals(true);
+    try {
+      await recruiterService.updateGoals(goalsForm);
+      toast.success("Goals updated");
+      setShowGoalsDialog(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to save goals");
+    } finally {
+      setSavingGoals(false);
+    }
+  };
+
+  const handleExportData = () => {
+    if (!stats) {
+      toast.error("No dashboard data to export yet");
+      return;
+    }
+    downloadCsv(
+      `dashboard-metrics-${new Date().toISOString().slice(0, 10)}.csv`,
+      getDashboardMetrics(),
+      [
+        { header: "Metric", accessor: (m) => m.title },
+        { header: "Value", accessor: (m) => m.value },
+        { header: "Change", accessor: (m) => m.subtext || "" },
+      ]
+    );
+    toast.success("Dashboard metrics exported");
+  };
 
   // Create dynamic metrics based on real data
   const getDashboardMetrics = () => {
     if (!stats) return [];
 
-    const successRate = stats.overview.totalSubmissions > 0 
+    const successRate = stats.overview.totalSubmissions > 0
       ? ((stats.overview.totalPlacements || 0) / stats.overview.totalSubmissions * 100).toFixed(1)
       : "0";
 
+    const formatChange = (percent?: number | null) =>
+      percent === null || percent === undefined ? null : `${percent > 0 ? "+" : ""}${percent}% from last month`;
+
+    const revenueChange = formatChange(stats.overview.revenueChangePercent);
+    const responseTimeChange = formatChange(stats.overview.responseTimeChangePercent);
+
     return [
       {
-        title: "Total Jobs",
-        value: stats.overview.totalJobs?.toString() || "0",
-        icon: Briefcase,
+        title: "Total Revenue",
+        value: `$${(stats.overview.totalRevenue || 0).toLocaleString()}`,
+        subtext: revenueChange,
+        increaseIsGood: true,
+        icon: DollarSign,
         color: "from-green-400/30 via-green-500/20 to-green-600/30",
         iconColor: "text-green-700"
       },
@@ -56,9 +127,11 @@ const Dashboards = () => {
         iconColor: "text-purple-700"
       },
       {
-        title: "Total Submissions",
-        value: stats.overview.totalSubmissions?.toString() || "0",
-        icon: Users,
+        title: "Response Time",
+        value: stats.overview.avgResponseHours != null ? `${stats.overview.avgResponseHours.toFixed(1)}h` : "—",
+        subtext: responseTimeChange,
+        increaseIsGood: false,
+        icon: Clock,
         color: "from-orange-400/30 via-orange-500/20 to-orange-600/30",
         iconColor: "text-orange-700"
       }
@@ -67,6 +140,9 @@ const Dashboards = () => {
 
   const dashboardMetrics = getDashboardMetrics();
 
+  // Each card links to the real, existing page/report tab that actually
+  // covers that area - there's no separate page for each of these 6 concepts,
+  // so several intentionally point at different tabs of the same Reports page.
   const dashboardCards = [
     {
       title: "Executive Dashboard",
@@ -74,7 +150,7 @@ const Dashboards = () => {
       features: ["Revenue Analytics", "Performance Metrics", "Strategic Insights"],
       icon: BarChart3,
       color: "from-emerald-400/20 to-teal-600/20",
-      route: "/dashboard/executive"
+      route: "/dashboard/reports?tab=financial"
     },
     {
       title: "Recruiter Dashboard",
@@ -82,7 +158,7 @@ const Dashboards = () => {
       features: ["Activity Tracking", "Pipeline Management", "Task Overview"],
       icon: Users,
       color: "from-blue-400/20 to-indigo-600/20",
-      route: "/dashboard/recruiter"
+      route: "/dashboard/home"
     },
     {
       title: "Sales Dashboard",
@@ -90,7 +166,7 @@ const Dashboards = () => {
       features: ["Client Metrics", "Deal Pipeline", "Revenue Tracking"],
       icon: Briefcase,
       color: "from-purple-400/20 to-violet-600/20",
-      route: "/dashboard/sales"
+      route: "/dashboard/reports?tab=clients"
     },
     {
       title: "Analytics Dashboard",
@@ -98,7 +174,7 @@ const Dashboards = () => {
       features: ["Custom Reports", "Trend Analysis", "Predictive Insights"],
       icon: PieChart,
       color: "from-pink-400/20 to-rose-600/20",
-      route: "/dashboard/analytics"
+      route: "/dashboard/reports?tab=performance"
     },
     {
       title: "Performance Dashboard",
@@ -106,7 +182,7 @@ const Dashboards = () => {
       features: ["Team Metrics", "Individual KPIs", "Goal Tracking"],
       icon: Activity,
       color: "from-amber-400/20 to-orange-600/20",
-      route: "/dashboard/performance"
+      route: "/dashboard/reports?tab=departments"
     },
     {
       title: "Forecasting Dashboard",
@@ -114,7 +190,7 @@ const Dashboards = () => {
       features: ["Revenue Forecast", "Demand Planning", "Market Trends"],
       icon: LineChart,
       color: "from-cyan-400/20 to-blue-600/20",
-      route: "/dashboard/forecasting"
+      route: "/dashboard/reports?tab=financial"
     }
   ];
 
@@ -195,6 +271,13 @@ const Dashboards = () => {
                 </CardHeader>
                 <CardContent className="relative pt-1">
                   <div className="text-2xl font-bold text-gray-800 font-roboto-slab mb-1">{metric.value}</div>
+                  {metric.subtext && (
+                    <p className={`text-xs font-roboto-slab ${
+                      metric.subtext.startsWith("+") === !!metric.increaseIsGood ? "text-green-600" : "text-red-600"
+                    }`}>
+                      {metric.subtext}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -215,7 +298,12 @@ const Dashboards = () => {
                   <div className="p-3 rounded-xl bg-white/40 backdrop-blur-sm shadow-sm group-hover:bg-white/50 transition-all border border-white/30">
                     <IconComponent className="h-6 w-6 text-gray-700" />
                   </div>
-                  <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => navigate(dashboard.route)}
+                  >
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -232,7 +320,11 @@ const Dashboards = () => {
                     </div>
                   ))}
                 </div>
-                <Button className="w-full mt-4 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white shadow-md" size="sm">
+                <Button
+                  className="w-full mt-4 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white shadow-md"
+                  size="sm"
+                  onClick={() => navigate(dashboard.route)}
+                >
                   Open Dashboard
                 </Button>
               </CardContent>
@@ -248,25 +340,95 @@ const Dashboards = () => {
         </CardHeader>
         <CardContent className="pt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Button variant="outline" className="justify-start border-white/30 hover:bg-white/20 backdrop-blur-sm">
+            <Button
+              variant="outline"
+              className="justify-start border-white/30 hover:bg-white/20 backdrop-blur-sm"
+              onClick={() => navigate("/dashboard/reports")}
+            >
               <BarChart3 className="h-4 w-4 mr-2" />
               Generate Report
             </Button>
-            <Button variant="outline" className="justify-start border-white/30 hover:bg-white/20 backdrop-blur-sm">
+            <Button
+              variant="outline"
+              className="justify-start border-white/30 hover:bg-white/20 backdrop-blur-sm"
+              onClick={() => navigate("/dashboard/reports?tab=financial")}
+            >
               <TrendingUp className="h-4 w-4 mr-2" />
               View Trends
             </Button>
-            <Button variant="outline" className="justify-start border-white/30 hover:bg-white/20 backdrop-blur-sm">
+            <Button
+              variant="outline"
+              className="justify-start border-white/30 hover:bg-white/20 backdrop-blur-sm"
+              onClick={openGoalsDialog}
+            >
               <Target className="h-4 w-4 mr-2" />
               Set Goals
             </Button>
-            <Button variant="outline" className="justify-start border-white/30 hover:bg-white/20 backdrop-blur-sm">
-              <Activity className="h-4 w-4 mr-2" />
+            <Button
+              variant="outline"
+              className="justify-start border-white/30 hover:bg-white/20 backdrop-blur-sm"
+              onClick={handleExportData}
+            >
+              <Download className="h-4 w-4 mr-2" />
               Export Data
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={showGoalsDialog} onOpenChange={setShowGoalsDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set Monthly Goals</DialogTitle>
+          </DialogHeader>
+          {loadingGoals ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <Label>Placements Target</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={goalsForm.placements ?? ""}
+                  onChange={(e) => setGoalsForm({ ...goalsForm, placements: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  placeholder="e.g. 10"
+                />
+              </div>
+              <div>
+                <Label>Revenue Target (USD)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={goalsForm.revenue ?? ""}
+                  onChange={(e) => setGoalsForm({ ...goalsForm, revenue: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  placeholder="e.g. 50000"
+                />
+              </div>
+              <div>
+                <Label>Submissions Target</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={goalsForm.submissions ?? ""}
+                  onChange={(e) => setGoalsForm({ ...goalsForm, submissions: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  placeholder="e.g. 40"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowGoalsDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveGoals} disabled={savingGoals || loadingGoals}>
+              {savingGoals ? "Saving..." : "Save Goals"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

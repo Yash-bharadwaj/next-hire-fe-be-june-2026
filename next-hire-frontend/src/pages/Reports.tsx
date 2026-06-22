@@ -1,5 +1,6 @@
 
 import React, { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -59,7 +60,13 @@ import {
   Legend
 } from "recharts";
 
+const VALID_REPORT_TABS = ["performance", "financial", "clients", "departments"];
+
 const Reports = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const activeTab = VALID_REPORT_TABS.includes(tabParam || "") ? tabParam! : "performance";
+
   const [selectedPeriod, setSelectedPeriod] = useState("last-30-days");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
 
@@ -403,7 +410,11 @@ const Reports = () => {
       </div>
 
       {/* Main Reports Tabs */}
-      <Tabs defaultValue="performance" className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setSearchParams((params) => { params.set("tab", value); return params; })}
+        className="space-y-6"
+      >
         <TabsList className="grid w-full grid-cols-1 md:grid-cols-4 lg:w-fit bg-white shadow-lg rounded-xl p-1">
           <TabsTrigger value="performance" className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4" />
