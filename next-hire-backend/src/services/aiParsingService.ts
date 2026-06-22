@@ -549,6 +549,96 @@ ${truncated}
   };
 }
 
+export interface ParsedJobSearchQuery {
+  keywords: string[];
+  location?: string;
+  job_type?: "full_time" | "part_time" | "contract" | "temporary";
+  remote_work_allowed?: boolean;
+  experience_min?: number;
+  salary_min?: number;
+  // True when this came from the deterministic fallback below (AI
+  // unavailable), not a real Gemini extraction - callers may want to
+  // surface that distinction to the user.
+  ai_unavailable?: boolean;
+}
+
+const SEARCH_QUERY_STOPWORDS = new Set([
+  "the", "and", "for", "with", "who", "have", "this", "that", "from",
+  "find", "looking", "need", "want", "ideal", "candidate", "position",
+  "role", "job", "someone", "person", "good", "strong", "able", "years",
+]);
+
+// Deterministic, no-AI keyword split - used when Gemini is unavailable so
+// job search never goes fully blank, only loses the structured-filter
+// extraction (location/job type/remote/salary/experience).
+function fallbackParseJobSearchQuery(query: string): ParsedJobSearchQuery {
+  const keywords = Array.from(
+    new Set(
+      query
+        .toLowerCase()
+        .split(/[^a-z0-9+#]+/)
+        .filter((word) => word.length > 2 && !SEARCH_QUERY_STOPWORDS.has(word))
+    )
+  );
+  return {
+    keywords,
+    remote_work_allowed: /\bremote\b/.test(query.toLowerCase()) || undefined,
+    ai_unavailable: true,
+  };
+}
+
+/**
+ * Extract structured search filters from a recruiter's free-text job search
+ * query (e.g. "remote senior react developer in Austin, 5+ years, $120k+")
+ * using Gemini, so AI search can run through the exact same filter/ranking
+ * path as manual search. Falls back to plain keyword splitting (never
+ * throws) if Gemini is unavailable.
+ */
+export async function parseJobSearchQuery(query: string): Promise<ParsedJobSearchQuery> {
+  const prompt = `You are an expert technical recruiter's search assistant. Read the free-text job search query below and return ONLY a single valid JSON object (no markdown fences, no commentary) with exactly this shape:
+
+{
+  "keywords": string[],
+  "location": string | null,
+  "job_type": "full_time" | "part_time" | "contract" | "temporary" | null,
+  "remote_work_allowed": boolean | null,
+  "experience_min_years": number | null,
+  "salary_min": number | null
+}
+
+Rules:
+- "keywords" are the meaningful role/skill/technology words to search for (e.g. job titles, technologies, industries) - lowercase, deduplicated, no stopwords, no locations or numbers.
+- "location" is a city/state/region if mentioned, otherwise null.
+- "remote_work_allowed" is true only if the query explicitly asks for remote/work-from-home, otherwise null.
+- Use null for any field that cannot be determined from the text. Never invent information not present in the query.
+
+Query:
+"""
+${query.slice(0, 1000)}
+"""`;
+
+  try {
+    const result = await callGeminiJSON(prompt, 1024);
+    const jobType = VALID_JOB_TYPES.includes(result.job_type) ? result.job_type : undefined;
+    const keywords = strArray(result.keywords);
+
+    return {
+      keywords: keywords.length > 0 ? keywords : fallbackParseJobSearchQuery(query).keywords,
+      location: str(result.location),
+      job_type: jobType as ParsedJobSearchQuery["job_type"],
+      remote_work_allowed: typeof result.remote_work_allowed === "boolean" ? result.remote_work_allowed : undefined,
+      experience_min: num(result.experience_min_years),
+      salary_min: num(result.salary_min),
+    };
+  } catch (error) {
+    if (error instanceof AIParsingError) {
+      logger.warn("parseJobSearchQuery: AI unavailable, falling back to keyword split");
+      return fallbackParseJobSearchQuery(query);
+    }
+    throw error;
+  }
+}
+
 export interface JobFitScore {
   score: number; // 0-100
   reasoning: string;

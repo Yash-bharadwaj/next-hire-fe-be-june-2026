@@ -67,6 +67,8 @@ import {
   FileSpreadsheet,
   Sheet,
   Download,
+  PenTool,
+  Import,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useJobs, useJobManagement } from "@/hooks/useJobs";
@@ -123,6 +125,14 @@ const Jobs = () => {
   const [parseProgress, setParseProgress] = useState(0);
   const [isDraggingJD, setIsDraggingJD] = useState(false);
   const jdInputRef = useRef<HTMLInputElement>(null);
+
+  // "AI Assistant" / "From Email" create-job flow - both are free-text
+  // variants of the same AI parsing pipeline used by "Import From File"
+  // above, just with a textarea instead of a file. Shares parsingJD/
+  // JD_PARSE_STEPS/parseProgress with the file flow for the "AI is working"
+  // animation since the underlying wait is identical.
+  const [textCreateMode, setTextCreateMode] = useState<"assistant" | "email" | null>(null);
+  const [jdText, setJdText] = useState("");
 
   // AI pay rate estimation prompt (admin/recruiter-editable)
   const [showPayRatePromptDialog, setShowPayRatePromptDialog] = useState(false);
@@ -374,6 +384,41 @@ const Jobs = () => {
       toast.success(`Created draft job "${job.title}". Review and publish when ready.`);
       setShowParseDialog(false);
       setJdFile(null);
+      refresh();
+      navigate(`/dashboard/jobs/${job.id}/edit`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || "Failed to parse job description");
+    } finally {
+      setParsingJD(false);
+    }
+  };
+
+  const openTextCreateDialog = (mode: "assistant" | "email") => {
+    setTextCreateMode(mode);
+    setJdText("");
+  };
+
+  const handleParseJobText = async () => {
+    if (!jdText.trim()) {
+      toast.error(
+        textCreateMode === "email"
+          ? "Please paste the job email"
+          : "Please describe the role you want to hire for"
+      );
+      return;
+    }
+    try {
+      setParsingJD(true);
+      const result = await jobService.parseJobText(jdText.trim());
+      const job = result.data.job;
+
+      setParseStepIndex(JD_PARSE_STEPS.length - 1);
+      setParseProgress(100);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      toast.success(`Created draft job "${job.title}". Review and publish when ready.`);
+      setTextCreateMode(null);
+      setJdText("");
       refresh();
       navigate(`/dashboard/jobs/${job.id}/edit`);
     } catch (err: any) {
@@ -753,14 +798,6 @@ const Jobs = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            onClick={() => setShowParseDialog(true)}
-            variant="outline"
-            className="flex items-center space-x-2"
-          >
-            <Upload className="h-4 w-4" />
-            <span>Parse Job Description</span>
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="flex items-center space-x-2">
@@ -812,13 +849,45 @@ const Jobs = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            onClick={() => navigate("/dashboard/jobs/new")}
-            className="flex items-center space-x-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Create Job</span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="flex items-center space-x-2">
+                <Plus className="h-4 w-4" />
+                <span>Create Job</span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-white border border-gray-200 shadow-lg z-50">
+              <DropdownMenuItem
+                className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                onClick={() => navigate("/dashboard/jobs/new")}
+              >
+                <PenTool className="w-4 h-4 mr-2" />
+                Manual Job
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                onClick={() => setShowParseDialog(true)}
+              >
+                <Import className="w-4 h-4 mr-2" />
+                Import From File
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                onClick={() => openTextCreateDialog("assistant")}
+              >
+                <Bot className="w-4 h-4 mr-2" />
+                AI Assistant
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                onClick={() => openTextCreateDialog("email")}
+              >
+                <Mail className="w-4 h-4 mr-2" />
+                From Email
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -1021,6 +1090,77 @@ const Jobs = () => {
             <Button onClick={handleParseJobDescription} disabled={parsingJD || !jdFile}>
               {parsingJD && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
               Upload &amp; Create Draft Job
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Assistant / From Email create-job dialog */}
+      <Dialog
+        open={textCreateMode !== null}
+        onOpenChange={(open) => {
+          if (!parsingJD) {
+            setTextCreateMode(open ? textCreateMode : null);
+            if (!open) setJdText("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{textCreateMode === "email" ? "Create Job From Email" : "AI Assistant"}</DialogTitle>
+            <DialogDescription>
+              {textCreateMode === "email"
+                ? "Paste the email thread or job request below. AI will extract the role details and create a draft job for you to review and publish."
+                : "Describe the role you want to hire for in your own words. AI will fill in the details and create a draft job for you to review and publish."}
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1 block">
+              {textCreateMode === "email" ? "Email content" : "Role description"}
+            </label>
+            <Textarea
+              value={jdText}
+              onChange={(e) => setJdText(e.target.value)}
+              disabled={parsingJD}
+              rows={8}
+              placeholder={
+                textCreateMode === "email"
+                  ? "Forward: Hiring request — Senior Backend Engineer...\n\nHi team, we need to hire a..."
+                  : "e.g. We need a senior backend engineer based in Austin, contract, $90-110/hr, strong Node.js and Postgres experience..."
+              }
+            />
+
+            {parsingJD && (
+              <div className="mt-3 rounded-lg border bg-gray-50 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  {(() => {
+                    const StepIcon = JD_PARSE_STEPS[parseStepIndex].icon;
+                    return <StepIcon className="h-4 w-4 text-primary animate-pulse" />;
+                  })()}
+                  {JD_PARSE_STEPS[parseStepIndex].label}
+                </div>
+                <Progress value={parseProgress} className="h-2" />
+                <p className="text-xs text-gray-500">
+                  AI is reading the description — this usually takes 20–60 seconds.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={parsingJD}
+              onClick={() => {
+                setTextCreateMode(null);
+                setJdText("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleParseJobText} disabled={parsingJD || !jdText.trim()}>
+              {parsingJD && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+              Create Draft Job
             </Button>
           </DialogFooter>
         </DialogContent>

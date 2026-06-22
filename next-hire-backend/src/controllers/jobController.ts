@@ -9,6 +9,7 @@ import {
   extractText,
   getEmbedding,
   parseJobDescription,
+  parseJobSearchQuery,
   ParsedJobDescription,
   UnsupportedFileTypeError,
   EmptyDocumentError,
@@ -17,30 +18,29 @@ import {
 import { persistEmbedding } from "../services/embeddingService";
 import { uploadDocument } from "../services/storageService";
 
-// Get all jobs with filters (for candidates and public view)
-export const getJobs = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const {
-    page = 1,
-    limit = 10,
-    search,
-    location,
-    job_type,
-    salary_min,
-    salary_max,
-    experience_min,
-    experience_max,
-    remote_work_allowed,
-    skills,
-  } = req.query;
+interface JobSearchFilterInput {
+  search?: string;
+  location?: string;
+  job_type?: string;
+  salary_min?: number | string;
+  salary_max?: number | string;
+  experience_min?: number | string;
+  experience_max?: number | string;
+  remote_work_allowed?: boolean | string;
+  skills?: string;
+}
 
-  const offset = (Number(page) - 1) * Number(limit);
-  
-  // Build where conditions
+// Shared by the manual job search (getJobs) and the AI search (aiSearchJobs)
+// below, so both produce results the exact same way - AI search only differs
+// in how the filter values get populated (extracted by Gemini vs. typed by
+// hand), never in how they're matched against the database.
+const buildJobSearchWhere = (filters: JobSearchFilterInput) => {
+  const { search, location, job_type, salary_min, salary_max, experience_min, experience_max, remote_work_allowed, skills } = filters;
+
   const whereConditions: any = {
-    status: "active", // Only show active jobs to candidates
+    status: "active",
   };
 
-  // Build OR conditions array
   const orConditions: any[] = [];
 
   if (search) {
@@ -79,14 +79,13 @@ export const getJobs = asyncHandler(async (req: AuthRequest, res: Response) => {
     whereConditions.experience_max = { [Op.lte]: Number(experience_max) };
   }
 
-  if (remote_work_allowed === "true") {
+  if (remote_work_allowed === "true" || remote_work_allowed === true) {
     whereConditions.remote_work_allowed = true;
   }
 
-  // Skills filtering (if skills are provided as comma-separated string)
   if (skills) {
-    const skillsArray = (skills as string).split(",").map(s => s.trim());
-    skillsArray.forEach(skill => {
+    const skillsArray = skills.split(",").map((s) => s.trim());
+    skillsArray.forEach((skill) => {
       orConditions.push(
         { required_skills: { [Op.like]: `%${skill}%` } },
         { preferred_skills: { [Op.like]: `%${skill}%` } }
@@ -94,27 +93,61 @@ export const getJobs = asyncHandler(async (req: AuthRequest, res: Response) => {
     });
   }
 
-  // Add OR conditions if any exist
   if (orConditions.length > 0) {
     whereConditions[Op.or] = orConditions;
   }
 
-  const { count, rows: jobs } = await Job.findAndCountAll({
-    where: whereConditions,
+  return whereConditions;
+};
+
+const jobSearchListIncludes = [
+  {
+    model: User,
+    as: "creator",
+    attributes: ["id", "email"],
     include: [
       {
-        model: User,
-        as: "creator",
-        attributes: ["id", "email"],
-        include: [
-          {
-            model: Recruiter,
-            as: "recruiterProfile",
-            attributes: ["first_name", "last_name", "company_name"],
-          },
-        ],
+        model: Recruiter,
+        as: "recruiterProfile",
+        attributes: ["first_name", "last_name", "company_name"],
       },
     ],
+  },
+];
+
+// Get all jobs with filters (for candidates and public view)
+export const getJobs = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const {
+    page = 1,
+    limit = 10,
+    search,
+    location,
+    job_type,
+    salary_min,
+    salary_max,
+    experience_min,
+    experience_max,
+    remote_work_allowed,
+    skills,
+  } = req.query;
+
+  const offset = (Number(page) - 1) * Number(limit);
+
+  const whereConditions = buildJobSearchWhere({
+    search: search as string,
+    location: location as string,
+    job_type: job_type as string,
+    salary_min: salary_min as string,
+    salary_max: salary_max as string,
+    experience_min: experience_min as string,
+    experience_max: experience_max as string,
+    remote_work_allowed: remote_work_allowed as string,
+    skills: skills as string,
+  });
+
+  const { count, rows: jobs } = await Job.findAndCountAll({
+    where: whereConditions,
+    include: jobSearchListIncludes,
     order: [["created_at", "DESC"]],
     limit: Number(limit),
     offset,
@@ -126,6 +159,58 @@ export const getJobs = asyncHandler(async (req: AuthRequest, res: Response) => {
     success: true,
     data: {
       jobs,
+      pagination: {
+        currentPage: Number(page),
+        totalPages,
+        totalItems: count,
+        itemsPerPage: Number(limit),
+        hasNextPage: Number(page) < totalPages,
+        hasPrevPage: Number(page) > 1,
+      },
+    },
+  });
+});
+
+// AI-powered job search: extracts structured filters (keywords, location,
+// job type, remote, experience, salary) from a recruiter's free-text query
+// via Gemini, then runs the exact same query/ranking buildJobSearchWhere
+// uses for manual search - so results behave identically, just with AI
+// filling in the filter form instead of the recruiter typing it by hand.
+export const aiSearchJobs = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { query, page = 1, limit = 10 } = req.body;
+
+  if (!query || !query.trim()) {
+    throw createError("A search query is required", 400);
+  }
+
+  const offset = (Number(page) - 1) * Number(limit);
+
+  const extracted = await parseJobSearchQuery(query);
+
+  const whereConditions = buildJobSearchWhere({
+    search: extracted.keywords.join(" "),
+    location: extracted.location || undefined,
+    job_type: extracted.job_type || undefined,
+    salary_min: extracted.salary_min ?? undefined,
+    experience_min: extracted.experience_min ?? undefined,
+    remote_work_allowed: extracted.remote_work_allowed ?? undefined,
+  });
+
+  const { count, rows: jobs } = await Job.findAndCountAll({
+    where: whereConditions,
+    include: jobSearchListIncludes,
+    order: [["created_at", "DESC"]],
+    limit: Number(limit),
+    offset,
+  });
+
+  const totalPages = Math.ceil(count / Number(limit));
+
+  res.json({
+    success: true,
+    data: {
+      jobs,
+      extracted,
       pagination: {
         currentPage: Number(page),
         totalPages,
@@ -614,6 +699,99 @@ const buildParsedJobEmbeddingText = (
     .filter((part): part is string => !!part && part.trim().length > 0)
     .join(". ");
 
+// Shared by the file-upload and free-text job parsing entry points (Import
+// From File / AI Assistant / From Email all funnel into this) - builds the
+// draft job, its embedding, and (when a file was involved) its attachment.
+const createDraftJobFromParsedDescription = async (
+  parsed: ParsedJobDescription,
+  userId: string,
+  source: "file" | "text",
+  file?: { tempFilePath: string; filename: string; originalname: string; mimetype: string }
+) => {
+  let companyName = parsed.company_name;
+  if (!companyName) {
+    const recruiterProfile = await Recruiter.findOne({ where: { user_id: userId } });
+    companyName = recruiterProfile?.company_name || "Unknown Company";
+  }
+
+  const title = parsed.title || "Untitled Position";
+
+  // Generate job ID like JOB-2024-001 (same scheme as createJob)
+  const year = new Date().getFullYear();
+  const count = await Job.count({
+    where: {
+      job_id: {
+        [Op.like]: `JOB-${year}-%`,
+      },
+    },
+  });
+  const job_id = `JOB-${year}-${String(count + 1).padStart(3, "0")}`;
+
+  const job = await Job.create({
+    job_id,
+    title,
+    description: parsed.description,
+    company_name: companyName,
+    location: parsed.location || "Remote",
+    city: parsed.city,
+    state: parsed.state,
+    country: parsed.country || "US",
+    job_type: parsed.job_type || "full_time",
+    salary_min: parsed.salary_min,
+    salary_max: parsed.salary_max,
+    salary_currency: parsed.salary_currency || "USD",
+    experience_min: parsed.experience_min_years,
+    experience_max: parsed.experience_max_years,
+    required_skills: parsed.required_skills,
+    preferred_skills: parsed.preferred_skills,
+    education_requirements: parsed.education_requirements,
+    status: "draft",
+    priority: "medium",
+    positions_available: parsed.positions_available || 1,
+    vendor_eligible: true,
+    remote_work_allowed: false,
+    created_by: userId,
+    assigned_to: userId,
+  });
+
+  if (file) {
+    const uploaded = await uploadDocument(file.tempFilePath, file.filename, file.mimetype);
+    await job.update({
+      attachments: [
+        {
+          url: uploaded.key,
+          name: file.originalname,
+          by: userId,
+          at: new Date().toISOString(),
+        },
+      ],
+    });
+  }
+
+  const embedding = await getEmbedding(buildParsedJobEmbeddingText(parsed, title, companyName));
+  await persistEmbedding(job, "jobs", embedding);
+
+  const created = await Job.findByPk(job.id, {
+    include: [
+      {
+        model: User,
+        as: "creator",
+        attributes: ["id", "email"],
+        include: [
+          {
+            model: Recruiter,
+            as: "recruiterProfile",
+            attributes: ["first_name", "last_name", "company_name"],
+          },
+        ],
+      },
+    ],
+  });
+
+  logger.info(`Recruiter ${userId} created draft job ${job_id} via ${source}-based job parsing`);
+  return created;
+};
+
 // Upload + AI-parse a job description document and create a draft job from it (recruiters only)
 export const parseJobDescriptionAndCreateJob = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -652,85 +830,49 @@ export const parseJobDescriptionAndCreateJob = asyncHandler(
       throw error;
     }
 
-    let companyName = parsed.company_name;
-    if (!companyName) {
-      const recruiterProfile = await Recruiter.findOne({ where: { user_id: userId } });
-      companyName = recruiterProfile?.company_name || "Unknown Company";
+    const created = await createDraftJobFromParsedDescription(parsed, userId!, "file", {
+      tempFilePath,
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Job description parsed and draft job created successfully",
+      data: { job: created, parsed },
+    });
+  }
+);
+
+// AI-parse free-text (a pasted email, or a recruiter's own description of the
+// role) and create a draft job from it - same pipeline as the file-upload
+// flow, minus the file extraction/attachment step. Backs the "AI Assistant"
+// and "From Email" create-job entry points.
+export const parseJobTextAndCreateJob = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const userId = req.user?.userId;
+
+    if (req.user?.role !== "recruiter") {
+      throw createError("Only recruiters can parse job descriptions", 403);
     }
 
-    const title = parsed.title || "Untitled Position";
+    const { text } = req.body;
+    if (!text || !text.trim()) {
+      throw createError("Job description text is required", 400);
+    }
 
-    // Generate job ID like JOB-2024-001 (same scheme as createJob)
-    const year = new Date().getFullYear();
-    const count = await Job.count({
-      where: {
-        job_id: {
-          [Op.like]: `JOB-${year}-%`,
-        },
-      },
-    });
-    const job_id = `JOB-${year}-${String(count + 1).padStart(3, "0")}`;
+    let parsed: ParsedJobDescription;
+    try {
+      parsed = await parseJobDescription(text);
+    } catch (error) {
+      if (error instanceof AIParsingError) {
+        throw createError(error.message, 502);
+      }
+      throw error;
+    }
 
-    const job = await Job.create({
-      job_id,
-      title,
-      description: parsed.description,
-      company_name: companyName,
-      location: parsed.location || "Remote",
-      city: parsed.city,
-      state: parsed.state,
-      country: parsed.country || "US",
-      job_type: parsed.job_type || "full_time",
-      salary_min: parsed.salary_min,
-      salary_max: parsed.salary_max,
-      salary_currency: parsed.salary_currency || "USD",
-      experience_min: parsed.experience_min_years,
-      experience_max: parsed.experience_max_years,
-      required_skills: parsed.required_skills,
-      preferred_skills: parsed.preferred_skills,
-      education_requirements: parsed.education_requirements,
-      status: "draft",
-      priority: "medium",
-      positions_available: parsed.positions_available || 1,
-      vendor_eligible: true,
-      remote_work_allowed: false,
-      created_by: userId!,
-      assigned_to: userId,
-    });
-
-    const uploaded = await uploadDocument(tempFilePath, req.file.filename, req.file.mimetype);
-    await job.update({
-      attachments: [
-        {
-          url: uploaded.key,
-          name: req.file.originalname,
-          by: userId,
-          at: new Date().toISOString(),
-        },
-      ],
-    });
-
-    const embedding = await getEmbedding(buildParsedJobEmbeddingText(parsed, title, companyName));
-    await persistEmbedding(job, "jobs", embedding);
-
-    const created = await Job.findByPk(job.id, {
-      include: [
-        {
-          model: User,
-          as: "creator",
-          attributes: ["id", "email"],
-          include: [
-            {
-              model: Recruiter,
-              as: "recruiterProfile",
-              attributes: ["first_name", "last_name", "company_name"],
-            },
-          ],
-        },
-      ],
-    });
-
-    logger.info(`Recruiter ${userId} created draft job ${job_id} via job description parsing`);
+    const created = await createDraftJobFromParsedDescription(parsed, userId!, "text");
 
     res.status(201).json({
       success: true,

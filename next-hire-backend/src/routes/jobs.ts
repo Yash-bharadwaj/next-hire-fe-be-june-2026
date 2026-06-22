@@ -12,6 +12,8 @@ import {
   getRecruiterJobs,
   getVendorEligibleJobs,
   parseJobDescriptionAndCreateJob,
+  parseJobTextAndCreateJob,
+  aiSearchJobs,
 } from "../controllers/jobController";
 
 const router = Router();
@@ -182,8 +184,28 @@ const jobIdValidation = [
 router.get("/", searchJobsValidation, validate, getJobs);
 router.get("/:id/public", jobIdValidation, validate, getJobById);
 
+// AI-powered job search (recruiter-only) - extracts filters from free text,
+// then searches the exact same way as the manual filters above.
+router.post(
+  "/ai-search",
+  auth,
+  [body("query").notEmpty().withMessage("A search query is required")],
+  validate,
+  aiSearchJobs
+);
+
 // Upload + AI-parse a job description and create a draft job (recruiter-only)
 router.post("/parse", auth, documentUpload.single("job_description"), parseJobDescriptionAndCreateJob);
+
+// AI-parse free-text (pasted email, or a recruiter's own description) and
+// create a draft job - backs the "AI Assistant" / "From Email" create-job options.
+router.post(
+  "/parse-text",
+  auth,
+  [body("text").notEmpty().withMessage("Job description text is required")],
+  validate,
+  parseJobTextAndCreateJob
+);
 
 // Protected routes (authentication required)
 router.get("/:id", auth, jobIdValidation, validate, getJobById);

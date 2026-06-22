@@ -114,6 +114,21 @@ export interface UpdateJobRequest extends Partial<CreateJobRequest> {}
 
 export interface JobsResponse extends PaginatedResponse<Job, "jobs"> {}
 
+export interface AiJobSearchExtracted {
+  keywords: string[];
+  location?: string;
+  job_type?: JobType;
+  remote_work_allowed?: boolean;
+  experience_min?: number;
+  salary_min?: number;
+  ai_unavailable?: boolean;
+}
+
+export interface AiJobSearchResponse {
+  success: boolean;
+  data: JobsResponse["data"] & { extracted: AiJobSearchExtracted };
+}
+
 export interface SingleJobResponse {
   success: boolean;
   data: {
@@ -169,6 +184,17 @@ class JobService {
     return response.data;
   }
 
+  // AI-powered job search - extracts filters from free text, then runs the
+  // exact same query manual search (searchJobs) does.
+  async aiSearchJobs(query: string): Promise<AiJobSearchResponse> {
+    const response = await apiClient.post<AiJobSearchResponse["data"]>(
+      `${this.baseUrl}/ai-search`,
+      { query },
+      30000
+    );
+    return response.data as unknown as AiJobSearchResponse;
+  }
+
   // Get job by ID (public)
   async getJobById(id: string, isPublic: boolean = true): Promise<SingleJobResponse> {
     const endpoint = isPublic ? `${this.baseUrl}/${id}/public` : `${this.baseUrl}/${id}`;
@@ -199,6 +225,18 @@ class JobService {
     const response = await apiClient.upload<ParseJobDescriptionResponse["data"]>(
       `${this.baseUrl}/parse`,
       formData,
+      60000
+    );
+    return response.data as unknown as ParseJobDescriptionResponse;
+  }
+
+  // AI-parse free text (a pasted email, or a recruiter's own description of
+  // the role) and create a draft job from it - backs the "AI Assistant" and
+  // "From Email" create-job options.
+  async parseJobText(text: string): Promise<ParseJobDescriptionResponse> {
+    const response = await apiClient.post<ParseJobDescriptionResponse["data"]>(
+      `${this.baseUrl}/parse-text`,
+      { text },
       60000
     );
     return response.data as unknown as ParseJobDescriptionResponse;
