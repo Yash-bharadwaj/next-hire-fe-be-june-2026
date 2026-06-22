@@ -50,8 +50,6 @@ import {
   UserPlus,
   Briefcase,
   Plus,
-  Download,
-  Upload,
   CalendarDays,
   User,
   Star,
@@ -121,6 +119,8 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { PageLoadingState } from "@/components/PageLoadingState";
 import { ActionsMenuTrigger } from "@/components/ActionsMenuTrigger";
+import { NotesPanel, NoteRecord } from "@/components/NotesPanel";
+import { DocumentsPanel, DocumentRecord } from "@/components/DocumentsPanel";
 
 // Local type definitions
 interface Document {
@@ -362,12 +362,41 @@ const JobDetail = () => {
     };
   };
 
-  // Sync notes from job data
-  useEffect(() => {
-    if (job) {
-      setJobNotes((job as any).notes_history || []);
-    }
-  }, [job]);
+  // Normalize notes_history/attachments into the shapes NotesPanel/
+  // DocumentsPanel expect. Entries written before the backend moved to the
+  // richer createNoteHandlers shape lack id/category/etc (notes) or
+  // id/document_type/valid_from (attachments) - synthesize stable
+  // placeholders for those so they still display (edit/delete on a legacy
+  // entry will cleanly 404, since it never had a real backend id).
+  const normalizedJobNotes: NoteRecord[] = ((job as any)?.notes_history || []).map(
+    (note: any, idx: number) =>
+      note.id
+        ? note
+        : {
+            id: `legacy-${idx}`,
+            title: "",
+            content: note.note || "",
+            category: "general" as const,
+            isPrivate: false,
+            tags: [],
+            author: note.by === user?.id ? "You" : "Recruiter",
+            at: note.at,
+          }
+  );
+
+  const normalizedJobAttachments: DocumentRecord[] = ((job as any)?.attachments || []).map(
+    (att: any, idx: number) =>
+      att.id
+        ? att
+        : {
+            id: `legacy-${idx}`,
+            url: att.url,
+            name: att.name,
+            document_type: "OTHER" as const,
+            valid_from: att.at,
+            at: att.at,
+          }
+  );
 
   // Search functionality state
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
@@ -405,15 +434,6 @@ const JobDetail = () => {
   const [matchLocationFilter, setMatchLocationFilter] = useState("");
   const [matchResumeUpdated, setMatchResumeUpdated] = useState("");
   const [sourcingLoading, setSourcingLoading] = useState(false);
-
-  // ── Notes state ────────────────────────────────────────────────────────
-  const [jobNotes, setJobNotes] = useState<any[]>([]);
-  const [addingNote, setAddingNote] = useState(false);
-  const [newNoteText, setNewNoteText] = useState("");
-  const [showAddNote, setShowAddNote] = useState(false);
-
-  // ── Attachments state ──────────────────────────────────────────────────
-  const [uploadingAttachment, setUploadingAttachment] = useState(false);
 
   // ── Team tab state ─────────────────────────────────────────────────────
   const [teamOptions, setTeamOptions] = useState<TeamMember[]>([]);
@@ -584,40 +604,6 @@ const JobDetail = () => {
         variant: "destructive",
       });
     }
-  };
-
-  // Notes filter and sort state
-  const [notesFilter, setNotesFilter] = useState("all");
-  const [notesSort, setNotesSort] = useState("newest");
-  const [notesSearch, setNotesSearch] = useState("");
-
-  // Filter and sort function for job notes
-  const getFilteredAndSortedJobNotes = () => {
-    let filtered = jobNotes.filter((note) => {
-      const matchesFilter =
-        notesFilter === "all" || note.category === notesFilter;
-      const matchesSearch =
-        notesSearch === "" ||
-        note.content.toLowerCase().includes(notesSearch.toLowerCase()) ||
-        note.author.toLowerCase().includes(notesSearch.toLowerCase());
-      return matchesFilter && matchesSearch;
-    });
-
-    return filtered.sort((a, b) => {
-      switch (notesSort) {
-        case "newest":
-          return new Date(b.date).getTime() - new Date(a.date).getTime();
-        case "oldest":
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
-        case "author":
-          return a.author.localeCompare(b.author);
-        case "priority":
-          const priorityOrder = { high: 3, medium: 2, low: 1 };
-          return priorityOrder[b.priority] - priorityOrder[a.priority];
-        default:
-          return 0;
-      }
-    });
   };
 
   const handleAddCandidate = (stageId: string) => {
@@ -994,42 +980,6 @@ const JobDetail = () => {
     }
   };
 
-  // ── Notes handlers ────────────────────────────────────────────────────
-  const handleAddNote = async () => {
-    if (!newNoteText.trim() || !id) return;
-    setAddingNote(true);
-    try {
-      const res = await recruiterService.addJobNote(id, newNoteText.trim());
-      const updated = (res as any)?.data?.notes_history || [...jobNotes, { note: newNoteText.trim(), by: user?.id, at: new Date().toISOString() }];
-      setJobNotes(updated);
-      setNewNoteText("");
-      setShowAddNote(false);
-      toast({ title: "Note added" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err?.response?.data?.message || "Failed to add note", variant: "destructive" });
-    } finally {
-      setAddingNote(false);
-    }
-  };
-
-  // ── Attachment handler ─────────────────────────────────────────────────
-  const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !id) return;
-    setUploadingAttachment(true);
-    try {
-      await recruiterService.uploadJobAttachment(id, file);
-      toast({ title: "Attachment uploaded" });
-      refresh(); // reload job to get updated attachments
-    } catch (err: any) {
-      toast({ title: "Error", description: err?.response?.data?.message || "Failed to upload attachment", variant: "destructive" });
-    } finally {
-      setUploadingAttachment(false);
-      e.target.value = "";
-    }
-  };
-
-
   // ── Timeline events (dynamic) ─────────────────────────────────────────
   const timelineEvents = (() => {
     if (!job) return [];
@@ -1078,10 +1028,10 @@ const JobDetail = () => {
       }
     }
 
-    (jobNotes as any[]).forEach((note: any) => {
+    normalizedJobNotes.forEach((note) => {
       events.push({
         label: "Note Added",
-        detail: note.note?.substring(0, 100) + (note.note?.length > 100 ? "…" : ""),
+        detail: note.content.substring(0, 100) + (note.content.length > 100 ? "…" : ""),
         date: new Date(note.at),
         color: "from-orange-400 to-orange-500",
         icon: "message",
@@ -1704,139 +1654,38 @@ const JobDetail = () => {
             </TabsContent>
 
             <TabsContent value="notes" className="space-y-6 mt-0">
-              <Card className="card-gradient border-orange-200/50 shadow-lg">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xl bg-gradient-to-r from-orange-700 to-orange-600 bg-clip-text text-transparent">
-                      Job Notes & Comments
-                    </CardTitle>
-                    {user?.role === "recruiter" && (
-                      <Button size="sm" className="button-gradient" onClick={() => setShowAddNote(true)}>
-                        <Plus className="w-4 h-4 mr-1" />
-                        Add Note
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Add Note inline form */}
-                  {showAddNote && (
-                    <div className="mt-4 pt-4 border-t space-y-3">
-                      <Textarea
-                        placeholder="Write your note..."
-                        value={newNoteText}
-                        onChange={(e) => setNewNoteText(e.target.value)}
-                        className="min-h-[80px] border-orange-300 focus:border-orange-500"
-                        autoFocus
-                      />
-                      <div className="flex gap-2 justify-end">
-                        <Button size="sm" variant="outline" onClick={() => { setShowAddNote(false); setNewNoteText(""); }}>
-                          Cancel
-                        </Button>
-                        <Button size="sm" className="button-gradient" onClick={handleAddNote} disabled={addingNote || !newNoteText.trim()}>
-                          {addingNote ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Save className="w-4 h-4 mr-1" />}
-                          Save Note
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {[...(jobNotes as any[])].reverse().map((note: any, idx: number) => (
-                      <div
-                        key={idx}
-                        className="border border-orange-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                              <User className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-800 text-sm">
-                                {note.by === user?.id ? "You" : "Recruiter"}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                {note.at ? new Date(note.at).toLocaleString() : ""}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <p className="text-gray-700 text-sm whitespace-pre-wrap">{note.note}</p>
-                      </div>
-                    ))}
-                    {jobNotes.length === 0 && (
-                      <div className="text-center py-8 text-gray-500">
-                        <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                        <p>No notes yet. Add the first note above.</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <NotesPanel
+                title="Job Notes & Comments"
+                description="Internal notes and feedback about this job"
+                notes={normalizedJobNotes}
+                onAdd={async (data) => {
+                  if (!id) return;
+                  await recruiterService.addJobNote(id, data);
+                  refresh();
+                }}
+                onUpdate={async (noteId, data) => {
+                  if (!id) return;
+                  await recruiterService.updateJobNote(id, noteId, data);
+                  refresh();
+                }}
+                onDelete={async (noteId) => {
+                  if (!id) return;
+                  await recruiterService.deleteJobNote(id, noteId);
+                  refresh();
+                }}
+              />
             </TabsContent>
 
             <TabsContent value="attachments" className="space-y-6 mt-0">
-              <Card className="card-gradient border-blue-200/50 shadow-lg">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xl bg-gradient-to-r from-blue-700 to-blue-600 bg-clip-text text-transparent">
-                      Job Attachments
-                    </CardTitle>
-                    {user?.role === "recruiter" && (
-                      <label className="cursor-pointer">
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept=".pdf,.doc,.docx,.txt"
-                          onChange={handleAttachmentUpload}
-                          disabled={uploadingAttachment}
-                        />
-                        <Button size="sm" className="button-gradient pointer-events-none" disabled={uploadingAttachment}>
-                          {uploadingAttachment ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Upload className="w-4 h-4 mr-1" />}
-                          Upload Document
-                        </Button>
-                      </label>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {((job as any)?.attachments || []).map((att: any, idx: number) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-4 border border-blue-200 rounded-lg hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-                            <FileText className="w-5 h-5 text-white" />
-                          </div>
-                          <div>
-                            <h4 className="font-medium text-gray-800">{att.name || att.url}</h4>
-                            <p className="text-sm text-gray-600">
-                              Uploaded {att.at ? new Date(att.at).toLocaleDateString() : ""}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                          onClick={() => window.open(att.url, "_blank")}
-                        >
-                          <Download className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    {(((job as any)?.attachments) || []).length === 0 && (
-                      <div className="text-center py-8 text-gray-500">
-                        <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                        <p>No documents uploaded yet</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <DocumentsPanel
+                title="Job Attachments"
+                documents={normalizedJobAttachments}
+                onUpload={async (data) => {
+                  if (!id) return;
+                  await recruiterService.addJobAttachment(id, data);
+                  refresh();
+                }}
+              />
             </TabsContent>
 
             <TabsContent value="timeline" className="space-y-6 mt-0">

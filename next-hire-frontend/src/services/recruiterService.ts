@@ -612,9 +612,12 @@ class RecruiterService {
   /**
    * Add note to job
    */
-  async addJobNote(jobId: string, note: string): Promise<ApiResponse> {
+  async addJobNote(
+    jobId: string,
+    data: { title?: string; content: string; category?: string; isPrivate?: boolean; tags?: string[] }
+  ): Promise<ApiResponse> {
     try {
-      const response = await apiClient.post<ApiResponse>(`/recruiter/jobs/${jobId}/notes`, { note });
+      const response = await apiClient.post<ApiResponse>(`/recruiter/jobs/${jobId}/notes`, data);
       return response.data;
     } catch (error: any) {
       throw this.handleError(error);
@@ -622,11 +625,15 @@ class RecruiterService {
   }
 
   /**
-   * Add attachment to job (URL-based)
+   * Edit an existing job note
    */
-  async addJobAttachment(jobId: string, data: { url: string; name?: string }): Promise<ApiResponse> {
+  async updateJobNote(
+    jobId: string,
+    noteId: string,
+    data: { title?: string; content?: string; category?: string; isPrivate?: boolean; tags?: string[] }
+  ): Promise<ApiResponse> {
     try {
-      const response = await apiClient.post<ApiResponse>(`/recruiter/jobs/${jobId}/attachments`, data);
+      const response = await apiClient.put<ApiResponse>(`/recruiter/jobs/${jobId}/notes/${noteId}`, data);
       return response.data;
     } catch (error: any) {
       throw this.handleError(error);
@@ -634,13 +641,32 @@ class RecruiterService {
   }
 
   /**
-   * Upload a file as a job attachment
+   * Delete a note from a job
    */
-  async uploadJobAttachment(jobId: string, file: File): Promise<ApiResponse> {
+  async deleteJobNote(jobId: string, noteId: string): Promise<ApiResponse> {
+    try {
+      const response = await apiClient.delete<ApiResponse>(`/recruiter/jobs/${jobId}/notes/${noteId}`);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Add an attachment to a job (file upload or URL-based)
+   */
+  async addJobAttachment(
+    jobId: string,
+    data: { file?: File; url?: string; name?: string; document_type?: string; valid_from?: string; valid_to?: string }
+  ): Promise<ApiResponse> {
     try {
       const formData = new FormData();
-      formData.append("file", file);
-      formData.append("name", file.name);
+      if (data.file) formData.append("file", data.file);
+      if (data.url) formData.append("url", data.url);
+      if (data.name) formData.append("name", data.name);
+      if (data.document_type) formData.append("document_type", data.document_type);
+      if (data.valid_from) formData.append("valid_from", data.valid_from);
+      if (data.valid_to) formData.append("valid_to", data.valid_to);
       const response = await apiClient.upload<ApiResponse>(`/recruiter/jobs/${jobId}/attachments`, formData);
       return response.data;
     } catch (error: any) {
