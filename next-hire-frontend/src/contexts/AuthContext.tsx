@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
 } from "react";
 import { toast } from "sonner";
 import { authService } from "@/services/authService";
@@ -285,32 +286,58 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     [user]
   );
 
-  const value: AuthContextType = {
-    // State
-    user,
-    token,
-    isAuthenticated: !!(user && token),
-    isLoading,
+  // Memoized so consumers of useAuth() don't re-render on every AuthProvider
+  // render (e.g. isLoading toggling during any in-flight auth call) - every
+  // value below is already a stable useCallback reference, so this object
+  // only changes when one of them actually does.
+  const value: AuthContextType = useMemo(
+    () => ({
+      // State
+      user,
+      token,
+      isAuthenticated: !!(user && token),
+      isLoading,
 
-    // Actions
-    signup,
-    verifyOTP,
-    resendOTP,
-    login,
-    loginWithOTP,
-    requestLoginOTP,
-    logout,
-    forgotPassword,
-    resetPassword,
-    changePassword,
-    refreshToken: refreshTokenFn,
+      // Actions
+      signup,
+      verifyOTP,
+      resendOTP,
+      login,
+      loginWithOTP,
+      requestLoginOTP,
+      logout,
+      forgotPassword,
+      resetPassword,
+      changePassword,
+      refreshToken: refreshTokenFn,
 
-    // Utilities
-    clearAuth,
-    setUser: setUserData,
-    updateUserRole,
-    loadProfile,
-  };
+      // Utilities
+      clearAuth,
+      setUser: setUserData,
+      updateUserRole,
+      loadProfile,
+    }),
+    [
+      user,
+      token,
+      isLoading,
+      signup,
+      verifyOTP,
+      resendOTP,
+      login,
+      loginWithOTP,
+      requestLoginOTP,
+      logout,
+      forgotPassword,
+      resetPassword,
+      changePassword,
+      refreshTokenFn,
+      clearAuth,
+      setUserData,
+      updateUserRole,
+      loadProfile,
+    ]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
