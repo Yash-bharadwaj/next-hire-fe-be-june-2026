@@ -434,15 +434,6 @@ class BusinessPartnerService {
     return colorMap[priority] || "bg-gray-100 text-gray-800 border-gray-200";
   }
 
-  getPriorityLabel(priority: BusinessPartnerPriority): string {
-    const labelMap: Record<BusinessPartnerPriority, string> = {
-      high: "High",
-      medium: "Medium",
-      low: "Low",
-    };
-    return labelMap[priority] || priority;
-  }
-
   getSourceLabel(source: BusinessPartnerSource): string {
     const labelMap: Record<BusinessPartnerSource, string> = {
       referral: "Referral",
@@ -480,15 +471,6 @@ class BusinessPartnerService {
     });
   }
 
-  formatRevenue(amount?: number): string {
-    if (!amount) return "Not disclosed";
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  }
 }
 
 export const businessPartnerService = new BusinessPartnerService();
