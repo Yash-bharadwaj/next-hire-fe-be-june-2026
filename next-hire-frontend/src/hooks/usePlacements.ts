@@ -9,6 +9,7 @@ import {
   OnboardingStatus 
 } from "@/services/placementService";
 import { useAuth } from "@/contexts/AuthContext";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 
 export const usePlacements = (initialFilters: PlacementFilters = {}) => {
   const [placements, setPlacements] = useState<Placement[]>([]);
@@ -18,7 +19,7 @@ export const usePlacements = (initialFilters: PlacementFilters = {}) => {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 20,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });

@@ -95,6 +95,7 @@ import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
 import { formatCompactCurrency, formatCompactRange } from "@/lib/format";
 import { getSubmissionStatusMeta } from "@/lib/submissionStatus";
+import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { computeSkillMatrix, summarizeSkillMatrix, getMatchLevelLabel } from "@/lib/skillMatching";
 
 const formatDateTime = (dateString?: string | null) => {
@@ -285,7 +286,7 @@ const SubmissionDetail = () => {
     if (!submission?.id) return;
     setTasksLoading(true);
     try {
-      const res = await recruiterService.getTasks({ submission_id: submission.id, limit: 100 });
+      const res = await recruiterService.getTasks({ submission_id: submission.id, limit: MAX_PAGE_SIZE });
       setTasks((res as any)?.data?.tasks || []);
     } catch {
       // empty state handles failures gracefully

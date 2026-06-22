@@ -88,6 +88,7 @@ import { ScheduleInterviewDialog } from "@/components/ScheduleInterviewDialog";
 import { getSubmissionStatusMeta } from "@/lib/submissionStatus";
 import { CompanyFilter } from "@/components/CompanyFilter";
 import { candidateSearchService } from "@/services/candidateSearchService";
+import { MAX_PAGE_SIZE } from "@/lib/constants";
 
 const Submissions = () => {
   const navigate = useNavigate();
@@ -443,7 +444,7 @@ const Submissions = () => {
       if (user?.role !== "recruiter") return;
       try {
         setJobsLoading(true);
-        const resp = await recruiterService.getJobs({ page: 1, limit: 100 });
+        const resp = await recruiterService.getJobs({ page: 1, limit: MAX_PAGE_SIZE });
         setRecruiterJobs(resp.data.jobs || []);
       } catch (err: any) {
         toast.error(err.message || "Failed to load jobs");

@@ -8,6 +8,7 @@ import {
   UpdateBusinessPartnerRequest,
 } from "@/services/businessPartnerService";
 import { useAuth } from "@/contexts/AuthContext";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 
 export const useBusinessPartners = (initialFilters: BusinessPartnerFilters = {}) => {
   const [businessPartners, setBusinessPartners] = useState<BusinessPartner[]>([]);
@@ -17,7 +18,7 @@ export const useBusinessPartners = (initialFilters: BusinessPartnerFilters = {})
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 20,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });

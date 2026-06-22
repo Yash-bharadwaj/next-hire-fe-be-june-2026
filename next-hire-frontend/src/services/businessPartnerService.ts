@@ -1,5 +1,6 @@
-import { apiClient } from "@/lib/api";
+import { apiClient, PaginatedResponse } from "@/lib/api";
 import { formatDate as formatDateUtil } from "@/lib/format";
+import { MAX_PAGE_SIZE } from "@/lib/constants";
 
 export type BusinessPartnerStatus = "active" | "prospect" | "inactive" | "on_hold";
 export type BusinessPartnerSource = "referral" | "website" | "cold_call" | "trade_show" | "linkedin" | "email_campaign" | "other";
@@ -227,20 +228,7 @@ export interface UpdateBusinessPartnerRequest {
   assigned_to?: string;
 }
 
-export interface BusinessPartnersResponse {
-  success: boolean;
-  data: {
-    businessPartners: BusinessPartner[];
-    pagination: {
-      currentPage: number;
-      totalPages: number;
-      totalItems: number;
-      itemsPerPage: number;
-      hasNextPage: boolean;
-      hasPrevPage: boolean;
-    };
-  };
-}
+export interface BusinessPartnersResponse extends PaginatedResponse<BusinessPartner, "businessPartners"> {}
 
 export interface SingleBusinessPartnerResponse {
   success: boolean;
@@ -311,7 +299,7 @@ class BusinessPartnerService {
     const response = await this.getBusinessPartners({
       partner_type: "client",
       scope: "all",
-      limit: 100,
+      limit: MAX_PAGE_SIZE,
       sort_by: "name",
       sort_order: "ASC",
     });

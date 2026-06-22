@@ -1,4 +1,4 @@
-import { apiClient } from "@/lib/api";
+import { apiClient, PaginatedResponse } from "@/lib/api";
 import { CandidateResume } from "./candidateService";
 import { formatCompactCurrency } from "@/lib/format";
 
@@ -143,20 +143,7 @@ export interface CandidateSearchFilters {
   sort_order?: "ASC" | "DESC";
 }
 
-export interface CandidateSearchResponse {
-  success: boolean;
-  data: {
-    candidates: CandidateProfile[];
-    pagination: {
-      currentPage: number;
-      totalPages: number;
-      totalItems: number;
-      itemsPerPage: number;
-      hasNextPage: boolean;
-      hasPrevPage: boolean;
-    };
-  };
-}
+export interface CandidateSearchResponse extends PaginatedResponse<CandidateProfile, "candidates"> {}
 
 export interface CandidateDetailsResponse {
   success: boolean;

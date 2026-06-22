@@ -120,6 +120,7 @@ import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
 import { formatCompactRange } from "@/lib/format";
 import type { TeamMember, Task, TaskPriority } from "@/services/recruiterService";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { MAX_PAGE_SIZE } from "@/lib/constants";
 
 // Local type definitions
 interface Document {
@@ -475,7 +476,7 @@ const JobDetail = () => {
     if (!id) return;
     setTasksLoading(true);
     try {
-      const res = await recruiterService.getTasks({ job_id: id, limit: 100 });
+      const res = await recruiterService.getTasks({ job_id: id, limit: MAX_PAGE_SIZE });
       setTasks((res as any)?.data?.tasks || []);
     } catch (err: any) {
       toast({
@@ -983,7 +984,7 @@ const JobDetail = () => {
       setSelectedCandidates(new Set());
       setShowManualSearch(false);
       // Refresh submission stats
-      const statsRes = await recruiterService.getJobSubmissions(job!.id, { limit: 100 });
+      const statsRes = await recruiterService.getJobSubmissions(job!.id, { limit: MAX_PAGE_SIZE });
       const subs = statsRes.data?.submissions || [];
       setSubmissions(subs as any);
     } catch (err: any) {

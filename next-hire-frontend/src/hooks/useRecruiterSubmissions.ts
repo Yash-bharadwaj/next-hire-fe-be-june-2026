@@ -9,6 +9,7 @@ import {
 } from "@/services/submissionService";
 import { recruiterService } from "@/services/recruiterService";
 import { useAuth } from "@/contexts/AuthContext";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 
 /**
  * Hook for recruiters to view submissions - across every job they're
@@ -22,7 +23,7 @@ export const useRecruiterSubmissions = (initialFilters: SubmissionFilters = {}) 
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 10,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });
@@ -54,14 +55,14 @@ export const useRecruiterSubmissions = (initialFilters: SubmissionFilters = {}) 
           current_page: 1,
           total_pages: 1,
           total_items: subs.length,
-          items_per_page: finalFilters.limit || 10,
+          items_per_page: finalFilters.limit || DEFAULT_PAGE_SIZE,
         };
 
         setPagination({
           currentPage: pg.current_page || pg.currentPage || 1,
           totalPages: pg.total_pages || pg.totalPages || 1,
           totalItems: pg.total_items || pg.totalItems || subs.length,
-          itemsPerPage: pg.items_per_page || pg.itemsPerPage || (finalFilters.limit || 10),
+          itemsPerPage: pg.items_per_page || pg.itemsPerPage || (finalFilters.limit || DEFAULT_PAGE_SIZE),
           hasNextPage: pg.hasNextPage ?? ((pg.current_page || 1) < (pg.total_pages || 1)),
           hasPrevPage: pg.hasPrevPage ?? ((pg.current_page || 1) > 1),
         });

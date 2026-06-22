@@ -8,6 +8,7 @@ import {
   UpdateJobRequest 
 } from "@/services/jobService";
 import { useAuth } from "@/contexts/AuthContext";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 
 export const useJobs = (initialFilters: JobSearchFilters = {}) => {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -17,7 +18,7 @@ export const useJobs = (initialFilters: JobSearchFilters = {}) => {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 10,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });

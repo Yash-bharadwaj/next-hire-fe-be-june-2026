@@ -64,6 +64,7 @@ import { useToast } from "@/hooks/use-toast";
 import { NotesPanel } from "@/components/NotesPanel";
 import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
+import { MAX_PAGE_SIZE } from "@/lib/constants";
 
 const tabTriggerClass =
   "data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-primary data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all duration-300";
@@ -274,7 +275,7 @@ const PlacementDetail: React.FC = () => {
     if (!placement?.submission_id) return;
     setTasksLoading(true);
     try {
-      const res = await recruiterService.getTasks({ submission_id: placement.submission_id, limit: 100 });
+      const res = await recruiterService.getTasks({ submission_id: placement.submission_id, limit: MAX_PAGE_SIZE });
       setTasks(res.data.tasks || []);
     } catch {
       // empty state handles failures gracefully

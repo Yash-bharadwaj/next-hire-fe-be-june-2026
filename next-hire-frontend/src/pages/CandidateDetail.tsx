@@ -80,6 +80,7 @@ import { ExpandableText } from "@/components/ExpandableText";
 import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { formatCompactCurrency } from "@/lib/format";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { MAX_PAGE_SIZE } from "@/lib/constants";
 
 // Candidate data will be fetched from API - no static data needed
 
@@ -422,7 +423,7 @@ const CandidateDetail = () => {
     setSubmitJobId("");
     setIsSubmitJobOpen(true);
     try {
-      const res = await recruiterService.getJobs({ status: "active", limit: 100 });
+      const res = await recruiterService.getJobs({ status: "active", limit: MAX_PAGE_SIZE });
       const alreadySubmittedJobIds = new Set(
         (submissions as any[]).map((s: any) => s.job_id)
       );

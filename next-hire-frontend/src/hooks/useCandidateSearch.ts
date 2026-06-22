@@ -7,6 +7,7 @@ import {
   CreateCandidateRequest,
 } from "@/services/candidateSearchService";
 import { useAuth } from "@/contexts/AuthContext";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 
 export const useCandidateSearch = (initialFilters: CandidateSearchFilters = {}) => {
   const [candidates, setCandidates] = useState<CandidateProfile[]>([]);
@@ -16,7 +17,7 @@ export const useCandidateSearch = (initialFilters: CandidateSearchFilters = {}) 
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 20,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });

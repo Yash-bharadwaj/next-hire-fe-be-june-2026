@@ -1,4 +1,4 @@
-import api, { apiClient } from "@/lib/api";
+import api, { apiClient, PaginatedResponse } from "@/lib/api";
 import { getPriorityColor as getPriorityColorUtil, formatCurrency } from "@/lib/format";
 
 export type JobType = "full_time" | "part_time" | "contract" | "temporary";
@@ -103,20 +103,7 @@ export interface CreateJobRequest {
 
 export interface UpdateJobRequest extends Partial<CreateJobRequest> {}
 
-export interface JobsResponse {
-  success: boolean;
-  data: {
-    jobs: Job[];
-    pagination: {
-      currentPage: number;
-      totalPages: number;
-      totalItems: number;
-      itemsPerPage: number;
-      hasNextPage: boolean;
-      hasPrevPage: boolean;
-    };
-  };
-}
+export interface JobsResponse extends PaginatedResponse<Job, "jobs"> {}
 
 export interface SingleJobResponse {
   success: boolean;

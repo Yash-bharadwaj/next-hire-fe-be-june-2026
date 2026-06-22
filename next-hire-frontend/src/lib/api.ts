@@ -138,14 +138,20 @@ export interface ApiResponse<T = any> {
   }>;
 }
 
-export interface PaginatedResponse<T> {
+// When K is omitted, falls back to the original union of possible list-key
+// names (used by existing callers). Passing K gives a precise, single-key
+// shape instead, e.g. PaginatedResponse<Job, "jobs">.
+export interface PaginatedResponse<T, K extends string = never> {
   success: boolean;
-  data: {
-    items?: T[];
-    jobs?: T[];
-    candidates?: T[];
-    submissions?: T[];
-    tasks?: T[];
+  data: ([K] extends [never]
+    ? {
+        items?: T[];
+        jobs?: T[];
+        candidates?: T[];
+        submissions?: T[];
+        tasks?: T[];
+      }
+    : Record<K, T[]>) & {
     pagination: {
       currentPage: number;
       totalPages: number;

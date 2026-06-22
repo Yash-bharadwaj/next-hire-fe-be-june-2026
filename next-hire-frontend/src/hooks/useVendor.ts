@@ -11,6 +11,7 @@ import {
   SubmissionStatus
 } from "@/services/vendorService";
 import { useAuth } from "@/contexts/AuthContext";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 
 // Hook for managing vendor jobs
 export const useVendorJobs = (initialFilters: {
@@ -33,7 +34,7 @@ export const useVendorJobs = (initialFilters: {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 10,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });
@@ -114,7 +115,7 @@ export const useVendorCandidates = (initialFilters: {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 10,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });
@@ -267,7 +268,7 @@ export const useVendorSubmissions = (initialFilters: {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 10,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });

@@ -81,6 +81,7 @@ import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { NotesPanel } from "@/components/NotesPanel";
 import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { formatCompactCurrency, formatCompactRange } from "@/lib/format";
+import { MAX_PAGE_SIZE } from "@/lib/constants";
 
 const statusColors: Record<string, string> = {
   scheduled: "bg-blue-100 text-blue-800",
@@ -311,7 +312,7 @@ const InterviewDetail = () => {
     if (!submission?.id) return;
     setTasksLoading(true);
     try {
-      const res = await recruiterService.getTasks({ submission_id: submission.id, limit: 100 });
+      const res = await recruiterService.getTasks({ submission_id: submission.id, limit: MAX_PAGE_SIZE });
       setTasks((res as any)?.data?.tasks || []);
     } catch {
       // empty state handles failures gracefully

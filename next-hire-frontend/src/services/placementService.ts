@@ -1,4 +1,4 @@
-import { apiClient } from "@/lib/api";
+import { apiClient, PaginatedResponse } from "@/lib/api";
 import { formatDate as formatDateUtil, formatDateTime as formatDateTimeUtil, formatCurrency } from "@/lib/format";
 
 export type PlacementStatus = "active" | "completed" | "terminated" | "on_hold";
@@ -189,20 +189,7 @@ export interface UpdatePlacementRequest {
   renewal_status?: RenewalStatus;
 }
 
-export interface PlacementsResponse {
-  success: boolean;
-  data: {
-    placements: Placement[];
-    pagination: {
-      currentPage: number;
-      totalPages: number;
-      totalItems: number;
-      itemsPerPage: number;
-      hasNextPage: boolean;
-      hasPrevPage: boolean;
-    };
-  };
-}
+export interface PlacementsResponse extends PaginatedResponse<Placement, "placements"> {}
 
 export interface SinglePlacementResponse {
   success: boolean;

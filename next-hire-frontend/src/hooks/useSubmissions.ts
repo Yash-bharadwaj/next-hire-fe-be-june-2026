@@ -9,6 +9,7 @@ import {
   SubmissionStatus
 } from "@/services/submissionService";
 import { useAuth } from "@/contexts/AuthContext";
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/lib/constants";
 
 export const useSubmissions = (initialFilters: SubmissionFilters = {}) => {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -18,7 +19,7 @@ export const useSubmissions = (initialFilters: SubmissionFilters = {}) => {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 10,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });
@@ -56,7 +57,7 @@ export const useSubmissions = (initialFilters: SubmissionFilters = {}) => {
                 currentPage: 1,
                 totalPages: 1,
                 totalItems: 0,
-                itemsPerPage: 10,
+                itemsPerPage: DEFAULT_PAGE_SIZE,
                 hasNextPage: false,
                 hasPrevPage: false,
               },
@@ -130,7 +131,7 @@ export const useJobSubmissions = (jobId: string | null) => {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 10,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });
@@ -358,7 +359,7 @@ export const useSubmissionStats = (jobId?: string) => {
       let allSubmissions: any[] = [];
       let currentPage = 1;
       let hasMore = true;
-      const limit = 100; // Backend max limit
+      const limit = MAX_PAGE_SIZE; // Backend max limit
       
       while (hasMore) {
         try {

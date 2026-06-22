@@ -1,4 +1,4 @@
-import { apiClient } from "@/lib/api";
+import { apiClient, PaginatedResponse } from "@/lib/api";
 import { Job } from "./jobService";
 
 export type SubmissionStatus =
@@ -168,20 +168,8 @@ export interface SubmissionFilters {
   search?: string;
 }
 
-export interface SubmissionsResponse {
-  success: boolean;
-  data: {
-    submissions: Submission[];
-    job?: Partial<Job>;
-    pagination: {
-      currentPage: number;
-      totalPages: number;
-      totalItems: number;
-      itemsPerPage: number;
-      hasNextPage: boolean;
-      hasPrevPage: boolean;
-    };
-  };
+export interface SubmissionsResponse extends PaginatedResponse<Submission, "submissions"> {
+  data: PaginatedResponse<Submission, "submissions">["data"] & { job?: Partial<Job> };
 }
 
 export interface SingleSubmissionResponse {

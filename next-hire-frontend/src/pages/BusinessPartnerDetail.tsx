@@ -82,6 +82,7 @@ import {
 } from "@/services/businessPartnerService";
 import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/recruiterService";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { MAX_PAGE_SIZE } from "@/lib/constants";
 
 const formatTeamMemberName = (member: TeamMember) => {
   const name = [member.recruiterProfile?.first_name, member.recruiterProfile?.last_name]
@@ -262,7 +263,7 @@ const BusinessPartnerDetail = () => {
     if (!id) return;
     setTasksLoading(true);
     try {
-      const res = await recruiterService.getTasks({ business_partner_id: id, limit: 100 });
+      const res = await recruiterService.getTasks({ business_partner_id: id, limit: MAX_PAGE_SIZE });
       setTasks(res.data.tasks || []);
     } catch {
       // empty state handles failures gracefully

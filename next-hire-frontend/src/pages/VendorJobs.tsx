@@ -55,6 +55,7 @@ import { useVendorJobs, useVendorCandidates } from "@/hooks/useVendor";
 import { vendorService, Job } from "@/services/vendorService";
 import { jobService } from "@/services/jobService";
 import { toast } from "sonner";
+import { MAX_PAGE_SIZE } from "@/lib/constants";
 
 const VendorJobs = () => {
   const { user } = useAuth();
@@ -72,7 +73,7 @@ const VendorJobs = () => {
 
   const { candidates, loading: candidatesLoading } = useVendorCandidates({
     page: 1,
-    limit: 100,
+    limit: MAX_PAGE_SIZE,
   });
 
   const [searchTerm, setSearchTerm] = useState("");

@@ -74,6 +74,7 @@ import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/rec
 import { useAuth } from "@/contexts/AuthContext";
 import { downloadCsv, type CsvColumn } from "@/utils/csv";
 import { downloadPdf, downloadExcel, exportToGoogleSheets } from "@/utils/exportData";
+import { MAX_PAGE_SIZE } from "@/lib/constants";
 
 const _interviewsStatsCache = { total: 0, scheduled: 0, completed: 0, totalJobs: 0 };
 
@@ -364,7 +365,7 @@ const Interviews = () => {
   const fetchTodos = useCallback(async () => {
     setTodosLoading(true);
     try {
-      const res = await recruiterService.getTasks({ limit: 100 });
+      const res = await recruiterService.getTasks({ limit: MAX_PAGE_SIZE });
       setTodos((res as any)?.data?.tasks || []);
     } catch {
       // empty state handles failures gracefully

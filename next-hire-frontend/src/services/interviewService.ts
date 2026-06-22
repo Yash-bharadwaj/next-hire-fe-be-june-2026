@@ -1,4 +1,4 @@
-import { apiClient } from "@/lib/api";
+import { apiClient, PaginatedResponse } from "@/lib/api";
 import { formatDate as formatDateUtil, formatDateTime as formatDateTimeUtil } from "@/lib/format";
 
 export type InterviewStatus = "scheduled" | "in_progress" | "completed" | "cancelled" | "no_show";
@@ -138,20 +138,7 @@ export interface UpdateInterviewRequest {
   rating?: number;
 }
 
-export interface InterviewsResponse {
-  success: boolean;
-  data: {
-    interviews: Interview[];
-    pagination: {
-      currentPage: number;
-      totalPages: number;
-      totalItems: number;
-      itemsPerPage: number;
-      hasNextPage: boolean;
-      hasPrevPage: boolean;
-    };
-  };
-}
+export interface InterviewsResponse extends PaginatedResponse<Interview, "interviews"> {}
 
 export interface SingleInterviewResponse {
   success: boolean;

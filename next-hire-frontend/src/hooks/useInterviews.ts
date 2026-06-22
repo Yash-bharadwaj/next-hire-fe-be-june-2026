@@ -8,6 +8,7 @@ import {
   UpdateInterviewRequest 
 } from "@/services/interviewService";
 import { useAuth } from "@/contexts/AuthContext";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 
 export const useInterviews = (initialFilters: InterviewFilters = {}) => {
   const [interviews, setInterviews] = useState<Interview[]>([]);
@@ -17,7 +18,7 @@ export const useInterviews = (initialFilters: InterviewFilters = {}) => {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 20,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });
@@ -43,7 +44,7 @@ export const useInterviews = (initialFilters: InterviewFilters = {}) => {
         currentPage: 1,
         totalPages: 1,
         totalItems: 0,
-        itemsPerPage: 20,
+        itemsPerPage: DEFAULT_PAGE_SIZE,
         hasNextPage: false,
         hasPrevPage: false,
       });

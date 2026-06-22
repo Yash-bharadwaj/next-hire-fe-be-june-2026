@@ -69,6 +69,7 @@ import { downloadReportPdf, type ReportStat } from "@/utils/exportData";
 import { useEntityExport } from "@/hooks/useEntityExport";
 import { CompanyFilter } from "@/components/CompanyFilter";
 import { toast } from "sonner";
+import { MAX_PAGE_SIZE } from "@/lib/constants";
 
 const _placementsStatsCache = {
   activePlacements: 0, completedPlacements: 0, totalPlacements: 0,
@@ -321,7 +322,7 @@ const Placements = () => {
     if (recruiterJobs.length === 0) {
       try {
         setLoadingJobs(true);
-        const response = await jobService.getRecruiterJobs({ limit: 100 });
+        const response = await jobService.getRecruiterJobs({ limit: MAX_PAGE_SIZE });
         setRecruiterJobs(response.data.jobs);
       } catch (err: any) {
         toast.error(err.response?.data?.message || err.message || "Failed to load jobs");
@@ -343,7 +344,7 @@ const Placements = () => {
     if (!jobId) return;
     try {
       setLoadingSubmissions(true);
-      const response = await submissionService.getJobSubmissions(jobId, { limit: 100 });
+      const response = await submissionService.getJobSubmissions(jobId, { limit: MAX_PAGE_SIZE });
       setJobSubmissions(response.data.submissions);
     } catch (err: any) {
       toast.error(err.response?.data?.message || err.message || "Failed to load submissions");

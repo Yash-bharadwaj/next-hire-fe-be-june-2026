@@ -19,6 +19,7 @@ import {
   TaskPriority
 } from "@/services/recruiterService";
 import { useAuth } from "@/contexts/AuthContext";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 
 // Hook for managing recruiter jobs
 export const useRecruiterJobs = (initialFilters: {
@@ -35,7 +36,7 @@ export const useRecruiterJobs = (initialFilters: {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 10,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });
@@ -162,7 +163,7 @@ export const useJobSubmissions = (jobId: string | null) => {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 10,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });
@@ -299,7 +300,7 @@ export const useRecruiterTasks = (initialFilters: {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 10,
+    itemsPerPage: DEFAULT_PAGE_SIZE,
     hasNextPage: false,
     hasPrevPage: false,
   });
