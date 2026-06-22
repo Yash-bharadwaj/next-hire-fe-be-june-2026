@@ -1,6 +1,12 @@
 import { apiClient, ApiResponse, PaginatedResponse } from "@/lib/api";
 import { getPriorityColor as getPriorityColorUtil } from "@/lib/format";
 
+export interface RecruiterGoals {
+  placements?: number;
+  revenue?: number;
+  submissions?: number;
+}
+
 // Types for recruiter profile
 export interface RecruiterProfile {
   id: string;
@@ -236,8 +242,23 @@ export interface ScheduleInterviewRequest {
 }
 
 // Task types
-export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
+export type TaskStatus = "not_started" | "in_progress" | "completed" | "not_applicable";
 export type TaskPriority = "low" | "medium" | "high";
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  not_started: "Not Started",
+  in_progress: "In Progress",
+  completed: "Completed",
+  not_applicable: "Not Applicable",
+};
+
+// Canonical display order for every task status dropdown/filter in the app.
+export const TASK_STATUS_OPTIONS: TaskStatus[] = [
+  "not_started",
+  "in_progress",
+  "completed",
+  "not_applicable",
+];
 
 export interface Task {
   id: string;
@@ -247,6 +268,7 @@ export interface Task {
   priority: TaskPriority;
   status: TaskStatus;
   due_date?: string;
+  planned_completion_date?: string;
   job_id?: string;
   submission_id?: string;
   business_partner_id?: string;
@@ -256,6 +278,7 @@ export interface Task {
   assignee?: TeamMember;
   creator?: TeamMember;
   job?: { id: string; job_id: string; title: string };
+  submission?: { id: string; status: string };
   businessPartner?: { id: string; business_partner_number: string; name: string };
 }
 
@@ -265,6 +288,7 @@ export interface CreateTaskRequest {
   assigned_to?: string;
   priority?: TaskPriority;
   due_date?: string;
+  planned_completion_date?: string;
   job_id?: string;
   submission_id?: string;
   business_partner_id?: string;
@@ -276,6 +300,7 @@ export interface UpdateTaskRequest {
   assigned_to?: string;
   priority?: TaskPriority;
   due_date?: string;
+  planned_completion_date?: string;
   status?: TaskStatus;
 }
 
@@ -366,6 +391,24 @@ class RecruiterService {
   async updateProfile(data: UpdateRecruiterProfileRequest): Promise<ApiResponse<RecruiterProfile>> {
     try {
       const response = await apiClient.put<ApiResponse<RecruiterProfile>>("/recruiter/profile", data);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  async getGoals(): Promise<ApiResponse<{ goals: RecruiterGoals }>> {
+    try {
+      const response = await apiClient.get<{ goals: RecruiterGoals }>("/recruiter/goals");
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  async updateGoals(goals: RecruiterGoals): Promise<ApiResponse<{ goals: RecruiterGoals }>> {
+    try {
+      const response = await apiClient.put<{ goals: RecruiterGoals }>("/recruiter/goals", goals);
       return response.data;
     } catch (error: any) {
       throw this.handleError(error);

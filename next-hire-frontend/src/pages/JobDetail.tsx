@@ -75,6 +75,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -114,7 +115,8 @@ import { ExpandableText } from "@/components/ExpandableText";
 import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
 import { formatCompactRange } from "@/lib/format";
-import type { TeamMember, Task, TaskPriority } from "@/services/recruiterService";
+import type { TeamMember, Task, TaskPriority, TaskStatus } from "@/services/recruiterService";
+import { TASK_STATUS_LABELS, TASK_STATUS_OPTIONS } from "@/services/recruiterService";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { PageLoadingState } from "@/components/PageLoadingState";
@@ -487,6 +489,8 @@ const JobDetail = () => {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
+  const [newTaskPlannedCompletionDate, setNewTaskPlannedCompletionDate] = useState("");
+  const [newTaskComments, setNewTaskComments] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
   const [newTaskAssignee, setNewTaskAssignee] = useState("");
   const [savingTask, setSavingTask] = useState(false);
@@ -529,11 +533,15 @@ const JobDetail = () => {
         job_id: id,
         priority: newTaskPriority,
         due_date: newTaskDueDate || undefined,
+        planned_completion_date: newTaskPlannedCompletionDate || undefined,
+        description: newTaskComments || undefined,
         assigned_to: newTaskAssignee || undefined,
       });
       toast({ title: "Task added" });
       setNewTaskTitle("");
       setNewTaskDueDate("");
+      setNewTaskPlannedCompletionDate("");
+      setNewTaskComments("");
       setNewTaskPriority("medium");
       setNewTaskAssignee("");
       fetchTasks();
@@ -550,7 +558,7 @@ const JobDetail = () => {
 
   const handleToggleTask = async (task: Task) => {
     try {
-      const nextStatus = task.status === "completed" ? "pending" : "completed";
+      const nextStatus = task.status === "completed" ? "not_started" : "completed";
       await recruiterService.updateTask(task.id, { status: nextStatus });
       setTasks((prev) =>
         prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t))
@@ -1984,10 +1992,11 @@ const JobDetail = () => {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all">All Tasks</SelectItem>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="in_progress">In Progress</SelectItem>
-                            <SelectItem value="completed">Completed</SelectItem>
-                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                            {TASK_STATUS_OPTIONS.map((status) => (
+                              <SelectItem key={status} value={status}>
+                                {TASK_STATUS_LABELS[status]}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         <Dialog open={showAddTask} onOpenChange={setShowAddTask}>
@@ -2008,22 +2017,33 @@ const JobDetail = () => {
                                 onChange={(e) => setNewTaskTitle(e.target.value)}
                               />
                               <div className="grid grid-cols-2 gap-3">
-                                <Input
-                                  type="date"
-                                  value={newTaskDueDate}
-                                  onChange={(e) => setNewTaskDueDate(e.target.value)}
-                                />
-                                <Select value={newTaskPriority} onValueChange={(v) => setNewTaskPriority(v as TaskPriority)}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Priority" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="low">Low</SelectItem>
-                                    <SelectItem value="medium">Medium</SelectItem>
-                                    <SelectItem value="high">High</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                                <div className="space-y-1">
+                                  <Label className="text-xs text-gray-500">Due Date</Label>
+                                  <Input
+                                    type="date"
+                                    value={newTaskDueDate}
+                                    onChange={(e) => setNewTaskDueDate(e.target.value)}
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs text-gray-500">Planned Completion Date</Label>
+                                  <Input
+                                    type="date"
+                                    value={newTaskPlannedCompletionDate}
+                                    onChange={(e) => setNewTaskPlannedCompletionDate(e.target.value)}
+                                  />
+                                </div>
                               </div>
+                              <Select value={newTaskPriority} onValueChange={(v) => setNewTaskPriority(v as TaskPriority)}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Priority" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="low">Low</SelectItem>
+                                  <SelectItem value="medium">Medium</SelectItem>
+                                  <SelectItem value="high">High</SelectItem>
+                                </SelectContent>
+                              </Select>
                               <Select value={newTaskAssignee} onValueChange={setNewTaskAssignee}>
                                 <SelectTrigger>
                                   <SelectValue placeholder="Assign to (optional)" />
@@ -2037,6 +2057,12 @@ const JobDetail = () => {
                                 </SelectContent>
                               </Select>
                             </div>
+                            <Textarea
+                              placeholder="Comments (optional)"
+                              value={newTaskComments}
+                              onChange={(e) => setNewTaskComments(e.target.value)}
+                              rows={2}
+                            />
                             <div className="flex justify-end gap-2 pt-2">
                               <Button variant="outline" onClick={() => setShowAddTask(false)}>
                                 Cancel
@@ -2093,10 +2119,18 @@ const JobDetail = () => {
                                     <span>
                                       Due: {todo.due_date ? new Date(todo.due_date).toLocaleDateString() : "—"}
                                     </span>
+                                    {todo.planned_completion_date && (
+                                      <span>
+                                        Planned: {new Date(todo.planned_completion_date).toLocaleDateString()}
+                                      </span>
+                                    )}
                                     {todo.assignee && (
                                       <span>Assigned to: {formatTeamMemberName(todo.assignee)}</span>
                                     )}
                                   </div>
+                                  {todo.description && (
+                                    <p className="text-sm text-gray-500 mt-1 whitespace-pre-wrap">{todo.description}</p>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
@@ -2111,6 +2145,29 @@ const JobDetail = () => {
                                 >
                                   {todo.priority}
                                 </Badge>
+
+                                <Select
+                                  value={todo.status}
+                                  onValueChange={async (status) => {
+                                    try {
+                                      await recruiterService.updateTask(todo.id, { status: status as TaskStatus });
+                                      setTasks((prev) => prev.map((t) => (t.id === todo.id ? { ...t, status: status as TaskStatus } : t)));
+                                    } catch (err: any) {
+                                      toast({ title: "Error", description: err?.response?.data?.message || "Failed to update status", variant: "destructive" });
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 w-36 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {TASK_STATUS_OPTIONS.map((status) => (
+                                      <SelectItem key={status} value={status}>
+                                        {TASK_STATUS_LABELS[status]}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
 
                                 <Popover>
                                   <PopoverTrigger asChild>

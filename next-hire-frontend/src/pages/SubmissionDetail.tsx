@@ -83,7 +83,7 @@ import {
   Submission,
   SubmissionStatus,
 } from "@/services/submissionService";
-import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/recruiterService";
+import { recruiterService, Task, TaskPriority, TaskStatus, TeamMember, TASK_STATUS_LABELS, TASK_STATUS_OPTIONS } from "@/services/recruiterService";
 import { jobService } from "@/services/jobService";
 import { ScheduleInterviewDialog } from "@/components/ScheduleInterviewDialog";
 import { ExpandableText } from "@/components/ExpandableText";
@@ -270,6 +270,8 @@ const SubmissionDetail = () => {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
+  const [newTaskPlannedCompletionDate, setNewTaskPlannedCompletionDate] = useState("");
+  const [newTaskComments, setNewTaskComments] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
   const [newTaskAssignee, setNewTaskAssignee] = useState("");
   const [savingTask, setSavingTask] = useState(false);
@@ -316,11 +318,15 @@ const SubmissionDetail = () => {
         submission_id: submission.id,
         priority: newTaskPriority,
         due_date: newTaskDueDate || undefined,
+        planned_completion_date: newTaskPlannedCompletionDate || undefined,
+        description: newTaskComments || undefined,
         assigned_to: newTaskAssignee || undefined,
       });
       toast({ title: "Task added" });
       setNewTaskTitle("");
       setNewTaskDueDate("");
+      setNewTaskPlannedCompletionDate("");
+      setNewTaskComments("");
       setNewTaskPriority("medium");
       setNewTaskAssignee("");
       setShowAddTask(false);
@@ -337,7 +343,7 @@ const SubmissionDetail = () => {
   };
 
   const handleToggleTask = async (task: Task) => {
-    const nextStatus = task.status === "completed" ? "pending" : "completed";
+    const nextStatus = task.status === "completed" ? "not_started" : "completed";
     try {
       await recruiterService.updateTask(task.id, { status: nextStatus });
       setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)));
@@ -1120,22 +1126,33 @@ const SubmissionDetail = () => {
                           onChange={(e) => setNewTaskTitle(e.target.value)}
                         />
                         <div className="grid grid-cols-2 gap-3">
-                          <Input
-                            type="date"
-                            value={newTaskDueDate}
-                            onChange={(e) => setNewTaskDueDate(e.target.value)}
-                          />
-                          <Select value={newTaskPriority} onValueChange={(v) => setNewTaskPriority(v as TaskPriority)}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Priority" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="low">Low</SelectItem>
-                              <SelectItem value="medium">Medium</SelectItem>
-                              <SelectItem value="high">High</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-gray-500">Due Date</Label>
+                            <Input
+                              type="date"
+                              value={newTaskDueDate}
+                              onChange={(e) => setNewTaskDueDate(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-gray-500">Planned Completion Date</Label>
+                            <Input
+                              type="date"
+                              value={newTaskPlannedCompletionDate}
+                              onChange={(e) => setNewTaskPlannedCompletionDate(e.target.value)}
+                            />
+                          </div>
                         </div>
+                        <Select value={newTaskPriority} onValueChange={(v) => setNewTaskPriority(v as TaskPriority)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Priority" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <Select value={newTaskAssignee} onValueChange={setNewTaskAssignee}>
                           <SelectTrigger>
                             <SelectValue placeholder="Assign to (optional)" />
@@ -1149,6 +1166,12 @@ const SubmissionDetail = () => {
                           </SelectContent>
                         </Select>
                       </div>
+                      <Textarea
+                        placeholder="Comments (optional)"
+                        value={newTaskComments}
+                        onChange={(e) => setNewTaskComments(e.target.value)}
+                        rows={2}
+                      />
                       <DialogFooter>
                         <Button variant="outline" onClick={() => setShowAddTask(false)}>
                           Cancel
@@ -1177,9 +1200,11 @@ const SubmissionDetail = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Tasks</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="in_progress">In Progress</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
+                      {TASK_STATUS_OPTIONS.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {TASK_STATUS_LABELS[status]}
+                        </SelectItem>
+                      ))}
                       <SelectItem value="high">High Priority</SelectItem>
                       <SelectItem value="medium">Medium Priority</SelectItem>
                       <SelectItem value="low">Low Priority</SelectItem>
@@ -1218,6 +1243,9 @@ const SubmissionDetail = () => {
                               {todo.description && <p className="text-sm text-gray-600">{todo.description}</p>}
                               <div className="flex items-center gap-3 text-sm text-gray-600">
                                 <span>Due: {todo.due_date ? formatDateOnly(todo.due_date) : "—"}</span>
+                                {todo.planned_completion_date && (
+                                  <span>Planned: {formatDateOnly(todo.planned_completion_date)}</span>
+                                )}
                                 {todo.assignee && <span>Assigned to: {formatTeamMemberName(todo.assignee)}</span>}
                               </div>
                             </div>
@@ -1234,6 +1262,28 @@ const SubmissionDetail = () => {
                             >
                               {todo.priority}
                             </Badge>
+                            <Select
+                              value={todo.status}
+                              onValueChange={async (status) => {
+                                try {
+                                  await recruiterService.updateTask(todo.id, { status: status as TaskStatus });
+                                  setTasks((prev) => prev.map((t) => (t.id === todo.id ? { ...t, status: status as TaskStatus } : t)));
+                                } catch (err: any) {
+                                  toast({ title: "Error", description: err?.response?.data?.message || "Failed to update status", variant: "destructive" });
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-8 w-36 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {TASK_STATUS_OPTIONS.map((status) => (
+                                  <SelectItem key={status} value={status}>
+                                    {TASK_STATUS_LABELS[status]}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                             <Popover>
                               <PopoverTrigger asChild>
                                 <Button size="sm" variant="outline" className="text-blue-600 hover:bg-blue-50">

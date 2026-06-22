@@ -415,7 +415,7 @@ const Interviews = () => {
   const toggleTodo = async (todoId: string) => {
     const todo = todos.find((t) => t.id === todoId);
     if (!todo) return;
-    const nextStatus = todo.status === "completed" ? "pending" : "completed";
+    const nextStatus = todo.status === "completed" ? "not_started" : "completed";
     try {
       await recruiterService.updateTask(todoId, { status: nextStatus });
       setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, status: nextStatus } : t)));

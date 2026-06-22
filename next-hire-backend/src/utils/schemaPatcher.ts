@@ -590,6 +590,33 @@ export const ensureHumanReadableIds = async () => {
   }
 };
 
+// Tasks moved from pending/cancelled to not_started/not_applicable (clearer
+// wording for the shared ToDo system used across Jobs/Submissions/
+// Placements/Interviews/BusinessPartners). Adds the new ENUM values, then
+// backfills existing rows so old/new vocabulary never mixes in the UI.
+export const ensureNewTaskStatuses = async () => {
+  try {
+    const dialect = sequelize.getDialect();
+    if (dialect === "postgres") {
+      for (const status of ["not_started", "not_applicable"]) {
+        try {
+          await sequelize.query(
+            `ALTER TYPE "enum_tasks_status" ADD VALUE IF NOT EXISTS '${status}'`
+          );
+        } catch (e: any) {
+          logger.warn(`Could not add status '${status}' to task enum: ${e.message}`);
+        }
+      }
+      logger.info("New task statuses ensured in PostgreSQL ENUM");
+    }
+
+    await sequelize.query(`UPDATE tasks SET status = 'not_started' WHERE status = 'pending'`);
+    await sequelize.query(`UPDATE tasks SET status = 'not_applicable' WHERE status = 'cancelled'`);
+  } catch (error: any) {
+    logger.warn("ensureNewTaskStatuses: skipping —", error.message);
+  }
+};
+
 export const ensureNewSubmissionStatuses = async () => {
   const newStatuses = [
     "new_candidate",

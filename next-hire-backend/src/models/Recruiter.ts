@@ -2,6 +2,12 @@ import { DataTypes, Model, Optional } from "sequelize";
 import { sequelize } from "../config/database";
 import { User } from "./User";
 
+export interface RecruiterGoals {
+  placements?: number;
+  revenue?: number;
+  submissions?: number;
+}
+
 export interface RecruiterAttributes {
   id: string;
   user_id: string;
@@ -13,6 +19,7 @@ export interface RecruiterAttributes {
   job_title?: string;
   department?: string;
   bio?: string;
+  monthly_goals?: RecruiterGoals | null;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -34,6 +41,7 @@ export class Recruiter
   public job_title?: string;
   public department?: string;
   public bio?: string;
+  public monthly_goals?: RecruiterGoals | null;
 
   // Timestamps
   public readonly created_at!: Date;
@@ -93,6 +101,22 @@ Recruiter.init(
     bio: {
       type: DataTypes.TEXT,
       allowNull: true,
+    },
+    monthly_goals: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      get() {
+        const value = this.getDataValue("monthly_goals") as unknown as string;
+        if (!value) return null;
+        try {
+          return JSON.parse(value);
+        } catch {
+          return null;
+        }
+      },
+      set(value: RecruiterGoals | null) {
+        this.setDataValue("monthly_goals", (value ? JSON.stringify(value) : null) as any);
+      },
     },
   },
   {

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -79,7 +80,7 @@ import {
   BusinessPartnerRevenueTrendPoint,
   BusinessPartnerJob,
 } from "@/services/businessPartnerService";
-import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/recruiterService";
+import { recruiterService, Task, TaskPriority, TaskStatus, TeamMember, TASK_STATUS_LABELS, TASK_STATUS_OPTIONS } from "@/services/recruiterService";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { PageLoadingState } from "@/components/PageLoadingState";
@@ -178,7 +179,7 @@ const BusinessPartnerDetail = () => {
   const [contactsLoading, setContactsLoading] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
   const [editingContact, setEditingContact] = useState<BusinessPartnerContact | null>(null);
-  const [contactForm, setContactForm] = useState({ name: "", title: "", email: "", phone: "", is_primary: false });
+  const [contactForm, setContactForm] = useState({ name: "", title: "", email: "", phone: "", comments: "", is_primary: false });
   const [savingContact, setSavingContact] = useState(false);
 
   const fetchContacts = useCallback(async () => {
@@ -199,7 +200,7 @@ const BusinessPartnerDetail = () => {
   }, [fetchContacts]);
 
   const openAddContact = () => {
-    setContactForm({ name: "", title: "", email: "", phone: "", is_primary: false });
+    setContactForm({ name: "", title: "", email: "", phone: "", comments: "", is_primary: false });
     setShowAddContact(true);
   };
 
@@ -209,6 +210,7 @@ const BusinessPartnerDetail = () => {
       title: contact.title || "",
       email: contact.email || "",
       phone: contact.phone || "",
+      comments: contact.comments || "",
       is_primary: contact.is_primary,
     });
     setEditingContact(contact);
@@ -256,6 +258,8 @@ const BusinessPartnerDetail = () => {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
+  const [newTaskPlannedCompletionDate, setNewTaskPlannedCompletionDate] = useState("");
+  const [newTaskComments, setNewTaskComments] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("medium");
   const [newTaskAssignee, setNewTaskAssignee] = useState("");
   const [savingTask, setSavingTask] = useState(false);
@@ -290,11 +294,15 @@ const BusinessPartnerDetail = () => {
         business_partner_id: id,
         priority: newTaskPriority,
         due_date: newTaskDueDate || undefined,
+        planned_completion_date: newTaskPlannedCompletionDate || undefined,
+        description: newTaskComments || undefined,
         assigned_to: newTaskAssignee || undefined,
       });
       toast.success("Task added");
       setNewTaskTitle("");
       setNewTaskDueDate("");
+      setNewTaskComments("");
+      setNewTaskPlannedCompletionDate("");
       setNewTaskPriority("medium");
       setNewTaskAssignee("");
       setShowAddTask(false);
@@ -307,7 +315,7 @@ const BusinessPartnerDetail = () => {
   };
 
   const handleToggleTask = async (task: Task) => {
-    const nextStatus = task.status === "completed" ? "pending" : "completed";
+    const nextStatus = task.status === "completed" ? "not_started" : "completed";
     try {
       await recruiterService.updateTask(task.id, { status: nextStatus });
       setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)));
@@ -839,6 +847,9 @@ const BusinessPartnerDetail = () => {
                                 </a>
                               )}
                             </div>
+                            {contact.comments && (
+                              <p className="text-sm text-gray-500 mt-2 whitespace-pre-wrap">{contact.comments}</p>
+                            )}
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -934,22 +945,33 @@ const BusinessPartnerDetail = () => {
                         onChange={(e) => setNewTaskTitle(e.target.value)}
                       />
                       <div className="grid grid-cols-2 gap-3">
-                        <Input
-                          type="date"
-                          value={newTaskDueDate}
-                          onChange={(e) => setNewTaskDueDate(e.target.value)}
-                        />
-                        <Select value={newTaskPriority} onValueChange={(v) => setNewTaskPriority(v as TaskPriority)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Priority" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">Due Date</Label>
+                          <Input
+                            type="date"
+                            value={newTaskDueDate}
+                            onChange={(e) => setNewTaskDueDate(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">Planned Completion Date</Label>
+                          <Input
+                            type="date"
+                            value={newTaskPlannedCompletionDate}
+                            onChange={(e) => setNewTaskPlannedCompletionDate(e.target.value)}
+                          />
+                        </div>
                       </div>
+                      <Select value={newTaskPriority} onValueChange={(v) => setNewTaskPriority(v as TaskPriority)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Priority" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <Select value={newTaskAssignee} onValueChange={setNewTaskAssignee}>
                         <SelectTrigger>
                           <SelectValue placeholder="Assign to (optional)" />
@@ -963,6 +985,12 @@ const BusinessPartnerDetail = () => {
                         </SelectContent>
                       </Select>
                     </div>
+                    <Textarea
+                      placeholder="Comments (optional)"
+                      value={newTaskComments}
+                      onChange={(e) => setNewTaskComments(e.target.value)}
+                      rows={2}
+                    />
                     <DialogFooter>
                       <Button variant="outline" onClick={() => setShowAddTask(false)}>
                         Cancel
@@ -1000,15 +1028,47 @@ const BusinessPartnerDetail = () => {
                             <span className="text-xs text-gray-500">
                               Due: {todo.due_date ? new Date(todo.due_date).toLocaleDateString() : "—"}
                             </span>
+                            {todo.planned_completion_date && (
+                              <span className="text-xs text-gray-500">
+                                Planned: {new Date(todo.planned_completion_date).toLocaleDateString()}
+                              </span>
+                            )}
                             {todo.assignee && (
                               <span className="text-xs text-gray-500">Assigned to: {formatTeamMemberName(todo.assignee)}</span>
                             )}
                           </div>
+                          {todo.description && (
+                            <p className="text-sm text-gray-500 mt-1 whitespace-pre-wrap">{todo.description}</p>
+                          )}
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => handleDeleteTask(todo.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={todo.status}
+                          onValueChange={async (status) => {
+                            try {
+                              await recruiterService.updateTask(todo.id, { status: status as TaskStatus });
+                              setTasks((prev) => prev.map((t) => (t.id === todo.id ? { ...t, status: status as TaskStatus } : t)));
+                            } catch (err: any) {
+                              toast.error(err?.response?.data?.message || "Failed to update status");
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-8 w-36 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TASK_STATUS_OPTIONS.map((status) => (
+                              <SelectItem key={status} value={status}>
+                                {TASK_STATUS_LABELS[status]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => handleDeleteTask(todo.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1214,6 +1274,15 @@ const BusinessPartnerDetail = () => {
                 <Label>Phone</Label>
                 <Input value={contactForm.phone} onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })} />
               </div>
+            </div>
+            <div>
+              <Label>Comments</Label>
+              <Textarea
+                value={contactForm.comments}
+                onChange={(e) => setContactForm({ ...contactForm, comments: e.target.value })}
+                rows={3}
+                placeholder="Notes about this contact..."
+              />
             </div>
             <div className="flex items-center gap-2">
               <Checkbox

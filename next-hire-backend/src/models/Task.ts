@@ -5,6 +5,8 @@ import { Job } from "./Job";
 import { Submission } from "./Submission";
 import { BusinessPartner } from "./BusinessPartner";
 
+export type TaskStatus = "not_started" | "in_progress" | "completed" | "not_applicable";
+
 export interface TaskAttributes {
   id: string;
   title: string;
@@ -12,8 +14,9 @@ export interface TaskAttributes {
   assigned_to: string;
   created_by: string;
   priority: "low" | "medium" | "high";
-  status: "pending" | "in_progress" | "completed" | "cancelled";
+  status: TaskStatus;
   due_date?: Date;
+  planned_completion_date?: Date;
   job_id?: string; // Optional link to job
   submission_id?: string; // Optional link to submission
   business_partner_id?: string; // Optional link to a business partner (client)
@@ -38,8 +41,9 @@ export class Task
   public assigned_to!: string;
   public created_by!: string;
   public priority!: "low" | "medium" | "high";
-  public status!: "pending" | "in_progress" | "completed" | "cancelled";
+  public status!: TaskStatus;
   public due_date?: Date;
+  public planned_completion_date?: Date;
   public job_id?: string;
   public submission_id?: string;
   public business_partner_id?: string;
@@ -97,11 +101,18 @@ Task.init(
       defaultValue: "medium",
     },
     status: {
-      type: DataTypes.ENUM("pending", "in_progress", "completed", "cancelled"),
+      // Legacy values ("pending", "cancelled") stay valid so historical rows
+      // written before this status vocabulary changed don't break - they're
+      // backfilled to the new values by ensureNewTaskStatuses() at startup.
+      type: DataTypes.ENUM("not_started", "in_progress", "completed", "not_applicable", "pending", "cancelled"),
       allowNull: false,
-      defaultValue: "pending",
+      defaultValue: "not_started",
     },
     due_date: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    planned_completion_date: {
       type: DataTypes.DATE,
       allowNull: true,
     },

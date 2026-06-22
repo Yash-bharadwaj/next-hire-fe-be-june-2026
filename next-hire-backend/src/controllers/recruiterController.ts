@@ -143,6 +143,50 @@ export const updateProfile = asyncHandler(
   }
 );
 
+// Get the recruiter's monthly goals (Dashboard's "Set Goals" quick action)
+export const getGoals = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.userId;
+
+    const recruiter = await Recruiter.findOne({ where: { user_id: userId } });
+    if (!recruiter) {
+      throw createError("Recruiter profile not found", 404);
+    }
+
+    res.json({
+      success: true,
+      data: { goals: recruiter.monthly_goals || {} },
+    });
+  }
+);
+
+// Set/update the recruiter's monthly goals
+export const updateGoals = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.userId;
+    const { placements, revenue, submissions } = req.body;
+
+    const recruiter = await Recruiter.findOne({ where: { user_id: userId } });
+    if (!recruiter) {
+      throw createError("Recruiter profile not found", 404);
+    }
+
+    await recruiter.update({
+      monthly_goals: {
+        placements: placements !== undefined ? Number(placements) : undefined,
+        revenue: revenue !== undefined ? Number(revenue) : undefined,
+        submissions: submissions !== undefined ? Number(submissions) : undefined,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Goals updated successfully",
+      data: { goals: recruiter.monthly_goals },
+    });
+  }
+);
+
 // List recruiter users, for Primary Recruiter / Account Manager / Assigned To dropdowns
 export const listTeamMembers = asyncHandler(
   async (_req: AuthenticatedRequest, res: Response) => {
@@ -1346,6 +1390,7 @@ export const createTask = asyncHandler(
       assigned_to,
       priority,
       due_date,
+      planned_completion_date,
       job_id,
       submission_id,
       business_partner_id,
@@ -1390,6 +1435,7 @@ export const createTask = asyncHandler(
       created_by: userId!,
       priority: priority || "medium",
       due_date,
+      planned_completion_date,
       job_id,
       submission_id,
       business_partner_id,
@@ -1546,7 +1592,7 @@ export const updateTask = asyncHandler(
       throw createError("You do not have permission to update this task", 403);
     }
 
-    const { title, description, assigned_to, priority, due_date, status } = req.body;
+    const { title, description, assigned_to, priority, due_date, planned_completion_date, status } = req.body;
 
     await task.update({
       title: title !== undefined ? title : task.title,
@@ -1554,6 +1600,7 @@ export const updateTask = asyncHandler(
       assigned_to: assigned_to !== undefined ? assigned_to : task.assigned_to,
       priority: priority !== undefined ? priority : task.priority,
       due_date: due_date !== undefined ? due_date : task.due_date,
+      planned_completion_date: planned_completion_date !== undefined ? planned_completion_date : task.planned_completion_date,
       status: status !== undefined ? status : task.status,
       completed_at: status === "completed" ? new Date() : status !== undefined ? null : task.completed_at,
     } as any);

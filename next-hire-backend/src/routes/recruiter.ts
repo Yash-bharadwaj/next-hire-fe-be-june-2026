@@ -3,6 +3,8 @@ import { body, param, query } from "express-validator";
 import {
   getProfile,
   updateProfile,
+  getGoals,
+  updateGoals,
   createJob,
   updateJob,
   listJobs,
@@ -376,6 +378,10 @@ const createTaskValidation = [
     .optional()
     .isISO8601()
     .withMessage("Valid due date is required"),
+  body("planned_completion_date")
+    .optional()
+    .isISO8601()
+    .withMessage("Valid planned completion date is required"),
   body("job_id").optional().isUUID().withMessage("Valid job ID is required"),
   body("submission_id")
     .optional()
@@ -398,7 +404,7 @@ const listTasksValidation = [
     .withMessage("Limit must be between 1 and 100"),
   query("status")
     .optional()
-    .isIn(["pending", "in_progress", "completed", "cancelled"])
+    .isIn(["not_started", "in_progress", "completed", "not_applicable"])
     .withMessage("Invalid status"),
   query("priority")
     .optional()
@@ -412,7 +418,7 @@ const listTasksValidation = [
 const updateTaskStatusValidation = [
   param("taskId").isUUID().withMessage("Valid task ID is required"),
   body("status")
-    .isIn(["pending", "in_progress", "completed", "cancelled"])
+    .isIn(["not_started", "in_progress", "completed", "not_applicable"])
     .withMessage("Valid status is required"),
 ];
 
@@ -432,12 +438,16 @@ const updateTaskValidation = [
     .withMessage("Invalid priority"),
   body("status")
     .optional()
-    .isIn(["pending", "in_progress", "completed", "cancelled"])
+    .isIn(["not_started", "in_progress", "completed", "not_applicable"])
     .withMessage("Invalid status"),
   body("due_date")
     .optional()
     .isISO8601()
     .withMessage("Valid due date is required"),
+  body("planned_completion_date")
+    .optional()
+    .isISO8601()
+    .withMessage("Valid planned completion date is required"),
 ];
 
 const deleteTaskValidation = [
@@ -449,6 +459,19 @@ const deleteTaskValidation = [
 // Profile management
 router.get("/profile", getProfile);
 router.put("/profile", updateProfileValidation, validate, updateProfile);
+
+// Monthly goals (Dashboard "Set Goals" quick action)
+router.get("/goals", getGoals);
+router.put(
+  "/goals",
+  [
+    body("placements").optional().isFloat({ min: 0 }),
+    body("revenue").optional().isFloat({ min: 0 }),
+    body("submissions").optional().isFloat({ min: 0 }),
+  ],
+  validate,
+  updateGoals
+);
 
 // Team members (for Primary Recruiter / Account Manager / Assigned To dropdowns)
 router.get("/team", listTeamMembers);
