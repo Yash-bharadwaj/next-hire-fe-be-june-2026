@@ -57,6 +57,15 @@ const parseTags = (raw: string) =>
     .map((t) => t.trim())
     .filter(Boolean);
 
+interface ExtraAddField {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  required?: boolean;
+}
+
 interface NotesPanelProps {
   title?: string;
   description?: string;
@@ -64,6 +73,10 @@ interface NotesPanelProps {
   onAdd: (data: NoteFormData) => Promise<void>;
   onUpdate: (noteId: string, data: NoteFormData) => Promise<void>;
   onDelete: (noteId: string) => Promise<void>;
+  // Optional extra selector shown in the Add Note dialog, for cases where a
+  // note must be scoped to one of several targets before it can be added
+  // (e.g. "which of this candidate's submissions is this note about?").
+  extraAddField?: ExtraAddField;
 }
 
 export const NotesPanel = ({
@@ -73,6 +86,7 @@ export const NotesPanel = ({
   onAdd,
   onUpdate,
   onDelete,
+  extraAddField,
 }: NotesPanelProps) => {
   const { toast } = useToast();
   const [categoryFilter, setCategoryFilter] = useState<"all" | NoteCategory>("all");
@@ -100,6 +114,7 @@ export const NotesPanel = ({
 
   const handleAddNote = async () => {
     if (!addForm.content.trim()) return;
+    if (extraAddField?.required && !extraAddField.value) return;
     setSaving(true);
     try {
       await onAdd({
@@ -323,6 +338,23 @@ export const NotesPanel = ({
             <DialogTitle>Add Note</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {extraAddField && (
+              <div>
+                <Label>{extraAddField.label}</Label>
+                <Select value={extraAddField.value} onValueChange={extraAddField.onChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={extraAddField.placeholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {extraAddField.options.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label>Title</Label>
               <Input value={addForm.title} onChange={(e) => setAddForm({ ...addForm, title: e.target.value })} placeholder="Note title..." />
@@ -371,7 +403,10 @@ export const NotesPanel = ({
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddNote} disabled={!addForm.content.trim() || saving}>
+            <Button
+              onClick={handleAddNote}
+              disabled={!addForm.content.trim() || saving || (extraAddField?.required && !extraAddField.value)}
+            >
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
               Add Note
             </Button>
