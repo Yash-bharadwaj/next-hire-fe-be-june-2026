@@ -64,8 +64,9 @@ import {
 import { jobService, Job } from "@/services/jobService";
 import { submissionService, Submission } from "@/services/submissionService";
 import { useAuth } from "@/contexts/AuthContext";
-import { downloadCsv, type CsvColumn } from "@/utils/csv";
-import { downloadPdf, downloadExcel, exportToGoogleSheets, downloadReportPdf, type ReportStat } from "@/utils/exportData";
+import { type CsvColumn } from "@/utils/csv";
+import { downloadReportPdf, type ReportStat } from "@/utils/exportData";
+import { useEntityExport } from "@/hooks/useEntityExport";
 import { CompanyFilter } from "@/components/CompanyFilter";
 import { toast } from "sonner";
 
@@ -101,7 +102,6 @@ const Placements = () => {
   const [typeFilter, setTypeFilter] = useState<PlacementType | "">("");
   const [searchQuery, setSearchQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
-  const [exporting, setExporting] = useState(false);
 
   // Real client/company names present in the current placements list (not a
   // fixed list), for the Company filter dropdown.
@@ -189,68 +189,15 @@ const Placements = () => {
 
   const exportTimestamp = () => new Date().toISOString().replace(/[:.]/g, "-");
 
-  const handleExportCsv = () => {
-    if (user?.role !== "recruiter") {
-      toast.error("Only recruiters can export placements");
-      return;
-    }
-    if (!companyFilteredPlacements.length) {
-      toast.error("No placements to export");
-      return;
-    }
-    try {
-      setExporting(true);
-      downloadCsv(`placements-export-${exportTimestamp()}.csv`, companyFilteredPlacements, exportColumns);
-      toast.success("Placements exported as CSV");
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to export placements");
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handleExportPdf = () => {
-    if (user?.role !== "recruiter") {
-      toast.error("Only recruiters can export placements");
-      return;
-    }
-    if (!companyFilteredPlacements.length) {
-      toast.error("No placements to export");
-      return;
-    }
-    downloadPdf(`placements-export-${exportTimestamp()}.pdf`, "Placements", companyFilteredPlacements, exportColumns);
-    toast.success("Placements exported as PDF");
-  };
-
-  const handleExportExcel = () => {
-    if (user?.role !== "recruiter") {
-      toast.error("Only recruiters can export placements");
-      return;
-    }
-    if (!companyFilteredPlacements.length) {
-      toast.error("No placements to export");
-      return;
-    }
-    downloadExcel(`placements-export-${exportTimestamp()}.xlsx`, "Placements", companyFilteredPlacements, exportColumns);
-    toast.success("Placements exported as Excel");
-  };
-
-  const handleExportGoogleSheets = async () => {
-    if (user?.role !== "recruiter") {
-      toast.error("Only recruiters can export placements");
-      return;
-    }
-    if (!companyFilteredPlacements.length) {
-      toast.error("No placements to export");
-      return;
-    }
-    try {
-      await exportToGoogleSheets(companyFilteredPlacements, exportColumns);
-      toast.success("Placement data copied — paste (Cmd/Ctrl+V) into the new sheet");
-    } catch {
-      toast.error("Couldn't copy to clipboard. Try CSV or Excel export instead.");
-    }
-  };
+  const { exporting, handleExportCsv, handleExportPdf, handleExportExcel, handleExportGoogleSheets } = useEntityExport({
+    rows: companyFilteredPlacements,
+    columns: exportColumns,
+    filenameSlug: "placements",
+    docTitle: "Placements",
+    toastLabel: "Placements",
+    toastLabelSingular: "Placement",
+    guard: { check: () => user?.role === "recruiter", message: "Only recruiters can export placements" },
+  });
 
   const handleGenerateRevenueReport = () => {
     if (user?.role !== "recruiter") {

@@ -77,8 +77,8 @@ import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { formatCompactRange } from "@/lib/format";
-import { downloadCsv, type CsvColumn } from "@/utils/csv";
-import { downloadPdf, downloadExcel, exportToGoogleSheets } from "@/utils/exportData";
+import { type CsvColumn } from "@/utils/csv";
+import { useEntityExport } from "@/hooks/useEntityExport";
 
 // Module-level cache — survives component remount so cards never flash 0
 const _jobsStatsCache = {
@@ -455,47 +455,14 @@ const Jobs = () => {
     { header: "Deadline", accessor: (row) => row.deadline },
   ];
 
-  const exportTimestamp = () => new Date().toISOString().replace(/[:.]/g, "-");
-
-  const handleExportCsv = () => {
-    if (!tableRows.length) {
-      toast.error("No jobs to export");
-      return;
-    }
-    downloadCsv(`jobs-export-${exportTimestamp()}.csv`, tableRows, exportColumns);
-    toast.success("Jobs exported as CSV");
-  };
-
-  const handleExportPdf = () => {
-    if (!tableRows.length) {
-      toast.error("No jobs to export");
-      return;
-    }
-    downloadPdf(`jobs-export-${exportTimestamp()}.pdf`, "Jobs", tableRows, exportColumns);
-    toast.success("Jobs exported as PDF");
-  };
-
-  const handleExportExcel = () => {
-    if (!tableRows.length) {
-      toast.error("No jobs to export");
-      return;
-    }
-    downloadExcel(`jobs-export-${exportTimestamp()}.xlsx`, "Jobs", tableRows, exportColumns);
-    toast.success("Jobs exported as Excel");
-  };
-
-  const handleExportGoogleSheets = async () => {
-    if (!tableRows.length) {
-      toast.error("No jobs to export");
-      return;
-    }
-    try {
-      await exportToGoogleSheets(tableRows, exportColumns);
-      toast.success("Job data copied — paste (Cmd/Ctrl+V) into the new sheet");
-    } catch {
-      toast.error("Couldn't copy to clipboard. Try CSV or Excel export instead.");
-    }
-  };
+  const { handleExportCsv, handleExportPdf, handleExportExcel, handleExportGoogleSheets } = useEntityExport({
+    rows: tableRows,
+    columns: exportColumns,
+    filenameSlug: "jobs",
+    docTitle: "Jobs",
+    toastLabel: "Jobs",
+    toastLabelSingular: "Job",
+  });
 
   const columns = [
     {

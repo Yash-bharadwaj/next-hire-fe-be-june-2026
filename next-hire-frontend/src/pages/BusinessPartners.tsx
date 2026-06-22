@@ -57,8 +57,8 @@ import {
   useBusinessPartnerManagement,
 } from "@/hooks/useBusinessPartners";
 import { businessPartnerService, CreateBusinessPartnerRequest, BusinessPartnerStatus } from "@/services/businessPartnerService";
-import { downloadCsv, type CsvColumn } from "@/utils/csv";
-import { downloadPdf, downloadExcel, exportToGoogleSheets } from "@/utils/exportData";
+import { type CsvColumn } from "@/utils/csv";
+import { useEntityExport } from "@/hooks/useEntityExport";
 import { useAuth } from "@/contexts/AuthContext";
 import BusinessPartnerFormDialog from "@/components/BusinessPartnerFormDialog";
 
@@ -141,47 +141,14 @@ const BusinessPartners = () => {
     { header: "Created", accessor: (p) => businessPartnerService.formatDate(p.created_at) },
   ];
 
-  const exportTimestamp = () => new Date().toISOString().replace(/[:.]/g, "-");
-
-  const handleExportCsv = () => {
-    if (!businessPartners.length) {
-      toast.error("No business partners to export");
-      return;
-    }
-    downloadCsv(`business-partners-export-${exportTimestamp()}.csv`, businessPartners, exportColumns);
-    toast.success("Business partners exported as CSV");
-  };
-
-  const handleExportPdf = () => {
-    if (!businessPartners.length) {
-      toast.error("No business partners to export");
-      return;
-    }
-    downloadPdf(`business-partners-export-${exportTimestamp()}.pdf`, "Business Partners", businessPartners, exportColumns);
-    toast.success("Business partners exported as PDF");
-  };
-
-  const handleExportExcel = () => {
-    if (!businessPartners.length) {
-      toast.error("No business partners to export");
-      return;
-    }
-    downloadExcel(`business-partners-export-${exportTimestamp()}.xlsx`, "Business Partners", businessPartners, exportColumns);
-    toast.success("Business partners exported as Excel");
-  };
-
-  const handleExportGoogleSheets = async () => {
-    if (!businessPartners.length) {
-      toast.error("No business partners to export");
-      return;
-    }
-    try {
-      await exportToGoogleSheets(businessPartners, exportColumns);
-      toast.success("Business partner data copied — paste (Cmd/Ctrl+V) into the new sheet");
-    } catch {
-      toast.error("Couldn't copy to clipboard. Try CSV or Excel export instead.");
-    }
-  };
+  const { handleExportCsv, handleExportPdf, handleExportExcel, handleExportGoogleSheets } = useEntityExport({
+    rows: businessPartners,
+    columns: exportColumns,
+    filenameSlug: "business-partners",
+    docTitle: "Business Partners",
+    toastLabel: "Business partners",
+    toastLabelSingular: "Business partner",
+  });
 
   // "Share contacts": copies the selected partners' (or, with none selected,
   // every currently loaded partner's) contact details to the clipboard.
