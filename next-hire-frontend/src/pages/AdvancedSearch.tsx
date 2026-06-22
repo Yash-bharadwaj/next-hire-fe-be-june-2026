@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Slider } from "@/components/ui/slider";
 import { GlowingEffect } from "@/components/ui/glowing-effect";
 import {
   candidateSearchService,
@@ -138,6 +139,10 @@ const AdvancedSearch = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [profileCandidate, setProfileCandidate] = useState<SearchResultCandidate | null>(null);
   const [matchedJob, setMatchedJob] = useState<{ id: string; job_id: string; title: string } | null>(null);
+  const [minScore, setMinScore] = useState(0);
+
+  const hasScores = searchResults.some((c) => typeof c.aiScore === "number");
+  const visibleResults = hasScores ? searchResults.filter((c) => (c.aiScore ?? 0) >= minScore) : searchResults;
 
   const handleContactCandidate = (candidate: SearchResultCandidate) => {
     window.location.href = `mailto:${candidate.email}`;
@@ -159,6 +164,7 @@ const AdvancedSearch = () => {
     const loadJobMatches = async () => {
       setIsSearching(true);
       setHasSearched(true);
+      setMinScore(0);
       try {
         const response = await candidateSearchService.matchCandidatesForJob(jobId);
         if (cancelled) return;
@@ -198,6 +204,7 @@ const AdvancedSearch = () => {
     setIsSearching(true);
     setHasSearched(true);
     setMatchedJob(null);
+    setMinScore(0);
 
     try {
       const filters: CandidateSearchFilters = {};
@@ -236,6 +243,7 @@ const AdvancedSearch = () => {
     setIsAiSearching(true);
     setHasSearched(true);
     setMatchedJob(null);
+    setMinScore(0);
 
     try {
       const response = await candidateSearchService.matchCandidatesByText(aiPrompt.trim());
@@ -527,12 +535,31 @@ const AdvancedSearch = () => {
               <CardTitle className="flex items-center gap-2">
                 <Users className="w-5 h-5" />
                 Search Results
-                {searchResults.length > 0 && (
+                {visibleResults.length > 0 && (
                   <Badge className="ml-2 bg-green-100 text-green-800">
-                    {searchResults.length} candidates found
+                    {visibleResults.length} candidates found
                   </Badge>
                 )}
               </CardTitle>
+              {hasScores && (
+                <div className="flex items-center gap-3 pt-2">
+                  <Label className="text-sm text-gray-600 whitespace-nowrap">
+                    Minimum match score: <span className="font-semibold">{minScore}%</span>
+                  </Label>
+                  <Slider
+                    value={[minScore]}
+                    onValueChange={([v]) => setMinScore(v)}
+                    max={100}
+                    step={5}
+                    className="max-w-xs"
+                  />
+                  {minScore > 0 && (
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setMinScore(0)}>
+                      Clear
+                    </Button>
+                  )}
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               {isSearching || isAiSearching ? (
@@ -557,9 +584,9 @@ const AdvancedSearch = () => {
                     </div>
                   </div>
                 </div>
-              ) : hasSearched && searchResults.length > 0 ? (
+              ) : hasSearched && visibleResults.length > 0 ? (
                 <div className="space-y-4">
-                  {searchResults.map((candidate, index) => (
+                  {visibleResults.map((candidate, index) => (
                     <Card key={candidate.id} className="border border-gray-200 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group">
                       <CardContent className="p-6">
                         <div className="flex items-start justify-between">
@@ -676,6 +703,17 @@ const AdvancedSearch = () => {
                       </CardContent>
                     </Card>
                   ))}
+                </div>
+              ) : hasSearched && searchResults.length > 0 ? (
+                <div className="text-center py-12">
+                  <Search className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No candidates above {minScore}% match</h3>
+                  <p className="text-gray-500 mb-4">
+                    {searchResults.length} candidate(s) were found, but none meet the minimum match score.
+                  </p>
+                  <Button variant="outline" onClick={() => setMinScore(0)}>
+                    Clear score filter
+                  </Button>
                 </div>
               ) : hasSearched ? (
                 <div className="text-center py-12">
