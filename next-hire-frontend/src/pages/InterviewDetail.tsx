@@ -55,8 +55,6 @@ import {
   History,
   Download,
   Edit,
-  MoreHorizontal,
-  ChevronDown,
   Search,
   UserCog,
   Bot,
@@ -82,6 +80,7 @@ import { NotesPanel } from "@/components/NotesPanel";
 import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { formatCompactCurrency, formatCompactRange } from "@/lib/format";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
+import { ActionsMenuTrigger } from "@/components/ActionsMenuTrigger";
 
 const statusColors: Record<string, string> = {
   scheduled: "bg-blue-100 text-blue-800",
@@ -452,11 +451,7 @@ const InterviewDetail = () => {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                <MoreHorizontal className="h-4 w-4 mr-2" />
-                Actions
-                <ChevronDown className="h-3 w-3 ml-1" />
-              </Button>
+              <ActionsMenuTrigger variant="outline" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={openEditDialog}>

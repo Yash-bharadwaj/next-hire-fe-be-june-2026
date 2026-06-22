@@ -42,7 +42,6 @@ import {
   Briefcase,
   Settings,
   Search,
-  ChevronDown,
   UserCog,
   CheckSquare,
   StickyNote,
@@ -84,6 +83,7 @@ import { recruiterService, Task, TaskPriority, TeamMember } from "@/services/rec
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { PageLoadingState } from "@/components/PageLoadingState";
+import { ActionsMenuTrigger } from "@/components/ActionsMenuTrigger";
 
 const formatTeamMemberName = (member: TeamMember) => {
   const name = [member.recruiterProfile?.first_name, member.recruiterProfile?.last_name]
@@ -528,11 +528,11 @@ const BusinessPartnerDetail = () => {
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button className="button-gradient text-white bg-blue-600 hover:bg-blue-700">
-                <MoreHorizontal className="w-4 h-4 mr-1" />
-                Actions
-                <ChevronDown className="w-3 h-3 ml-1" />
-              </Button>
+              <ActionsMenuTrigger
+                className="button-gradient text-white bg-blue-600 hover:bg-blue-700"
+                iconClassName="w-4 h-4 mr-1"
+                chevronClassName="w-3 h-3 ml-1"
+              />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 bg-white border border-gray-200 shadow-lg z-50">
               <DropdownMenuItem

@@ -57,8 +57,6 @@ import {
   Star,
   Download,
   Edit,
-  MoreHorizontal,
-  ChevronDown,
   Linkedin,
   Globe,
   Trash,
@@ -97,6 +95,7 @@ import { formatCompactCurrency, formatCompactRange } from "@/lib/format";
 import { getSubmissionStatusMeta } from "@/lib/submissionStatus";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { PageLoadingState } from "@/components/PageLoadingState";
+import { ActionsMenuTrigger } from "@/components/ActionsMenuTrigger";
 import { computeSkillMatrix, summarizeSkillMatrix, getMatchLevelLabel } from "@/lib/skillMatching";
 
 const formatDateTime = (dateString?: string | null) => {
@@ -543,11 +542,7 @@ const SubmissionDetail = () => {
           {isRecruiter && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <MoreHorizontal className="h-4 w-4 mr-2" />
-                  Actions
-                  <ChevronDown className="h-3 w-3 ml-1" />
-                </Button>
+                <ActionsMenuTrigger variant="outline" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem

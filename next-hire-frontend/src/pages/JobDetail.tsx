@@ -57,7 +57,6 @@ import {
   Star,
   Edit3,
   Trash2,
-  ChevronDown,
   ChevronUp,
   Save,
   Search,
@@ -65,7 +64,6 @@ import {
   Bot,
   Sparkles,
   UserCog,
-  MoreHorizontal,
   Settings,
   ArrowLeft,
   Loader2,
@@ -122,6 +120,7 @@ import type { TeamMember, Task, TaskPriority } from "@/services/recruiterService
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { PageLoadingState } from "@/components/PageLoadingState";
+import { ActionsMenuTrigger } from "@/components/ActionsMenuTrigger";
 
 // Local type definitions
 interface Document {
@@ -1178,15 +1177,13 @@ const JobDetail = () => {
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
+                  <ActionsMenuTrigger
                     variant="outline"
                     size="sm"
                     className="border-blue-300 text-blue-700 hover:bg-blue-50 bg-white"
-                  >
-                    <MoreHorizontal className="w-4 h-4 mr-1" />
-                    Actions
-                    <ChevronDown className="w-3 h-3 ml-1" />
-                  </Button>
+                    iconClassName="w-4 h-4 mr-1"
+                    chevronClassName="w-3 h-3 ml-1"
+                  />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="end"

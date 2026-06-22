@@ -39,8 +39,6 @@ import {
   ArrowLeft,
   Upload,
   Search,
-  MoreHorizontal,
-  ChevronDown,
   Bot,
   UserCog,
   Settings,
@@ -82,6 +80,7 @@ import { formatCompactCurrency } from "@/lib/format";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { PageLoadingState } from "@/components/PageLoadingState";
+import { ActionsMenuTrigger } from "@/components/ActionsMenuTrigger";
 
 // Candidate data will be fetched from API - no static data needed
 
@@ -787,15 +786,13 @@ const CandidateDetail = () => {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
+                  <ActionsMenuTrigger
                     variant="outline"
                     size="sm"
                     className="border-blue-300 text-blue-700 hover:bg-blue-50 bg-white"
-                  >
-                    <MoreHorizontal className="w-4 h-4 mr-1" />
-                    Actions
-                    <ChevronDown className="w-3 h-3 ml-1" />
-                  </Button>
+                    iconClassName="w-4 h-4 mr-1"
+                    chevronClassName="w-3 h-3 ml-1"
+                  />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="end"
