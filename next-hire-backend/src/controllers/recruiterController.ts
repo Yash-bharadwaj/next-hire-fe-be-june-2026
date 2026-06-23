@@ -16,6 +16,7 @@ import {
   BusinessPartner,
   BusinessPartnerContact,
   JobProfitability,
+  JobTeamMember,
 } from "../models";
 import { createError, asyncHandler } from "../middleware/errorHandler";
 import { AuthenticatedRequest } from "../middleware/auth";
@@ -69,6 +70,12 @@ export const jobDetailIncludes = [
     as: "clientContact",
     attributes: ["id", "name", "title", "email", "phone"],
     required: false,
+  },
+  {
+    model: JobTeamMember,
+    as: "teamMembers",
+    required: false,
+    include: [jobPersonInclude("member")],
   },
 ];
 
@@ -693,6 +700,96 @@ export const getJobDetails = asyncHandler(
         submission_count: submissionCount,
       },
     });
+  }
+);
+
+// List a job's free-form team roster (beyond the 4 fixed singular roles)
+export const listJobTeamMembers = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { jobId } = req.params;
+    const userId = req.user?.userId;
+
+    const job = await Job.findByPk(jobId);
+    if (!job) {
+      throw createError("Job not found", 404);
+    }
+    if (!isJobStaff(job, userId)) {
+      throw createError("You do not have permission to view this job", 403);
+    }
+
+    const teamMembers = await JobTeamMember.findAll({
+      where: { job_id: jobId },
+      include: [jobPersonInclude("member")],
+      order: [["created_at", "ASC"]],
+    });
+
+    res.json({ success: true, data: { teamMembers } });
+  }
+);
+
+// Add a person to a job's team roster
+export const addJobTeamMember = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { jobId } = req.params;
+    const { user_id, role } = req.body;
+    const userId = req.user?.userId;
+
+    const job = await Job.findByPk(jobId);
+    if (!job) {
+      throw createError("Job not found", 404);
+    }
+    if (!isJobStaff(job, userId)) {
+      throw createError("You do not have permission to manage this job's team", 403);
+    }
+
+    const member = await User.findByPk(user_id);
+    if (!member) {
+      throw createError("User not found", 404);
+    }
+
+    const existing = await JobTeamMember.findOne({ where: { job_id: jobId, user_id } });
+    if (existing) {
+      throw createError("This person is already on the job's team", 409);
+    }
+
+    const teamMember = await JobTeamMember.create({
+      job_id: jobId,
+      user_id,
+      role: role || "other",
+      added_by: userId!,
+    });
+
+    const createdTeamMember = await JobTeamMember.findByPk(teamMember.id, {
+      include: [jobPersonInclude("member")],
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Team member added",
+      data: { teamMember: createdTeamMember },
+    });
+  }
+);
+
+// Remove a person from a job's team roster
+export const removeJobTeamMember = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { teamMemberId } = req.params;
+    const userId = req.user?.userId;
+
+    const teamMember = await JobTeamMember.findByPk(teamMemberId, {
+      include: [{ model: Job, as: "job" }],
+    });
+    if (!teamMember) {
+      throw createError("Team member not found", 404);
+    }
+    if (!isJobStaff((teamMember as any).job, userId)) {
+      throw createError("You do not have permission to manage this job's team", 403);
+    }
+
+    await teamMember.destroy();
+
+    res.json({ success: true, message: "Team member removed" });
   }
 );
 

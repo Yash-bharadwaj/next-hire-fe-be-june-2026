@@ -19,6 +19,9 @@ import {
   addJobAttachment,
   getJobProfitability,
   updateJobProfitability,
+  listJobTeamMembers,
+  addJobTeamMember,
+  removeJobTeamMember,
   addSubmissionNote,
   updateSubmissionNote,
   deleteSubmissionNote,
@@ -533,6 +536,33 @@ router.post(
   jobDetailsValidation,
   validate,
   reestimateJobPayRate
+);
+
+// Job team roster (free-form, beyond the 4 fixed singular roles on Job)
+router.get(
+  "/jobs/:jobId/team-members",
+  jobDetailsValidation,
+  validate,
+  listJobTeamMembers
+);
+router.post(
+  "/jobs/:jobId/team-members",
+  [
+    ...jobDetailsValidation,
+    body("user_id").isUUID().withMessage("Valid user ID is required"),
+    body("role")
+      .optional()
+      .isIn(["recruiter", "sourcer", "account_manager", "coordinator", "other"])
+      .withMessage("Invalid role"),
+  ],
+  validate,
+  addJobTeamMember
+);
+router.delete(
+  "/team-members/:teamMemberId",
+  [param("teamMemberId").isUUID().withMessage("Valid team member ID is required")],
+  validate,
+  removeJobTeamMember
 );
 
 // Source candidates into a job's sourcing funnel

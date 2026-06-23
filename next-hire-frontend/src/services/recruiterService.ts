@@ -163,6 +163,31 @@ export interface TeamMembersResponse {
   };
 }
 
+// A job's free-form team roster entry (beyond the 4 fixed singular roles)
+export type JobTeamMemberRole = "recruiter" | "sourcer" | "account_manager" | "coordinator" | "other";
+
+export interface JobTeamMember {
+  id: string;
+  job_id: string;
+  user_id: string;
+  role: JobTeamMemberRole;
+  added_by: string;
+  member?: TeamMember;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobTeamMembersResponse {
+  success: boolean;
+  data: { teamMembers: JobTeamMember[] };
+}
+
+export interface SingleJobTeamMemberResponse {
+  success: boolean;
+  data: { teamMember: JobTeamMember };
+  message?: string;
+}
+
 // Submission types
 export type SubmissionStatus =
   | "new_candidate"
@@ -327,6 +352,7 @@ export interface JobProfitability {
     recruiterCommission: number;
     employeeBenefits: number;
     perDiems: number;
+    employerTaxes: number;
   };
   one_time_costs: { label: string; amount: number }[];
   updated_by?: string;
@@ -805,6 +831,48 @@ class RecruiterService {
   async deleteTask(taskId: string): Promise<ApiResponse> {
     try {
       const response = await apiClient.delete<ApiResponse>(`/recruiter/tasks/${taskId}`);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get a job's team roster (free-form, beyond the 4 fixed singular roles)
+   */
+  async getJobTeamMembers(jobId: string): Promise<JobTeamMembersResponse> {
+    try {
+      const response = await apiClient.get<JobTeamMembersResponse>(`/recruiter/jobs/${jobId}/team-members`);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Add a person to a job's team roster
+   */
+  async addJobTeamMember(
+    jobId: string,
+    data: { user_id: string; role?: JobTeamMemberRole }
+  ): Promise<SingleJobTeamMemberResponse> {
+    try {
+      const response = await apiClient.post<SingleJobTeamMemberResponse>(
+        `/recruiter/jobs/${jobId}/team-members`,
+        data
+      );
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Remove a person from a job's team roster
+   */
+  async removeJobTeamMember(teamMemberId: string): Promise<ApiResponse> {
+    try {
+      const response = await apiClient.delete<ApiResponse>(`/recruiter/team-members/${teamMemberId}`);
       return response.data;
     } catch (error: any) {
       throw this.handleError(error);

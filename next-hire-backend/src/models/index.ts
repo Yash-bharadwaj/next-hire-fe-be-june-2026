@@ -10,6 +10,7 @@ import { Submission } from "./Submission";
 import { Interview } from "./Interview";
 import { Placement } from "./Placement";
 import { Task } from "./Task";
+import { JobTeamMember } from "./JobTeamMember";
 import { Experience } from "./Experience";
 import { Education } from "./Education";
 import { CandidateSkill } from "./CandidateSkill";
@@ -47,6 +48,12 @@ export function applyAssociations() {
   Job.belongsTo(User, { foreignKey: "account_manager_id", as: "accountManager" });
   Job.belongsTo(BusinessPartner, { foreignKey: "business_partner_id", as: "client" });
   Job.belongsTo(BusinessPartnerContact, { foreignKey: "client_contact_id", as: "clientContact" });
+
+  // Job Team Members (free-form roster, beyond the 4 fixed singular roles above)
+  Job.hasMany(JobTeamMember, { foreignKey: "job_id", as: "teamMembers" });
+  JobTeamMember.belongsTo(Job, { foreignKey: "job_id", as: "job" });
+  JobTeamMember.belongsTo(User, { foreignKey: "user_id", as: "member" });
+  JobTeamMember.belongsTo(User, { foreignKey: "added_by", as: "addedBy" });
 
   // Submissions
   Submission.belongsTo(Job, { foreignKey: "job_id", as: "job" });
@@ -166,6 +173,7 @@ export {
   Interview,
   Placement,
   Task,
+  JobTeamMember,
   Experience,
   Education,
   CandidateSkill,

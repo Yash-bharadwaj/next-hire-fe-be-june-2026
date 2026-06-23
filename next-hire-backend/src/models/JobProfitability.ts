@@ -24,6 +24,7 @@ export interface JobOverheads {
   recruiterCommission: number;
   employeeBenefits: number;
   perDiems: number;
+  employerTaxes: number;
 }
 
 export interface JobOneTimeCost {
@@ -66,6 +67,7 @@ const DEFAULT_OVERHEADS: JobOverheads = {
   recruiterCommission: 0,
   employeeBenefits: 0,
   perDiems: 0,
+  employerTaxes: 0,
 };
 
 export class JobProfitability

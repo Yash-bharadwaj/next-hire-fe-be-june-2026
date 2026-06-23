@@ -115,7 +115,7 @@ import { ExpandableText } from "@/components/ExpandableText";
 import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
 import { formatCompactRange } from "@/lib/format";
-import type { TeamMember, Task, TaskPriority, TaskStatus } from "@/services/recruiterService";
+import type { TeamMember, Task, TaskPriority, TaskStatus, JobTeamMember, JobTeamMemberRole } from "@/services/recruiterService";
 import { TASK_STATUS_LABELS, TASK_STATUS_OPTIONS } from "@/services/recruiterService";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
@@ -153,10 +153,12 @@ const kanbanColumns = [
 const KanbanCardBody = ({
   candidate,
   onMoveCandidate,
+  onOpenSubmission,
   dragging,
 }: {
   candidate: any;
   onMoveCandidate?: (submissionId: string, newStatus: string) => void;
+  onOpenSubmission?: (submissionId: string) => void;
   dragging?: boolean;
 }) => (
   <div
@@ -165,7 +167,20 @@ const KanbanCardBody = ({
     }`}
   >
     <div className="flex items-start justify-between gap-1 mb-1">
-      <h4 className="font-semibold text-sm text-gray-800 leading-tight">{candidate.name}</h4>
+      <h4
+        className={`font-semibold text-sm leading-tight ${
+          onOpenSubmission && candidate.submission?.id
+            ? "text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+            : "text-gray-800"
+        }`}
+        onClick={(e) => {
+          if (!onOpenSubmission || !candidate.submission?.id) return;
+          e.stopPropagation();
+          onOpenSubmission(candidate.submission.id);
+        }}
+      >
+        {candidate.name}
+      </h4>
       <Badge variant="outline" className="text-xs px-1.5 py-0 flex-shrink-0">
         {candidate.score != null ? `${candidate.score}%` : "—"}
       </Badge>
@@ -201,9 +216,11 @@ const KanbanCardBody = ({
 const DraggableCandidateCard = ({
   candidate,
   onMoveCandidate,
+  onOpenSubmission,
 }: {
   candidate: any;
   onMoveCandidate: (submissionId: string, newStatus: string) => void;
+  onOpenSubmission?: (submissionId: string) => void;
 }) => {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: candidate.id,
@@ -216,7 +233,7 @@ const DraggableCandidateCard = ({
       {...attributes}
       className={`cursor-grab active:cursor-grabbing touch-none ${isDragging ? "opacity-30" : ""}`}
     >
-      <KanbanCardBody candidate={candidate} onMoveCandidate={onMoveCandidate} />
+      <KanbanCardBody candidate={candidate} onMoveCandidate={onMoveCandidate} onOpenSubmission={onOpenSubmission} />
     </div>
   );
 };
@@ -481,11 +498,96 @@ const JobDetail = () => {
     }
   };
 
+  // ── Additional team roster (free-form, beyond the 4 fixed roles above) ──
+  const [additionalTeamMembers, setAdditionalTeamMembers] = useState<JobTeamMember[]>([]);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [teamMembersLoaded, setTeamMembersLoaded] = useState(false);
+  const [showAddTeamMember, setShowAddTeamMember] = useState(false);
+  const [newTeamMemberUserId, setNewTeamMemberUserId] = useState("");
+  const [newTeamMemberRole, setNewTeamMemberRole] = useState<JobTeamMemberRole>("recruiter");
+  const [savingTeamMember, setSavingTeamMember] = useState(false);
+  const [removingTeamMemberId, setRemovingTeamMemberId] = useState<string | null>(null);
+
+  const TEAM_ROLE_LABELS: Record<JobTeamMemberRole, string> = {
+    recruiter: "Recruiter",
+    sourcer: "Sourcer",
+    account_manager: "Account Manager",
+    coordinator: "Coordinator",
+    other: "Other",
+  };
+
+  const fetchJobTeamMembers = useCallback(async () => {
+    if (!id) return;
+    setTeamMembersLoading(true);
+    try {
+      const res = await recruiterService.getJobTeamMembers(id);
+      setAdditionalTeamMembers(res.data.teamMembers || []);
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to load team members",
+        variant: "destructive",
+      });
+    } finally {
+      setTeamMembersLoading(false);
+      setTeamMembersLoaded(true);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === "team" && !teamMembersLoaded) {
+      fetchJobTeamMembers();
+    }
+  }, [activeTab, teamMembersLoaded, fetchJobTeamMembers]);
+
+  const handleAddTeamMember = async () => {
+    if (!id || !newTeamMemberUserId) return;
+    setSavingTeamMember(true);
+    try {
+      await recruiterService.addJobTeamMember(id, {
+        user_id: newTeamMemberUserId,
+        role: newTeamMemberRole,
+      });
+      toast({ title: "Team member added" });
+      setShowAddTeamMember(false);
+      setNewTeamMemberUserId("");
+      setNewTeamMemberRole("recruiter");
+      fetchJobTeamMembers();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to add team member",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingTeamMember(false);
+    }
+  };
+
+  const handleRemoveTeamMember = async (teamMemberId: string) => {
+    setRemovingTeamMemberId(teamMemberId);
+    try {
+      await recruiterService.removeJobTeamMember(teamMemberId);
+      setAdditionalTeamMembers((prev) => prev.filter((m) => m.id !== teamMemberId));
+      toast({ title: "Team member removed" });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to remove team member",
+        variant: "destructive",
+      });
+    } finally {
+      setRemovingTeamMemberId(null);
+    }
+  };
+
   // ── ToDos tab state ────────────────────────────────────────────────────
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksLoaded, setTasksLoaded] = useState(false);
   const [taskStatusFilter, setTaskStatusFilter] = useState("all");
+  const [taskSearch, setTaskSearch] = useState("");
+  const [taskSort, setTaskSort] = useState<"due_date" | "priority" | "status" | "newest">("due_date");
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
@@ -520,9 +622,44 @@ const JobDetail = () => {
     }
   }, [activeTab, tasksLoaded, fetchTasks]);
 
-  const filteredTasks = tasks.filter(
-    (t) => taskStatusFilter === "all" || t.status === taskStatusFilter
-  );
+  const taskCounts = {
+    total: tasks.length,
+    completed: tasks.filter((t) => t.status === "completed").length,
+    pending: tasks.filter((t) => t.status !== "completed").length,
+  };
+
+  const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
+  const TASK_PRIORITY_FILTER_VALUES = ["high", "medium", "low"];
+
+  const filteredTasks = tasks
+    .filter((t) => {
+      if (taskStatusFilter === "all") return true;
+      if (TASK_PRIORITY_FILTER_VALUES.includes(taskStatusFilter)) return t.priority === taskStatusFilter;
+      return t.status === taskStatusFilter;
+    })
+    .filter(
+      (t) =>
+        t.title.toLowerCase().includes(taskSearch.trim().toLowerCase()) ||
+        (t.assignee && formatTeamMemberName(t.assignee).toLowerCase().includes(taskSearch.trim().toLowerCase()))
+    )
+    .sort((a, b) => {
+      if (taskSort === "priority") {
+        return (priorityRank[a.priority] ?? 99) - (priorityRank[b.priority] ?? 99);
+      }
+      if (taskSort === "status") {
+        // Incomplete tasks first, completed last (matches frontend-previous's binary sort)
+        const rank = (s: string) => (s === "completed" ? 1 : 0);
+        return rank(a.status) - rank(b.status);
+      }
+      if (taskSort === "newest") {
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      }
+      // due_date: tasks without a due date sort last
+      if (!a.due_date && !b.due_date) return 0;
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+    });
 
   const handleAddTask = async () => {
     if (!id || !newTaskTitle.trim()) return;
@@ -1080,6 +1217,44 @@ const JobDetail = () => {
     );
   }
 
+  // Real per-stage elapsed-time stats (Process Timeline Stats table + Stats tab summary cards)
+  const stageDurations: { label: string; hours: number }[] = [];
+  if (job.created_at && job.updated_at) {
+    stageDurations.push({
+      label: "Created",
+      hours: (new Date(job.updated_at).getTime() - new Date(job.created_at).getTime()) / (1000 * 60 * 60),
+    });
+  }
+  if (job.status === "active" && job.updated_at) {
+    stageDurations.push({
+      label: "Active",
+      hours: (new Date().getTime() - new Date(job.updated_at).getTime()) / (1000 * 60 * 60),
+    });
+  }
+  kanbanColumns.forEach((col) => {
+    const colSubs = (submissions as any[]).filter((s: any) => mapSubmissionStatusToStage(s.status) === col.id);
+    if (colSubs.length === 0) return;
+    const oldest = colSubs.reduce((a: any, b: any) =>
+      new Date(a.updated_at || a.created_at) < new Date(b.updated_at || b.created_at) ? a : b
+    );
+    const newest = colSubs.reduce((a: any, b: any) =>
+      new Date(a.updated_at || a.created_at) > new Date(b.updated_at || b.created_at) ? a : b
+    );
+    stageDurations.push({
+      label: col.title,
+      hours:
+        (new Date(newest.updated_at || newest.created_at).getTime() -
+          new Date(oldest.updated_at || oldest.created_at).getTime()) /
+        (1000 * 60 * 60),
+    });
+  });
+  const avgStageTime =
+    stageDurations.length > 0 ? stageDurations.reduce((sum, s) => sum + s.hours, 0) / stageDurations.length : 0;
+  const longestStage = stageDurations.reduce(
+    (max, s) => (s.hours > max.hours ? s : max),
+    { label: "—", hours: 0 }
+  );
+
   return (
     <div className="space-y-6">
       {/* Enhanced Job Header Card */}
@@ -1353,18 +1528,6 @@ const JobDetail = () => {
               >
                 Attachments
               </TabsTrigger>
-              <TabsTrigger
-                value="timeline"
-                className="text-xs font-medium data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-green-600 data-[state=active]:text-white"
-              >
-                Timeline
-              </TabsTrigger>
-              <TabsTrigger
-                value="stats"
-                className="text-xs font-medium data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-green-600 data-[state=active]:text-white"
-              >
-                Stats
-              </TabsTrigger>
               {user?.role === "recruiter" && (
                 <>
                   <TabsTrigger
@@ -1379,13 +1542,27 @@ const JobDetail = () => {
                   >
                     Team
                   </TabsTrigger>
-                  <TabsTrigger
-                    value="profitability"
-                    className="text-xs font-medium data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-green-600 data-[state=active]:text-white"
-                  >
-                    Profitability
-                  </TabsTrigger>
                 </>
+              )}
+              <TabsTrigger
+                value="timeline"
+                className="text-xs font-medium data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-green-600 data-[state=active]:text-white"
+              >
+                Timeline
+              </TabsTrigger>
+              <TabsTrigger
+                value="stats"
+                className="text-xs font-medium data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-green-600 data-[state=active]:text-white"
+              >
+                Stats
+              </TabsTrigger>
+              {user?.role === "recruiter" && (
+                <TabsTrigger
+                  value="profitability"
+                  className="text-xs font-medium data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-green-600 data-[state=active]:text-white"
+                >
+                  Profitability
+                </TabsTrigger>
               )}
             </TabsList>
           </div>
@@ -1630,12 +1807,21 @@ const JobDetail = () => {
                     >
                       <CardHeader className="pb-2 pt-3 px-3">
                         <div className="flex items-center justify-between">
-                          <CardTitle className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                          <CardTitle className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
                             {column.title}
+                            <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                              {getStageCount(column.id)}
+                            </Badge>
                           </CardTitle>
-                          <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                            {getStageCount(column.id)}
-                          </Badge>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleOpenManualSearch}
+                            className="h-6 w-6 p-0"
+                            title="Add candidate"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </Button>
                         </div>
                       </CardHeader>
                       <DroppableKanbanColumn id={column.id} className="space-y-2 px-3 pb-3 min-h-[80px] rounded-b-lg">
@@ -1644,11 +1830,16 @@ const JobDetail = () => {
                             key={candidate.id}
                             candidate={candidate}
                             onMoveCandidate={handleMoveCandidate}
+                            onOpenSubmission={(submissionId) => navigate(`/dashboard/submissions/${submissionId}`)}
                           />
                         ))}
                         {getCandidatesByStage(column.id).length === 0 && (
                           <div className="text-center py-6 text-gray-400 text-xs">
-                            No candidates in this stage
+                            <p className="mb-2">No candidates in this stage</p>
+                            <Button size="sm" variant="outline" onClick={handleOpenManualSearch}>
+                              <Plus className="w-3 h-3 mr-1" />
+                              Add First
+                            </Button>
                           </div>
                         )}
                       </DroppableKanbanColumn>
@@ -1901,7 +2092,7 @@ const JobDetail = () => {
               </Card>
 
               {/* Summary Stats Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 <Card className="card-gradient border-blue-200/50 shadow-lg">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm bg-gradient-to-r from-blue-700 to-blue-600 bg-clip-text text-transparent">
@@ -1922,6 +2113,30 @@ const JobDetail = () => {
                   </CardContent>
                 </Card>
 
+                <Card className="card-gradient border-indigo-200/50 shadow-lg">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm bg-gradient-to-r from-indigo-700 to-indigo-600 bg-clip-text text-transparent">
+                      Avg Stage Time
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-gray-800">{avgStageTime.toFixed(1)} hrs</div>
+                    <p className="text-xs text-gray-600">Average per stage</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="card-gradient border-pink-200/50 shadow-lg">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm bg-gradient-to-r from-pink-700 to-pink-600 bg-clip-text text-transparent">
+                      Longest Stage
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-gray-800">{longestStage.hours.toFixed(1)} hrs</div>
+                    <p className="text-xs text-gray-600">{longestStage.label} stage</p>
+                  </CardContent>
+                </Card>
+
                 <Card className="card-gradient border-purple-200/50 shadow-lg">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm bg-gradient-to-r from-purple-700 to-purple-600 bg-clip-text text-transparent">
@@ -1930,7 +2145,7 @@ const JobDetail = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-gray-800">
-                      {/* This will be loaded from submissions API */}0
+                      {submissions.length}
                     </div>
                     <p className="text-xs text-gray-600">Total applications</p>
                   </CardContent>
@@ -1985,21 +2200,7 @@ const JobDetail = () => {
                       <CardTitle className="text-xl bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
                         Job Tasks
                       </CardTitle>
-                      <div className="flex items-center gap-2">
-                        <Select value={taskStatusFilter} onValueChange={setTaskStatusFilter}>
-                          <SelectTrigger className="w-36 h-8 text-xs border-green-200">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Tasks</SelectItem>
-                            {TASK_STATUS_OPTIONS.map((status) => (
-                              <SelectItem key={status} value={status}>
-                                {TASK_STATUS_LABELS[status]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Dialog open={showAddTask} onOpenChange={setShowAddTask}>
+                      <Dialog open={showAddTask} onOpenChange={setShowAddTask}>
                           <DialogTrigger asChild>
                             <Button size="sm" className="bg-gradient-to-r from-green-500 to-green-600">
                               <Plus className="w-4 h-4 mr-1" />
@@ -2078,8 +2279,54 @@ const JobDetail = () => {
                               </Button>
                             </div>
                           </DialogContent>
-                        </Dialog>
+                      </Dialog>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="flex items-center gap-6 text-sm">
+                      <span className="text-green-600">Total: {taskCounts.total}</span>
+                      <span className="text-blue-600">Completed: {taskCounts.completed}</span>
+                      <span className="text-orange-600">Pending: {taskCounts.pending}</span>
+                    </div>
+
+                    {/* Filters and Search */}
+                    <div className="flex items-center gap-2 flex-wrap pt-4 border-t">
+                      <div className="relative flex-1 max-w-sm">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <Input
+                          value={taskSearch}
+                          onChange={(e) => setTaskSearch(e.target.value)}
+                          placeholder="Search tasks..."
+                          className="pl-10 border-green-200 focus:border-green-400"
+                        />
                       </div>
+                      <Select value={taskStatusFilter} onValueChange={setTaskStatusFilter}>
+                        <SelectTrigger className="w-40 border-green-200">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Tasks</SelectItem>
+                          {TASK_STATUS_OPTIONS.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {TASK_STATUS_LABELS[status]}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="high">High Priority</SelectItem>
+                          <SelectItem value="medium">Medium Priority</SelectItem>
+                          <SelectItem value="low">Low Priority</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={taskSort} onValueChange={(v) => setTaskSort(v as typeof taskSort)}>
+                        <SelectTrigger className="w-32 border-green-200">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="due_date">Due Date</SelectItem>
+                          <SelectItem value="priority">Priority</SelectItem>
+                          <SelectItem value="status">Status</SelectItem>
+                          <SelectItem value="newest">Newest</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -2235,9 +2482,9 @@ const JobDetail = () => {
             {user?.role === "recruiter" && (
               <TabsContent value="team" className="space-y-6 mt-0">
                 <h3 className="text-xl font-semibold bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
-                  Team
+                  Team Members
                 </h3>
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {(
                     [
                       { key: "created_by", label: "Created By", person: job?.creator, editable: false },
@@ -2245,81 +2492,242 @@ const JobDetail = () => {
                       { key: "primary_recruiter_id", label: "Primary Recruiter", person: job?.primaryRecruiter, editable: true },
                       { key: "account_manager_id", label: "Account Manager", person: job?.accountManager, editable: true },
                     ] as const
-                  ).map((role) => (
-                    <Card key={role.key} className="card-gradient border-green-200/50 shadow-lg">
-                      <CardContent className="p-6">
-                        <div className="flex items-start justify-between mb-4">
-                          <p className="text-sm font-medium text-gray-500">{role.label}</p>
-                          {role.editable && (
-                            <Dialog
-                              open={assigningRole === role.key}
-                              onOpenChange={(open) => {
-                                setAssigningRole(open ? (role.key as any) : null);
-                                setAssigningValue(role.person?.id || "");
-                              }}
-                            >
-                              <DialogTrigger asChild>
-                                <Button size="sm" variant="outline" className="border-green-300 text-green-700 hover:bg-green-50">
-                                  <Edit3 className="w-3 h-3 mr-1" />
-                                  Change
+                  ).map((role) => {
+                    const phone = (role.person as any)?.recruiterProfile?.phone;
+                    return (
+                      <Card
+                        key={role.key}
+                        className="group relative overflow-hidden bg-gradient-to-br from-white via-green-50/30 to-green-100/20 border border-green-200/60 shadow-lg hover:shadow-xl transition-all duration-300"
+                      >
+                        <CardContent className="relative p-6">
+                          <div className="flex flex-col items-center text-center space-y-4">
+                            <div className="relative">
+                              <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                                {role.person
+                                  ? formatTeamMemberName(role.person as any)
+                                      .split(" ")
+                                      .map((p) => p[0])
+                                      .slice(0, 2)
+                                      .join("")
+                                      .toUpperCase()
+                                  : "—"}
+                              </div>
+                              <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-lg">
+                                <User className="w-4 h-4 text-white" />
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <h4 className="font-bold text-gray-800 text-lg">
+                                {role.person ? formatTeamMemberName(role.person as any) : "Not assigned"}
+                              </h4>
+                              <p className="text-sm font-medium bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+                                {role.label}
+                              </p>
+                            </div>
+
+                            {role.person && (
+                              <div className="flex gap-2 w-full pt-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => (window.location.href = `mailto:${role.person.email}`)}
+                                  className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white flex-1"
+                                >
+                                  <Mail className="w-3 h-3 mr-1" />
+                                  Email
                                 </Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>Change {role.label}</DialogTitle>
-                                </DialogHeader>
-                                <Select value={assigningValue} onValueChange={setAssigningValue}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select recruiter" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {teamOptions.map((member) => (
-                                      <SelectItem key={member.id} value={member.id}>
-                                        {formatTeamMemberName(member)}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <div className="flex justify-end gap-2 pt-2">
-                                  <Button variant="outline" onClick={() => setAssigningRole(null)}>
-                                    Cancel
+                                {phone && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => (window.location.href = `tel:${phone}`)}
+                                    className="border-green-300 text-green-700 hover:bg-green-50 flex-1"
+                                  >
+                                    <Phone className="w-3 h-3 mr-1" />
+                                    Call
                                   </Button>
-                                  <Button onClick={handleSaveAssignment} disabled={savingAssignment || !assigningValue}>
-                                    {savingAssignment ? "Saving..." : "Save"}
+                                )}
+                              </div>
+                            )}
+
+                            {role.editable && (
+                              <Dialog
+                                open={assigningRole === role.key}
+                                onOpenChange={(open) => {
+                                  setAssigningRole(open ? (role.key as any) : null);
+                                  setAssigningValue(role.person?.id || "");
+                                }}
+                              >
+                                <DialogTrigger asChild>
+                                  <Button size="sm" variant="ghost" className="text-gray-500 hover:text-green-700 -mt-1">
+                                    <Edit3 className="w-3 h-3 mr-1" />
+                                    Change
                                   </Button>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
-                          )}
-                        </div>
-                        {role.person ? (
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
-                              {formatTeamMemberName(role.person as any)
-                                .split(" ")
-                                .map((p) => p[0])
-                                .slice(0, 2)
-                                .join("")
-                                .toUpperCase()}
-                            </div>
-                            <div>
-                              <p className="font-semibold text-gray-800">{formatTeamMemberName(role.person as any)}</p>
-                              <a href={`mailto:${role.person.email}`} className="text-sm text-blue-600 hover:underline">
-                                {role.person.email}
-                              </a>
-                              {(role.person as any)?.recruiterProfile?.phone && (
-                                <p className="text-sm text-gray-500">
-                                  {(role.person as any).recruiterProfile.phone}
-                                </p>
-                              )}
-                            </div>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Change {role.label}</DialogTitle>
+                                  </DialogHeader>
+                                  <Select value={assigningValue} onValueChange={setAssigningValue}>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select recruiter" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {teamOptions.map((member) => (
+                                        <SelectItem key={member.id} value={member.id}>
+                                          {formatTeamMemberName(member)}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <div className="flex justify-end gap-2 pt-2">
+                                    <Button variant="outline" onClick={() => setAssigningRole(null)}>
+                                      Cancel
+                                    </Button>
+                                    <Button onClick={handleSaveAssignment} disabled={savingAssignment || !assigningValue}>
+                                      {savingAssignment ? "Saving..." : "Save"}
+                                    </Button>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                            )}
                           </div>
-                        ) : (
-                          <p className="text-gray-400 text-sm">Not assigned</p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+
+                  {teamMembersLoading ? (
+                    <div className="col-span-full flex items-center justify-center py-10 text-gray-500">
+                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                      Loading team members...
+                    </div>
+                  ) : (
+                    additionalTeamMembers.map((tm) => (
+                      <Card
+                        key={tm.id}
+                        className="group relative overflow-hidden bg-gradient-to-br from-white via-green-50/30 to-green-100/20 border border-green-200/60 shadow-lg hover:shadow-xl transition-all duration-300"
+                      >
+                        <CardContent className="relative p-6">
+                          <div className="flex flex-col items-center text-center space-y-4">
+                            <div className="relative">
+                              <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                                {tm.member
+                                  ? formatTeamMemberName(tm.member)
+                                      .split(" ")
+                                      .map((p) => p[0])
+                                      .slice(0, 2)
+                                      .join("")
+                                      .toUpperCase()
+                                  : "—"}
+                              </div>
+                              <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-lg">
+                                <User className="w-4 h-4 text-white" />
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <h4 className="font-bold text-gray-800 text-lg">
+                                {tm.member ? formatTeamMemberName(tm.member) : "Unknown"}
+                              </h4>
+                              <p className="text-sm font-medium bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
+                                {TEAM_ROLE_LABELS[tm.role]}
+                              </p>
+                            </div>
+
+                            {tm.member && (
+                              <div className="flex gap-2 w-full pt-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => (window.location.href = `mailto:${tm.member!.email}`)}
+                                  className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white flex-1"
+                                >
+                                  <Mail className="w-3 h-3 mr-1" />
+                                  Email
+                                </Button>
+                                {tm.member.recruiterProfile?.phone && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => (window.location.href = `tel:${tm.member!.recruiterProfile!.phone}`)}
+                                    className="border-green-300 text-green-700 hover:bg-green-50 flex-1"
+                                  >
+                                    <Phone className="w-3 h-3 mr-1" />
+                                    Call
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleRemoveTeamMember(tm.id)}
+                              disabled={removingTeamMemberId === tm.id}
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700 -mt-1"
+                            >
+                              <Trash2 className="w-3 h-3 mr-1" />
+                              Remove
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+
+                  {/* Add new member card */}
+                  <Dialog open={showAddTeamMember} onOpenChange={setShowAddTeamMember}>
+                    <DialogTrigger asChild>
+                      <button className="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-green-300 text-green-600 hover:bg-green-50 hover:border-green-400 transition-colors min-h-[260px]">
+                        <UserPlus className="w-10 h-10" />
+                        <span className="font-medium">Add Team Member</span>
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Add Team Member</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-3">
+                        <Select value={newTeamMemberUserId} onValueChange={setNewTeamMemberUserId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select person" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {teamOptions
+                              .filter((m) => !additionalTeamMembers.some((atm) => atm.user_id === m.id))
+                              .map((member) => (
+                                <SelectItem key={member.id} value={member.id}>
+                                  {formatTeamMemberName(member)}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <Select
+                          value={newTeamMemberRole}
+                          onValueChange={(v) => setNewTeamMemberRole(v as JobTeamMemberRole)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(Object.keys(TEAM_ROLE_LABELS) as JobTeamMemberRole[]).map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {TEAM_ROLE_LABELS[role]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-2">
+                        <Button variant="outline" onClick={() => setShowAddTeamMember(false)}>
+                          Cancel
+                        </Button>
+                        <Button onClick={handleAddTeamMember} disabled={savingTeamMember || !newTeamMemberUserId}>
+                          {savingTeamMember ? "Adding..." : "Add"}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </TabsContent>
             )}
