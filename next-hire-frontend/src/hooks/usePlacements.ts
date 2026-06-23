@@ -34,7 +34,11 @@ export const usePlacements = (initialFilters: PlacementFilters = {}) => {
       setLoading(true);
       setError(null);
 
-      const finalFilters = { ...filters, ...searchFilters };
+      // Replace (not merge with) the previous filters - callers always pass the
+      // complete filter set they want applied (see useBusinessPartners.ts for the
+      // bug this caused: a "clear filters" call passing {} couldn't actually
+      // remove a previously-applied status filter via object-spread merge).
+      const finalFilters = { ...searchFilters };
       const response = await placementService.getPlacements(finalFilters);
 
       setPlacements(response.data.placements);

@@ -49,7 +49,10 @@ export const useVendorJobs = (initialFilters: {
       setLoading(true);
       setError(null);
 
-      const finalFilters = { ...filters, ...searchFilters };
+      // Replace (not merge with) the previous filters - see useBusinessPartners.ts
+      // for the bug this caused (a "clear filters" call passing {} couldn't
+      // actually remove previously-applied filters via object-spread merge).
+      const finalFilters = { ...searchFilters };
       const response = await vendorService.getJobs(finalFilters);
 
       setJobs(response.data.jobs || []);
@@ -130,7 +133,10 @@ export const useVendorCandidates = (initialFilters: {
       setLoading(true);
       setError(null);
 
-      const finalFilters = { ...filters, ...searchFilters };
+      // Replace (not merge with) the previous filters - see useBusinessPartners.ts
+      // for the bug this caused (a "clear filters" call passing {} couldn't
+      // actually remove previously-applied filters via object-spread merge).
+      const finalFilters = { ...searchFilters };
       const response = await vendorService.getCandidates(finalFilters);
 
       setCandidates(response.data.candidates || []);
@@ -283,7 +289,10 @@ export const useVendorSubmissions = (initialFilters: {
       setLoading(true);
       setError(null);
 
-      const finalFilters = { ...filters, ...searchFilters };
+      // Replace (not merge with) the previous filters - see useBusinessPartners.ts
+      // for the bug this caused (a "clear filters" call passing {} couldn't
+      // actually remove previously-applied filters via object-spread merge).
+      const finalFilters = { ...searchFilters };
       const response = await vendorService.getSubmissions(finalFilters);
 
       setSubmissions(response.data.submissions || []);

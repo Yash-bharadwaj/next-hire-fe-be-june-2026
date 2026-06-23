@@ -36,7 +36,10 @@ export const useInterviews = (initialFilters: InterviewFilters = {}) => {
       setLoading(true);
       setError(null);
 
-      const finalFilters = { ...filters, ...searchFilters };
+      // Replace (not merge with) the previous filters - see useBusinessPartners.ts
+      // for the bug this caused (a "clear filters" call passing {} couldn't
+      // actually remove a previously-applied status filter via object-spread merge).
+      const finalFilters = { ...searchFilters };
       const response = await interviewService.getInterviews(finalFilters);
 
       setInterviews(response.data?.interviews || []);

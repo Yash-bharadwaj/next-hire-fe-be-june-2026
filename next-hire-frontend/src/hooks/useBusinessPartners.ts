@@ -34,7 +34,11 @@ export const useBusinessPartners = (initialFilters: BusinessPartnerFilters = {})
         setLoading(true);
         setError(null);
 
-        const finalFilters = { ...filters, ...searchFilters };
+        // Replace (not merge with) the previous filters - callers always pass the
+        // complete filter set they want applied. Merging with stale `filters` state
+        // meant clicking "Total Partners" (passing {}) couldn't actually clear a
+        // previously-selected KPI filter, since spreading {} can't remove keys.
+        const finalFilters = { ...searchFilters };
         const response = await businessPartnerService.getBusinessPartners(finalFilters);
 
         setBusinessPartners(response.data.businessPartners);
