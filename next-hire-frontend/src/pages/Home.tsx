@@ -224,14 +224,18 @@ const Home = () => {
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <NavLink to="/dashboard/jobs" className="block">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Jobs</CardTitle>
-                <Briefcase className="h-4 w-4 text-muted-foreground" />
+            <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-lg transition-all duration-500 hover:-translate-y-1 group cursor-pointer backdrop-blur-xl bg-white/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-green-400/30 via-green-500/20 to-green-600/30"></div>
+              <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-white/20 to-transparent"></div>
+              <CardHeader className="relative flex flex-row items-center justify-between space-y-0 pb-1">
+                <CardTitle className="text-sm font-semibold text-gray-800">Active Jobs</CardTitle>
+                <div className="p-2 rounded-full bg-white/30 backdrop-blur-sm shadow-sm group-hover:bg-white/40 transition-all border border-white/20">
+                  <Briefcase className="h-4 w-4 text-green-700" />
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.overview.activeJobs || 0}</div>
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="relative pt-1">
+                <div className="text-2xl font-bold text-gray-800 mb-1">{stats.overview.activeJobs || 0}</div>
+                <p className="text-xs text-gray-600">
                   {stats.overview.totalJobs || 0} total
                 </p>
               </CardContent>
@@ -239,14 +243,18 @@ const Home = () => {
           </NavLink>
 
           <NavLink to="/dashboard/candidates" className="block">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Candidates</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
+            <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-lg transition-all duration-500 hover:-translate-y-1 group cursor-pointer backdrop-blur-xl bg-white/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-400/30 via-blue-500/20 to-blue-600/30"></div>
+              <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-white/20 to-transparent"></div>
+              <CardHeader className="relative flex flex-row items-center justify-between space-y-0 pb-1">
+                <CardTitle className="text-sm font-semibold text-gray-800">Active Candidates</CardTitle>
+                <div className="p-2 rounded-full bg-white/30 backdrop-blur-sm shadow-sm group-hover:bg-white/40 transition-all border border-white/20">
+                  <Users className="h-4 w-4 text-blue-700" />
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.overview.activeCandidates || 0}</div>
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="relative pt-1">
+                <div className="text-2xl font-bold text-gray-800 mb-1">{stats.overview.activeCandidates || 0}</div>
+                <p className="text-xs text-gray-600">
                   Available in the pool
                 </p>
               </CardContent>
@@ -254,14 +262,18 @@ const Home = () => {
           </NavLink>
 
           <NavLink to="/dashboard/interviews" className="block">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Interviews Today</CardTitle>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+            <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-lg transition-all duration-500 hover:-translate-y-1 group cursor-pointer backdrop-blur-xl bg-white/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-400/30 via-orange-500/20 to-orange-600/30"></div>
+              <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-white/20 to-transparent"></div>
+              <CardHeader className="relative flex flex-row items-center justify-between space-y-0 pb-1">
+                <CardTitle className="text-sm font-semibold text-gray-800">Interviews Today</CardTitle>
+                <div className="p-2 rounded-full bg-white/30 backdrop-blur-sm shadow-sm group-hover:bg-white/40 transition-all border border-white/20">
+                  <Calendar className="h-4 w-4 text-orange-700" />
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.overview.interviewsToday || 0}</div>
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="relative pt-1">
+                <div className="text-2xl font-bold text-gray-800 mb-1">{stats.overview.interviewsToday || 0}</div>
+                <p className="text-xs text-gray-600">
                   {stats.overview.upcomingInterviews || 0} upcoming
                 </p>
               </CardContent>
@@ -269,14 +281,18 @@ const Home = () => {
           </NavLink>
 
           <NavLink to="/dashboard/submissions" className="block">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pending Submissions</CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground" />
+            <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-lg transition-all duration-500 hover:-translate-y-1 group cursor-pointer backdrop-blur-xl bg-white/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-400/30 via-purple-500/20 to-purple-600/30"></div>
+              <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-white/20 to-transparent"></div>
+              <CardHeader className="relative flex flex-row items-center justify-between space-y-0 pb-1">
+                <CardTitle className="text-sm font-semibold text-gray-800">Pending Submissions</CardTitle>
+                <div className="p-2 rounded-full bg-white/30 backdrop-blur-sm shadow-sm group-hover:bg-white/40 transition-all border border-white/20">
+                  <FileText className="h-4 w-4 text-purple-700" />
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.overview.pendingSubmissions || 0}</div>
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="relative pt-1">
+                <div className="text-2xl font-bold text-gray-800 mb-1">{stats.overview.pendingSubmissions || 0}</div>
+                <p className="text-xs text-gray-600">
                   Awaiting review
                 </p>
               </CardContent>
@@ -422,9 +438,9 @@ const Home = () => {
       {/* Stats Cards */}
       {renderStatsCards()}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Recent Activity / News Feed */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg font-semibold">Activity Feed</CardTitle>
@@ -562,7 +578,7 @@ const Home = () => {
         </div>
 
         {/* Calendar */}
-        <div>
+        <div className="lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle className="text-lg font-semibold flex items-center">
