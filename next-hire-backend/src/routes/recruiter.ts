@@ -8,6 +8,7 @@ import {
   createJob,
   updateJob,
   listJobs,
+  getJobStats,
   exportJobsCsv,
   getJobDetails,
   getJobSubmissions,
@@ -494,6 +495,7 @@ router.put(
 router.post("/jobs", createJobValidation, validate, createJob);
 router.get("/jobs", listJobsValidation, validate, listJobs);
 router.get("/jobs/export", listJobsValidation, validate, exportJobsCsv);
+router.get("/jobs/stats", getJobStats);
 router.get("/jobs/:jobId", jobDetailsValidation, validate, getJobDetails);
 router.put("/jobs/:jobId", updateJobValidation, validate, updateJob);
 router.post(

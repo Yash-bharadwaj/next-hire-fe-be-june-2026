@@ -596,6 +596,40 @@ export const listJobs = asyncHandler(
   }
 );
 
+// KPI cards for the Jobs list page. Computed as real aggregates over the
+// recruiter's whole scoped job set (same "staffed on this job" scope as
+// listJobs' default view), not just the current page of results - otherwise
+// these silently undercount once there are more jobs than one page.
+export const getJobStats = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.userId;
+
+    const scopeWhere = {
+      [Op.or]: [
+        { created_by: userId },
+        { assigned_to: userId },
+        { primary_recruiter_id: userId },
+        { account_manager_id: userId },
+      ],
+    };
+
+    const [myJobs, activeJobs, onHoldJobs, highPriorityJobs, totalSubmissions] = await Promise.all([
+      Job.count({ where: scopeWhere }),
+      Job.count({ where: { ...scopeWhere, status: "active" } }),
+      Job.count({ where: { ...scopeWhere, status: "paused" } }),
+      Job.count({ where: { ...scopeWhere, priority: "high" } }),
+      Submission.count({
+        include: [{ model: Job, as: "job", where: scopeWhere, attributes: [] }],
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      data: { myJobs, activeJobs, onHoldJobs, highPriorityJobs, totalSubmissions },
+    });
+  }
+);
+
 // Export jobs as CSV
 export const exportJobsCsv = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {

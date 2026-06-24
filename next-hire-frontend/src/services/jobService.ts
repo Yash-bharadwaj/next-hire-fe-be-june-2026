@@ -280,6 +280,23 @@ class JobService {
     };
   }
 
+  // KPI cards for the Jobs list page - real aggregates over the recruiter's
+  // whole scoped job set, independent of whatever filter the list is
+  // currently showing.
+  async getJobStats(): Promise<{
+    success: boolean;
+    data: {
+      myJobs: number;
+      activeJobs: number;
+      onHoldJobs: number;
+      highPriorityJobs: number;
+      totalSubmissions: number;
+    };
+  }> {
+    const response = await apiClient.get("/recruiter/jobs/stats");
+    return response.data;
+  }
+
   // Export recruiter jobs as CSV
   async exportRecruiterJobs(filters: JobSearchFilters = {}): Promise<Blob> {
     const params = new URLSearchParams();

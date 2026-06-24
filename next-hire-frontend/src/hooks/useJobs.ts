@@ -90,6 +90,51 @@ export const useJobs = (initialFilters: JobSearchFilters = {}) => {
   };
 };
 
+// KPI cards for the Jobs list page - stable regardless of whatever status/
+// priority filter the list itself is currently showing (mirrors
+// useCandidateStats/useBusinessPartnerStats).
+export const useJobStats = () => {
+  const [stats, setStats] = useState<{
+    myJobs: number;
+    activeJobs: number;
+    onHoldJobs: number;
+    highPriorityJobs: number;
+    totalSubmissions: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { user } = useAuth();
+
+  const fetchStats = useCallback(async () => {
+    if (user?.role !== "recruiter") return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await jobService.getJobStats();
+      setStats(response.data);
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || "Failed to fetch job statistics";
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.role]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  const refresh = useCallback(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  return { stats, loading, error, refresh };
+};
+
 export const useJob = (jobId: string | null, isPublic: boolean = true) => {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(false);

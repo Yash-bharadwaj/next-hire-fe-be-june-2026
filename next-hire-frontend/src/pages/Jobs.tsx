@@ -71,7 +71,7 @@ import {
   Import,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useJobs, useJobManagement } from "@/hooks/useJobs";
+import { useJobs, useJobManagement, useJobStats } from "@/hooks/useJobs";
 import { useAuth } from "@/contexts/AuthContext";
 import { jobService } from "@/services/jobService";
 import { recruiterService } from "@/services/recruiterService";
@@ -82,11 +82,6 @@ import { formatCompactRange, formatShortId, formatPersonName } from "@/lib/forma
 import { type CsvColumn } from "@/utils/csv";
 import { useEntityExport } from "@/hooks/useEntityExport";
 import { EmptyState } from "@/components/EmptyState";
-
-// Module-level cache — survives component remount so cards never flash 0
-const _jobsStatsCache = {
-  myJobs: 0, activeJobs: 0, onHoldJobs: 0, totalSubmissions: 0, highPriorityJobs: 0,
-};
 
 // Animated step messages shown while the AI parses a job description.
 // Purely presentational - the backend does this in one request, so
@@ -113,6 +108,7 @@ const Jobs = () => {
     setFilters,
   } = useJobs();
   const { deleteJob } = useJobManagement();
+  const { stats } = useJobStats();
 
   const defaultPageSize = 50;
   const [searchTerm, setSearchTerm] = useState("");
@@ -169,9 +165,6 @@ const Jobs = () => {
     }
   };
 
-  // Initialize from module-level cache so last-known values show instantly on remount
-  const [baseStats, setBaseStats] = useState({ ..._jobsStatsCache });
-
   // Cycle through animated status messages + a progress bar while the AI
   // parses the job description, so the wait feels active instead of static.
   useEffect(() => {
@@ -193,19 +186,6 @@ const Jobs = () => {
     };
   }, [parsingJD]);
 
-  useEffect(() => {
-    if (statusFilter === "all" && priorityFilter === "all") {
-      const next = {
-        myJobs: jobs.length,
-        activeJobs: jobs.filter((j) => j.status === "active").length,
-        onHoldJobs: jobs.filter((j) => j.status === "paused").length,
-        totalSubmissions: jobs.reduce((sum, j) => sum + (j.submission_count || 0), 0),
-        highPriorityJobs: jobs.filter((j) => j.priority === "high").length,
-      };
-      Object.assign(_jobsStatsCache, next);
-      setBaseStats(next);
-    }
-  }, [jobs, statusFilter, priorityFilter]);
 
   const activeCardId =
     statusFilter === "active" ? "active" :
@@ -214,14 +194,21 @@ const Jobs = () => {
 
   const buildFilterPayload = useCallback(
     (overrides: Record<string, any> = {}) => {
+      // "status" in overrides (not overrides.status !== undefined) - the KPI
+      // cards explicitly pass status: undefined to clear the filter, and a
+      // value-based check can't tell that apart from "key omitted, derive
+      // from current state". With the value-based check, clicking a card
+      // that clears one filter while the other was just set by a *previous*
+      // click read the other filter's stale pre-update state instead of the
+      // undefined it was just explicitly given, leaking the old filter through.
       const nextStatus =
-        overrides.status !== undefined
+        "status" in overrides
           ? overrides.status
           : statusFilter === "all"
           ? undefined
           : statusFilter;
       const nextPriority =
-        overrides.priority !== undefined
+        "priority" in overrides
           ? overrides.priority
           : priorityFilter === "all"
           ? undefined
@@ -274,7 +261,7 @@ const Jobs = () => {
       {
         id: "all",
         title: "My Jobs",
-        value: baseStats.myJobs.toString(),
+        value: (stats?.myJobs ?? 0).toString(),
         icon: Briefcase,
         color: "text-green-700",
         gradientOverlay: "bg-gradient-to-br from-green-400/30 via-green-500/20 to-green-600/30",
@@ -287,7 +274,7 @@ const Jobs = () => {
       {
         id: "active",
         title: "Active Jobs",
-        value: baseStats.activeJobs.toString(),
+        value: (stats?.activeJobs ?? 0).toString(),
         icon: CheckCircle,
         color: "text-emerald-700",
         gradientOverlay: "bg-gradient-to-br from-emerald-400/30 via-emerald-500/20 to-emerald-600/30",
@@ -300,7 +287,7 @@ const Jobs = () => {
       {
         id: "on-hold",
         title: "On Hold",
-        value: baseStats.onHoldJobs.toString(),
+        value: (stats?.onHoldJobs ?? 0).toString(),
         icon: Clock,
         color: "text-amber-700",
         gradientOverlay: "bg-gradient-to-br from-amber-400/30 via-amber-500/20 to-amber-600/30",
@@ -313,7 +300,7 @@ const Jobs = () => {
       {
         id: "submissions",
         title: "Total Submissions",
-        value: baseStats.totalSubmissions.toString(),
+        value: (stats?.totalSubmissions ?? 0).toString(),
         icon: FileText,
         color: "text-purple-700",
         gradientOverlay: "bg-gradient-to-br from-purple-400/30 via-purple-500/20 to-purple-600/30",
@@ -326,7 +313,7 @@ const Jobs = () => {
       {
         id: "high-priority",
         title: "High Priority",
-        value: baseStats.highPriorityJobs.toString(),
+        value: (stats?.highPriorityJobs ?? 0).toString(),
         icon: AlertCircle,
         color: "text-red-700",
         gradientOverlay: "bg-gradient-to-br from-red-400/30 via-red-500/20 to-red-600/30",
@@ -337,7 +324,7 @@ const Jobs = () => {
         },
       },
     ],
-    [runSearch, baseStats]
+    [runSearch, stats]
   );
 
   const handleDeleteJob = async (jobId: string) => {
