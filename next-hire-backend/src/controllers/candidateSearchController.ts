@@ -11,6 +11,7 @@ import {
   CandidateSkill,
   CandidateResume,
   Submission,
+  Placement,
   Job,
 } from "../models";
 import { sequelize } from "../config/database";
@@ -54,6 +55,7 @@ export const searchCandidates = asyncHandler(
       salary_min,
       salary_max,
       availability_status,
+      placement_status,
       education_level,
       sort_by = "created_at",
       sort_order = "DESC",
@@ -111,6 +113,18 @@ export const searchCandidates = asyncHandler(
     // Availability status filter
     if (availability_status) {
       candidateWhere.availability_status = availability_status;
+    }
+
+    // Placement status filter - "placed" has no field on Candidate itself,
+    // so it's derived from having at least one real Placement row; "active"
+    // is everyone still in the talent pool who hasn't been placed yet.
+    if (placement_status === "placed" || placement_status === "active") {
+      const placedRows = await Placement.findAll({
+        attributes: [[sequelize.fn("DISTINCT", sequelize.col("candidate_id")), "candidate_id"]],
+        raw: true,
+      });
+      const placedIds = (placedRows as any[]).map((r) => r.candidate_id);
+      candidateWhere.id = placement_status === "placed" ? { [Op.in]: placedIds } : { [Op.notIn]: placedIds };
     }
 
     // Skills filter (search in candidate skills)
@@ -424,6 +438,36 @@ export const getCandidateStats = asyncHandler(
       raw: true,
     });
 
+    // KPI cards for the Candidates list page. "Available"/"Interviewing" come
+    // straight from availabilityStats above; "Placed" has no field on
+    // Candidate itself, so it's derived from having at least one real
+    // Placement row. "Active" is the complement of Placed - everyone still in
+    // the talent pool who hasn't been placed yet (there's no separate
+    // archived/inactive flag on Candidate, so "all candidates" minus "placed"
+    // is the only real, non-overlapping definition available).
+    const availabilityCountMap: Record<string, number> = {};
+    for (const row of availabilityStats as any[]) {
+      availabilityCountMap[row.availability_status] = parseInt(row.count, 10) || 0;
+    }
+    const availableCount = availabilityCountMap.available || 0;
+    const interviewingCount = availabilityCountMap.interviewing || 0;
+
+    const placedCandidateIds = await Placement.findAll({
+      attributes: [[sequelize.fn("DISTINCT", sequelize.col("candidate_id")), "candidate_id"]],
+      raw: true,
+    });
+    const placedCount = placedCandidateIds.length;
+    const activeCount = Math.max(0, totalCandidates - placedCount);
+
+    const totalSubmissions = await Submission.count();
+
+    const ratingResult = (await Candidate.findOne({
+      attributes: [[sequelize.fn("AVG", sequelize.col("rating")), "avgRating"]],
+      where: { rating: { [Op.ne]: null } },
+      raw: true,
+    })) as any;
+    const avgRating = ratingResult?.avgRating != null ? parseFloat(ratingResult.avgRating) : null;
+
     res.json({
       success: true,
       data: {
@@ -432,6 +476,12 @@ export const getCandidateStats = asyncHandler(
         availabilityStats,
         experienceStats,
         topSkills,
+        activeCount,
+        availableCount,
+        interviewingCount,
+        placedCount,
+        totalSubmissions,
+        avgRating,
       },
     });
   }

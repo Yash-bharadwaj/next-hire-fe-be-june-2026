@@ -315,23 +315,25 @@ const Candidates = () => {
     }
   }, [user?.role, searchCandidates, setFilters]);
 
-  const availabilityCounts = useMemo(() => {
-    const counts: Record<string, number> = {
-      available: 0,
-      not_available: 0,
-      interviewing: 0,
-      employed: 0,
-    };
-    candidates.forEach((c) => {
-      counts[c.availability_status] = (counts[c.availability_status] || 0) + 1;
-    });
-    return counts;
-  }, [candidates]);
+  const handleActiveCandidatesClick = () => {
+    setActiveFilters({});
+    searchCandidates({ placement_status: "active", page: 1 });
+  };
 
-  const totalSubmissions = useMemo(
-    () => candidates.reduce((sum, c) => sum + (c.submissions_count || 0), 0),
-    [candidates]
-  );
+  const handleAvailableClick = () => {
+    setActiveFilters({ status: ["Available"] });
+    searchCandidates({ availability_status: "available", page: 1 });
+  };
+
+  const handleInInterviewClick = () => {
+    setActiveFilters({ status: ["Interviewing"] });
+    searchCandidates({ availability_status: "interviewing", page: 1 });
+  };
+
+  const handlePlacedClick = () => {
+    setActiveFilters({});
+    searchCandidates({ placement_status: "placed", page: 1 });
+  };
 
   const tableRows = useMemo(
     () =>
@@ -621,57 +623,57 @@ const Candidates = () => {
       <div className="grid grid-cols-6 gap-2">
         {[
           {
+            title: "Active Candidates",
+            value: (stats?.activeCount ?? 0).toString(),
+            icon: CheckCircle,
+            color: "text-green-700",
+            gradientOverlay:
+              "bg-gradient-to-br from-green-400/30 via-green-500/20 to-green-600/30",
+            onClick: handleActiveCandidatesClick,
+          },
+          {
             title: "Available",
-            value: availabilityCounts.available.toString(),
+            value: (stats?.availableCount ?? 0).toString(),
             icon: User,
             color: "text-blue-700",
             gradientOverlay:
               "bg-gradient-to-br from-blue-400/30 via-blue-500/20 to-blue-600/30",
-            onClick: () => setActiveFilters({ status: ["Available"] }),
+            onClick: handleAvailableClick,
           },
           {
-            title: "Not Available",
-            value: availabilityCounts.not_available.toString(),
-            icon: Trash2,
-            color: "text-red-700",
-            gradientOverlay:
-              "bg-gradient-to-br from-red-400/30 via-red-500/20 to-red-600/30",
-            onClick: () => setActiveFilters({ status: ["Not Available"] }),
-          },
-          {
-            title: "Interviewing",
-            value: availabilityCounts.interviewing.toString(),
+            title: "In Interview",
+            value: (stats?.interviewingCount ?? 0).toString(),
             icon: Clock,
             color: "text-amber-700",
             gradientOverlay:
               "bg-gradient-to-br from-amber-400/30 via-amber-500/20 to-amber-600/30",
-            onClick: () => setActiveFilters({ status: ["Interviewing"] }),
+            onClick: handleInInterviewClick,
           },
           {
-            title: "Employed",
-            value: availabilityCounts.employed.toString(),
+            title: "Placed",
+            value: (stats?.placedCount ?? 0).toString(),
             icon: Briefcase,
             color: "text-purple-700",
             gradientOverlay:
               "bg-gradient-to-br from-purple-400/30 via-purple-500/20 to-purple-600/30",
-            onClick: () => setActiveFilters({ status: ["Employed"] }),
+            onClick: handlePlacedClick,
           },
           {
-            title: "Total Candidates",
-            value: (stats?.totalCandidates ?? candidates.length).toString(),
-            icon: Users,
-            color: "text-green-700",
-            gradientOverlay:
-              "bg-gradient-to-br from-green-400/30 via-green-500/20 to-green-600/30",
-            onClick: () => setActiveFilters({}),
-          },
-          {
-            title: "Submissions",
-            value: totalSubmissions.toString(),
+            title: "Total Submissions",
+            value: (stats?.totalSubmissions ?? 0).toString(),
             icon: FileText,
             color: "text-indigo-700",
             gradientOverlay:
               "bg-gradient-to-br from-indigo-400/30 via-indigo-500/20 to-indigo-600/30",
+            onClick: () => navigate("/dashboard/submissions"),
+          },
+          {
+            title: "Avg Rating",
+            value: stats?.avgRating != null ? stats.avgRating.toFixed(1) : "N/A",
+            icon: Star,
+            color: "text-orange-700",
+            gradientOverlay:
+              "bg-gradient-to-br from-orange-400/30 via-orange-500/20 to-orange-600/30",
             onClick: () => {},
           },
         ].map((card) => {

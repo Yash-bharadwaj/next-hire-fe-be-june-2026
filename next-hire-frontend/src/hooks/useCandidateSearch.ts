@@ -32,7 +32,11 @@ export const useCandidateSearch = (initialFilters: CandidateSearchFilters = {}) 
       setLoading(true);
       setError(null);
 
-      const finalFilters = { ...filters, ...searchFilters };
+      // Replace (not merge with) the previous filters - see
+      // useBusinessPartners.ts for the bug this caused elsewhere (a "clear
+      // filters"/KPI-card call couldn't actually remove a previously-applied
+      // filter via object-spread merge).
+      const finalFilters = { ...searchFilters };
       const response = await candidateSearchService.searchCandidates(finalFilters);
 
       setCandidates(response.data.candidates);

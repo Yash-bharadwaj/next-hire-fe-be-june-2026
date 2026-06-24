@@ -138,7 +138,11 @@ export interface CandidateSearchFilters {
   experience_max?: number;
   salary_min?: number;
   salary_max?: number;
-  availability_status?: "available" | "not_available" | "interviewing" | "employed";
+  availability_status?: "available" | "not_available" | "interviewing";
+  // "placed" = has at least one real Placement record; "active" = everyone
+  // else still in the talent pool (no separate archived/inactive flag exists
+  // on Candidate, so this is the only real, non-overlapping complement).
+  placement_status?: "placed" | "active";
   education_level?: string;
   sort_by?: "name" | "experience" | "salary" | "created_at";
   sort_order?: "ASC" | "DESC";
@@ -182,6 +186,12 @@ export interface CandidateStatsResponse {
       skill_name: string;
       count: number;
     }>;
+    activeCount: number;
+    availableCount: number;
+    interviewingCount: number;
+    placedCount: number;
+    totalSubmissions: number;
+    avgRating: number | null;
   };
 }
 
