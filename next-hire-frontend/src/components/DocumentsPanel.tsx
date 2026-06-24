@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
-import { FileText, Upload, Download, AlertTriangle, CheckCircle, XCircle, Search, Plus, Loader2, Trash2 } from "lucide-react";
+import { FileText, Upload, Download, Eye, AlertTriangle, CheckCircle, XCircle, Search, Plus, Loader2, Trash2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -194,6 +194,8 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
   const [showUpload, setShowUpload] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ doc: DocumentRecord; url: string } | null>(null);
   const { toast } = useToast();
 
   const handleOpen = async (doc: DocumentRecord) => {
@@ -210,6 +212,23 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
       });
     } finally {
       setOpeningId(null);
+    }
+  };
+
+  const handlePreview = async (doc: DocumentRecord) => {
+    setPreviewingId(doc.id);
+    try {
+      const url = await resolveDocumentUrl(doc.url);
+      if (!url) throw new Error("No URL returned");
+      setPreview({ doc, url });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to load preview",
+        variant: "destructive",
+      });
+    } finally {
+      setPreviewingId(null);
     }
   };
 
@@ -333,6 +352,24 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
                             size="icon"
                             variant="ghost"
                             className="h-8 w-8 text-gray-600 hover:bg-gray-100"
+                            onClick={() => handlePreview(doc)}
+                            disabled={previewingId === doc.id}
+                          >
+                            {previewingId === doc.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>View</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-gray-600 hover:bg-gray-100"
                             onClick={() => handleOpen(doc)}
                             disabled={openingId === doc.id}
                           >
@@ -373,6 +410,39 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
           )}
         </div>
       </CardContent>
+
+      {/* Preview Dialog */}
+      <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="truncate">{preview?.doc.name}</DialogTitle>
+          </DialogHeader>
+          {preview && (
+            <div className="flex flex-col gap-3">
+              {preview.doc.document_type === "IMG" ? (
+                <img
+                  src={preview.url}
+                  alt={preview.doc.name}
+                  className="max-w-full max-h-[70vh] mx-auto object-contain rounded-md"
+                />
+              ) : preview.doc.document_type === "PDF" ? (
+                <iframe title={preview.doc.name} src={preview.url} className="w-full h-[70vh] rounded-md border" />
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p>Preview isn't available for {preview.doc.document_type} files.</p>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => window.open(preview.url, "_blank", "noopener,noreferrer")}>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open in New Tab
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };
