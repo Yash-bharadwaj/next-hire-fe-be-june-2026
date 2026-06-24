@@ -149,6 +149,7 @@ export interface UpdateJobRequest extends Partial<CreateJobRequest> {}
 export interface TeamMember {
   id: string;
   email: string;
+  status?: "active" | "inactive" | "suspended";
   recruiterProfile?: {
     first_name?: string;
     last_name?: string;
@@ -871,6 +872,24 @@ class RecruiterService {
     try {
       const response = await apiClient.post<SingleJobTeamMemberResponse>(
         `/recruiter/jobs/${jobId}/team-members`,
+        data
+      );
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Change an existing job team member's role
+   */
+  async updateJobTeamMember(
+    teamMemberId: string,
+    data: { role: JobTeamMemberRole }
+  ): Promise<SingleJobTeamMemberResponse> {
+    try {
+      const response = await apiClient.put<SingleJobTeamMemberResponse>(
+        `/recruiter/team-members/${teamMemberId}`,
         data
       );
       return response.data;

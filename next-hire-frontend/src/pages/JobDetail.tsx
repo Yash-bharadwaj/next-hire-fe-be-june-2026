@@ -117,6 +117,7 @@ import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
 import { useJobProfitability, formatPct } from "@/hooks/useJobProfitability";
 import { formatCompactRange } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { TeamMember, Task, TaskPriority, TaskStatus, JobTeamMember, JobTeamMemberRole } from "@/services/recruiterService";
 import { TASK_STATUS_LABELS, TASK_STATUS_OPTIONS } from "@/services/recruiterService";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
@@ -519,10 +520,10 @@ const JobDetail = () => {
   const [additionalTeamMembers, setAdditionalTeamMembers] = useState<JobTeamMember[]>([]);
   const [teamMembersLoading, setTeamMembersLoading] = useState(false);
   const [teamMembersLoaded, setTeamMembersLoaded] = useState(false);
-  const [showAddTeamMember, setShowAddTeamMember] = useState(false);
+  const [showTeamManageDialog, setShowTeamManageDialog] = useState(false);
   const [newTeamMemberUserId, setNewTeamMemberUserId] = useState("");
-  const [newTeamMemberRole, setNewTeamMemberRole] = useState<JobTeamMemberRole>("recruiter");
-  const [savingTeamMember, setSavingTeamMember] = useState(false);
+  const [addingTeamMember, setAddingTeamMember] = useState(false);
+  const [updatingTeamMemberId, setUpdatingTeamMemberId] = useState<string | null>(null);
   const [removingTeamMemberId, setRemovingTeamMemberId] = useState<string | null>(null);
 
   const TEAM_ROLE_LABELS: Record<JobTeamMemberRole, string> = {
@@ -557,18 +558,16 @@ const JobDetail = () => {
     }
   }, [activeTab, teamMembersLoaded, fetchJobTeamMembers]);
 
-  const handleAddTeamMember = async () => {
-    if (!id || !newTeamMemberUserId) return;
-    setSavingTeamMember(true);
+  // Selecting a person in the management dialog's "add new member" row adds
+  // them immediately (matching frontend-previous) - role defaults to "other"
+  // and can be refined right away via that row's own role dropdown.
+  const handleAddTeamMember = async (userId: string) => {
+    if (!id || !userId) return;
+    setAddingTeamMember(true);
     try {
-      await recruiterService.addJobTeamMember(id, {
-        user_id: newTeamMemberUserId,
-        role: newTeamMemberRole,
-      });
+      await recruiterService.addJobTeamMember(id, { user_id: userId, role: "other" });
       toast({ title: "Team member added" });
-      setShowAddTeamMember(false);
       setNewTeamMemberUserId("");
-      setNewTeamMemberRole("recruiter");
       fetchJobTeamMembers();
     } catch (err: any) {
       toast({
@@ -577,7 +576,26 @@ const JobDetail = () => {
         variant: "destructive",
       });
     } finally {
-      setSavingTeamMember(false);
+      setAddingTeamMember(false);
+    }
+  };
+
+  const handleUpdateTeamMemberRole = async (teamMemberId: string, role: JobTeamMemberRole) => {
+    setUpdatingTeamMemberId(teamMemberId);
+    try {
+      await recruiterService.updateJobTeamMember(teamMemberId, { role });
+      setAdditionalTeamMembers((prev) =>
+        prev.map((m) => (m.id === teamMemberId ? { ...m, role } : m))
+      );
+      toast({ title: "Role updated" });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to update role",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingTeamMemberId(null);
     }
   };
 
@@ -597,6 +615,32 @@ const JobDetail = () => {
       setRemovingTeamMemberId(null);
     }
   };
+
+  // Unified roster for both the management dialog's table and the card grid
+  // below it - the 4 fixed singular roles on Job, plus the free-form roster.
+  const fixedTeamRoles = [
+    { key: "created_by" as const, label: "Created By", person: job?.creator, editable: false },
+    { key: "assigned_to" as const, label: "Assigned To", person: job?.assignee, editable: true },
+    { key: "primary_recruiter_id" as const, label: "Primary Recruiter", person: job?.primaryRecruiter, editable: true },
+    { key: "account_manager_id" as const, label: "Account Manager", person: job?.accountManager, editable: true },
+  ];
+
+  const statusBadgeClass = (status?: string) =>
+    status === "active"
+      ? "border-green-300 text-green-700 bg-green-50/50"
+      : status === "suspended"
+      ? "border-red-300 text-red-700 bg-red-50/50"
+      : status === "inactive"
+      ? "border-gray-300 text-gray-600 bg-gray-50/50"
+      : "border-gray-200 text-gray-400";
+
+  const teamMemberInitials = (person: TeamMember) =>
+    formatTeamMemberName(person)
+      .split(" ")
+      .map((p) => p[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
 
   // ── ToDos tab state ────────────────────────────────────────────────────
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -2515,36 +2559,231 @@ const JobDetail = () => {
 
             {user?.role === "recruiter" && (
               <TabsContent value="team" className="space-y-6 mt-0">
-                <h3 className="text-xl font-semibold bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
-                  Team Members
-                </h3>
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xl font-semibold bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
+                    Team Members
+                  </h3>
+                  <Dialog open={showTeamManageDialog} onOpenChange={setShowTeamManageDialog}>
+                    <DialogTrigger asChild>
+                      <Button className="button-gradient shadow-md bg-gradient-to-r from-green-500 to-green-600">
+                        <UserPlus className="w-4 h-4 mr-2" />
+                        Add/Edit Member
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl bg-white border border-green-200/50 shadow-xl">
+                      <DialogHeader>
+                        <DialogTitle className="text-xl font-semibold bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
+                          Manage Team Members
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-6">
+                        <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg p-6 border border-green-200/30">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="border-green-200/50">
+                                <TableHead className="text-green-700 font-semibold">Name</TableHead>
+                                <TableHead className="text-green-700 font-semibold">Role</TableHead>
+                                <TableHead className="text-green-700 font-semibold">Email</TableHead>
+                                <TableHead className="text-green-700 font-semibold">Status</TableHead>
+                                <TableHead className="text-green-700 font-semibold">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {fixedTeamRoles.map((role) => (
+                                <TableRow key={role.key} className="border-green-100/50 hover:bg-green-50/50">
+                                  <TableCell>
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                                        {role.person ? teamMemberInitials(role.person as TeamMember) : "—"}
+                                      </div>
+                                      <span className="font-medium text-gray-800">
+                                        {role.person ? formatTeamMemberName(role.person as TeamMember) : "Not assigned"}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-gray-700">{role.label}</TableCell>
+                                  <TableCell>
+                                    <span className="text-sm text-gray-600">{role.person?.email || "—"}</span>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline" className={statusBadgeClass((role.person as any)?.status)}>
+                                      {(role.person as any)?.status || "—"}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    {role.editable && (
+                                      <Dialog
+                                        open={assigningRole === role.key}
+                                        onOpenChange={(open) => {
+                                          setAssigningRole(open ? (role.key as any) : null);
+                                          setAssigningValue(role.person?.id || "");
+                                        }}
+                                      >
+                                        <DialogTrigger asChild>
+                                          <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50">
+                                            <Edit3 className="w-3 h-3" />
+                                          </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                          <DialogHeader>
+                                            <DialogTitle>Change {role.label}</DialogTitle>
+                                          </DialogHeader>
+                                          <Select value={assigningValue} onValueChange={setAssigningValue}>
+                                            <SelectTrigger>
+                                              <SelectValue placeholder="Select recruiter" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {teamOptions.map((member) => (
+                                                <SelectItem key={member.id} value={member.id}>
+                                                  {formatTeamMemberName(member)}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                          <div className="flex justify-end gap-2 pt-2">
+                                            <Button variant="outline" onClick={() => setAssigningRole(null)}>
+                                              Cancel
+                                            </Button>
+                                            <Button onClick={handleSaveAssignment} disabled={savingAssignment || !assigningValue}>
+                                              {savingAssignment ? "Saving..." : "Save"}
+                                            </Button>
+                                          </div>
+                                        </DialogContent>
+                                      </Dialog>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+
+                              {teamMembersLoading ? (
+                                <TableRow>
+                                  <TableCell colSpan={5} className="text-center py-6 text-gray-500">
+                                    <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+                                    Loading team members...
+                                  </TableCell>
+                                </TableRow>
+                              ) : (
+                                additionalTeamMembers.map((tm) => (
+                                  <TableRow key={tm.id} className="border-green-100/50 hover:bg-green-50/50">
+                                    <TableCell>
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                                          {tm.member ? teamMemberInitials(tm.member) : "—"}
+                                        </div>
+                                        <span className="font-medium text-gray-800">
+                                          {tm.member ? formatTeamMemberName(tm.member) : "Unknown"}
+                                        </span>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Select
+                                        value={tm.role}
+                                        onValueChange={(v) => handleUpdateTeamMemberRole(tm.id, v as JobTeamMemberRole)}
+                                        disabled={updatingTeamMemberId === tm.id}
+                                      >
+                                        <SelectTrigger className="border-green-200 focus:border-green-500 w-40">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-white border-green-200">
+                                          {(Object.keys(TEAM_ROLE_LABELS) as JobTeamMemberRole[]).map((r) => (
+                                            <SelectItem key={r} value={r}>
+                                              {TEAM_ROLE_LABELS[r]}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </TableCell>
+                                    <TableCell>
+                                      <span className="text-sm text-gray-600">{tm.member?.email || "—"}</span>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge variant="outline" className={statusBadgeClass(tm.member?.status)}>
+                                        {tm.member?.status || "—"}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleRemoveTeamMember(tm.id)}
+                                        disabled={removingTeamMemberId === tm.id}
+                                        className="border-red-300 text-red-700 hover:bg-red-50"
+                                      >
+                                        {removingTeamMemberId === tm.id ? (
+                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="w-3 h-3" />
+                                        )}
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                ))
+                              )}
+
+                              {/* Add new member row */}
+                              <TableRow className="border-green-100/50 hover:bg-green-50/50">
+                                <TableCell>
+                                  <Select
+                                    value={newTeamMemberUserId}
+                                    onValueChange={(v) => {
+                                      setNewTeamMemberUserId(v);
+                                      handleAddTeamMember(v);
+                                    }}
+                                    disabled={addingTeamMember}
+                                  >
+                                    <SelectTrigger className="border-green-200 focus:border-green-500">
+                                      <SelectValue placeholder={addingTeamMember ? "Adding..." : "Select user to add..."} />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-white border-green-200">
+                                      {teamOptions
+                                        .filter(
+                                          (m) =>
+                                            !additionalTeamMembers.some((atm) => atm.user_id === m.id) &&
+                                            !fixedTeamRoles.some((r) => r.person?.id === m.id)
+                                        )
+                                        .map((member) => (
+                                          <SelectItem key={member.id} value={member.id}>
+                                            {formatTeamMemberName(member)}
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                                <TableCell colSpan={4} className="text-gray-500 text-sm">
+                                  Select a user from the dropdown to add them to the team
+                                </TableCell>
+                              </TableRow>
+                            </TableBody>
+                          </Table>
+                        </div>
+                        <div className="flex justify-end gap-3">
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowTeamManageDialog(false)}
+                            className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                          >
+                            Close
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+
                 <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {(
-                    [
-                      { key: "created_by", label: "Created By", person: job?.creator, editable: false },
-                      { key: "assigned_to", label: "Assigned To", person: job?.assignee, editable: true },
-                      { key: "primary_recruiter_id", label: "Primary Recruiter", person: job?.primaryRecruiter, editable: true },
-                      { key: "account_manager_id", label: "Account Manager", person: job?.accountManager, editable: true },
-                    ] as const
-                  ).map((role) => {
+                  {fixedTeamRoles.map((role) => {
                     const phone = (role.person as any)?.recruiterProfile?.phone;
                     return (
                       <Card
                         key={role.key}
-                        className="group relative overflow-hidden bg-gradient-to-br from-white via-green-50/30 to-green-100/20 border border-green-200/60 shadow-lg hover:shadow-xl transition-all duration-300"
+                        className="group relative overflow-hidden bg-gradient-to-br from-white via-green-50/30 to-green-100/20 border border-green-200/60 shadow-lg hover:shadow-2xl hover:shadow-green-500/20 transition-all duration-300 hover:scale-[1.02] hover:border-green-300/80"
                       >
+                        <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                         <CardContent className="relative p-6">
                           <div className="flex flex-col items-center text-center space-y-4">
                             <div className="relative">
-                              <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                                {role.person
-                                  ? formatTeamMemberName(role.person as any)
-                                      .split(" ")
-                                      .map((p) => p[0])
-                                      .slice(0, 2)
-                                      .join("")
-                                      .toUpperCase()
-                                  : "—"}
+                              <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-green-500/20 transition-all duration-300 group-hover:shadow-xl group-hover:shadow-green-500/30 group-hover:scale-105">
+                                {role.person ? teamMemberInitials(role.person as TeamMember) : "—"}
                               </div>
                               <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-lg">
                                 <User className="w-4 h-4 text-white" />
@@ -2552,20 +2791,55 @@ const JobDetail = () => {
                             </div>
 
                             <div className="space-y-2">
-                              <h4 className="font-bold text-gray-800 text-lg">
-                                {role.person ? formatTeamMemberName(role.person as any) : "Not assigned"}
+                              <h4 className="font-bold text-gray-800 text-lg group-hover:text-green-700 transition-colors">
+                                {role.person ? formatTeamMemberName(role.person as TeamMember) : "Not assigned"}
                               </h4>
                               <p className="text-sm font-medium bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
                                 {role.label}
                               </p>
                             </div>
 
+                            <div className="flex items-center justify-center gap-2 flex-wrap">
+                              <Badge variant="outline" className={cn("text-xs px-3 py-1", statusBadgeClass((role.person as any)?.status))}>
+                                {(role.person as any)?.status || "Unassigned"}
+                              </Badge>
+                            </div>
+
+                            {role.person && (
+                              <div className="space-y-3 w-full">
+                                <div className="flex items-center justify-center gap-2">
+                                  <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center">
+                                    <Mail className="w-4 h-4 text-blue-600" />
+                                  </div>
+                                  <button
+                                    onClick={() => (window.location.href = `mailto:${role.person!.email}`)}
+                                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium truncate max-w-[180px]"
+                                  >
+                                    {role.person.email}
+                                  </button>
+                                </div>
+                                {phone && (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <div className="w-8 h-8 bg-gradient-to-br from-green-100 to-green-200 rounded-lg flex items-center justify-center">
+                                      <Phone className="w-4 h-4 text-green-600" />
+                                    </div>
+                                    <button
+                                      onClick={() => (window.location.href = `tel:${phone}`)}
+                                      className="text-sm text-green-600 hover:text-green-800 hover:underline font-medium"
+                                    >
+                                      {phone}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
                             {role.person && (
                               <div className="flex gap-2 w-full pt-2">
                                 <Button
                                   size="sm"
-                                  onClick={() => (window.location.href = `mailto:${role.person.email}`)}
-                                  className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white flex-1"
+                                  onClick={() => (window.location.href = `mailto:${role.person!.email}`)}
+                                  className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 flex-1"
                                 >
                                   <Mail className="w-3 h-3 mr-1" />
                                   Email
@@ -2575,55 +2849,13 @@ const JobDetail = () => {
                                     size="sm"
                                     variant="outline"
                                     onClick={() => (window.location.href = `tel:${phone}`)}
-                                    className="border-green-300 text-green-700 hover:bg-green-50 flex-1"
+                                    className="border-green-300 text-green-700 hover:bg-green-50 hover:border-green-400 flex-1 transition-all duration-200"
                                   >
                                     <Phone className="w-3 h-3 mr-1" />
                                     Call
                                   </Button>
                                 )}
                               </div>
-                            )}
-
-                            {role.editable && (
-                              <Dialog
-                                open={assigningRole === role.key}
-                                onOpenChange={(open) => {
-                                  setAssigningRole(open ? (role.key as any) : null);
-                                  setAssigningValue(role.person?.id || "");
-                                }}
-                              >
-                                <DialogTrigger asChild>
-                                  <Button size="sm" variant="ghost" className="text-gray-500 hover:text-green-700 -mt-1">
-                                    <Edit3 className="w-3 h-3 mr-1" />
-                                    Change
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                  <DialogHeader>
-                                    <DialogTitle>Change {role.label}</DialogTitle>
-                                  </DialogHeader>
-                                  <Select value={assigningValue} onValueChange={setAssigningValue}>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Select recruiter" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {teamOptions.map((member) => (
-                                        <SelectItem key={member.id} value={member.id}>
-                                          {formatTeamMemberName(member)}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  <div className="flex justify-end gap-2 pt-2">
-                                    <Button variant="outline" onClick={() => setAssigningRole(null)}>
-                                      Cancel
-                                    </Button>
-                                    <Button onClick={handleSaveAssignment} disabled={savingAssignment || !assigningValue}>
-                                      {savingAssignment ? "Saving..." : "Save"}
-                                    </Button>
-                                  </div>
-                                </DialogContent>
-                              </Dialog>
                             )}
                           </div>
                         </CardContent>
@@ -2637,131 +2869,98 @@ const JobDetail = () => {
                       Loading team members...
                     </div>
                   ) : (
-                    additionalTeamMembers.map((tm) => (
-                      <Card
-                        key={tm.id}
-                        className="group relative overflow-hidden bg-gradient-to-br from-white via-green-50/30 to-green-100/20 border border-green-200/60 shadow-lg hover:shadow-xl transition-all duration-300"
-                      >
-                        <CardContent className="relative p-6">
-                          <div className="flex flex-col items-center text-center space-y-4">
-                            <div className="relative">
-                              <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                                {tm.member
-                                  ? formatTeamMemberName(tm.member)
-                                      .split(" ")
-                                      .map((p) => p[0])
-                                      .slice(0, 2)
-                                      .join("")
-                                      .toUpperCase()
-                                  : "—"}
+                    additionalTeamMembers.map((tm) => {
+                      const phone = tm.member?.recruiterProfile?.phone;
+                      return (
+                        <Card
+                          key={tm.id}
+                          className="group relative overflow-hidden bg-gradient-to-br from-white via-green-50/30 to-green-100/20 border border-green-200/60 shadow-lg hover:shadow-2xl hover:shadow-green-500/20 transition-all duration-300 hover:scale-[1.02] hover:border-green-300/80"
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                          <CardContent className="relative p-6">
+                            <div className="flex flex-col items-center text-center space-y-4">
+                              <div className="relative">
+                                <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-purple-500/20 transition-all duration-300 group-hover:shadow-xl group-hover:scale-105">
+                                  {tm.member ? teamMemberInitials(tm.member) : "—"}
+                                </div>
+                                <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-lg">
+                                  <User className="w-4 h-4 text-white" />
+                                </div>
                               </div>
-                              <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-lg">
-                                <User className="w-4 h-4 text-white" />
+
+                              <div className="space-y-2">
+                                <h4 className="font-bold text-gray-800 text-lg group-hover:text-green-700 transition-colors">
+                                  {tm.member ? formatTeamMemberName(tm.member) : "Unknown"}
+                                </h4>
+                                <p className="text-sm font-medium bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
+                                  {TEAM_ROLE_LABELS[tm.role]}
+                                </p>
                               </div>
-                            </div>
 
-                            <div className="space-y-2">
-                              <h4 className="font-bold text-gray-800 text-lg">
-                                {tm.member ? formatTeamMemberName(tm.member) : "Unknown"}
-                              </h4>
-                              <p className="text-sm font-medium bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
-                                {TEAM_ROLE_LABELS[tm.role]}
-                              </p>
-                            </div>
+                              <div className="flex items-center justify-center gap-2 flex-wrap">
+                                <Badge variant="outline" className={cn("text-xs px-3 py-1", statusBadgeClass(tm.member?.status))}>
+                                  {tm.member?.status || "Unknown"}
+                                </Badge>
+                              </div>
 
-                            {tm.member && (
-                              <div className="flex gap-2 w-full pt-2">
-                                <Button
-                                  size="sm"
-                                  onClick={() => (window.location.href = `mailto:${tm.member!.email}`)}
-                                  className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white flex-1"
-                                >
-                                  <Mail className="w-3 h-3 mr-1" />
-                                  Email
-                                </Button>
-                                {tm.member.recruiterProfile?.phone && (
+                              {tm.member && (
+                                <div className="space-y-3 w-full">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center">
+                                      <Mail className="w-4 h-4 text-blue-600" />
+                                    </div>
+                                    <button
+                                      onClick={() => (window.location.href = `mailto:${tm.member!.email}`)}
+                                      className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium truncate max-w-[180px]"
+                                    >
+                                      {tm.member.email}
+                                    </button>
+                                  </div>
+                                  {phone && (
+                                    <div className="flex items-center justify-center gap-2">
+                                      <div className="w-8 h-8 bg-gradient-to-br from-green-100 to-green-200 rounded-lg flex items-center justify-center">
+                                        <Phone className="w-4 h-4 text-green-600" />
+                                      </div>
+                                      <button
+                                        onClick={() => (window.location.href = `tel:${phone}`)}
+                                        className="text-sm text-green-600 hover:text-green-800 hover:underline font-medium"
+                                      >
+                                        {phone}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {tm.member && (
+                                <div className="flex gap-2 w-full pt-2">
                                   <Button
                                     size="sm"
-                                    variant="outline"
-                                    onClick={() => (window.location.href = `tel:${tm.member!.recruiterProfile!.phone}`)}
-                                    className="border-green-300 text-green-700 hover:bg-green-50 flex-1"
+                                    onClick={() => (window.location.href = `mailto:${tm.member!.email}`)}
+                                    className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 flex-1"
                                   >
-                                    <Phone className="w-3 h-3 mr-1" />
-                                    Call
+                                    <Mail className="w-3 h-3 mr-1" />
+                                    Email
                                   </Button>
-                                )}
-                              </div>
-                            )}
-
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleRemoveTeamMember(tm.id)}
-                              disabled={removingTeamMemberId === tm.id}
-                              className="text-red-600 hover:bg-red-50 hover:text-red-700 -mt-1"
-                            >
-                              <Trash2 className="w-3 h-3 mr-1" />
-                              Remove
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
+                                  {phone && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => (window.location.href = `tel:${phone}`)}
+                                      className="border-green-300 text-green-700 hover:bg-green-50 hover:border-green-400 flex-1 transition-all duration-200"
+                                    >
+                                      <Phone className="w-3 h-3 mr-1" />
+                                      Call
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })
                   )}
-
-                  {/* Add new member card */}
-                  <Dialog open={showAddTeamMember} onOpenChange={setShowAddTeamMember}>
-                    <DialogTrigger asChild>
-                      <button className="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-green-300 text-green-600 hover:bg-green-50 hover:border-green-400 transition-colors min-h-[260px]">
-                        <UserPlus className="w-10 h-10" />
-                        <span className="font-medium">Add Team Member</span>
-                      </button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Add Team Member</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-3">
-                        <Select value={newTeamMemberUserId} onValueChange={setNewTeamMemberUserId}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select person" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {teamOptions
-                              .filter((m) => !additionalTeamMembers.some((atm) => atm.user_id === m.id))
-                              .map((member) => (
-                                <SelectItem key={member.id} value={member.id}>
-                                  {formatTeamMemberName(member)}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                        <Select
-                          value={newTeamMemberRole}
-                          onValueChange={(v) => setNewTeamMemberRole(v as JobTeamMemberRole)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Role" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(Object.keys(TEAM_ROLE_LABELS) as JobTeamMemberRole[]).map((role) => (
-                              <SelectItem key={role} value={role}>
-                                {TEAM_ROLE_LABELS[role]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="flex justify-end gap-2 pt-2">
-                        <Button variant="outline" onClick={() => setShowAddTeamMember(false)}>
-                          Cancel
-                        </Button>
-                        <Button onClick={handleAddTeamMember} disabled={savingTeamMember || !newTeamMemberUserId}>
-                          {savingTeamMember ? "Adding..." : "Add"}
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
                 </div>
               </TabsContent>
             )}

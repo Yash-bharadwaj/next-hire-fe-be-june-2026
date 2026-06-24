@@ -38,7 +38,7 @@ import {
 
 // Shared `include` for resolving Job's people/client references to
 // human-readable data instead of raw UUIDs.
-const jobPersonAttributes = ["id", "email"];
+const jobPersonAttributes = ["id", "email", "status"];
 const jobPersonInclude = (as: string) => ({
   model: User,
   as,
@@ -809,6 +809,39 @@ export const addJobTeamMember = asyncHandler(
       success: true,
       message: "Team member added",
       data: { teamMember: createdTeamMember },
+    });
+  }
+);
+
+// Change an existing team member's role (the management dialog's per-row
+// role dropdown edits in place rather than remove+re-add, which would lose
+// added_by/created_at).
+export const updateJobTeamMember = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { teamMemberId } = req.params;
+    const { role } = req.body;
+    const userId = req.user?.userId;
+
+    const teamMember = await JobTeamMember.findByPk(teamMemberId, {
+      include: [{ model: Job, as: "job" }],
+    });
+    if (!teamMember) {
+      throw createError("Team member not found", 404);
+    }
+    if (!isJobStaff((teamMember as any).job, userId)) {
+      throw createError("You do not have permission to manage this job's team", 403);
+    }
+
+    await teamMember.update({ role });
+
+    const updatedTeamMember = await JobTeamMember.findByPk(teamMemberId, {
+      include: [jobPersonInclude("member")],
+    });
+
+    res.json({
+      success: true,
+      message: "Team member updated",
+      data: { teamMember: updatedTeamMember },
     });
   }
 );

@@ -23,6 +23,7 @@ import {
   updateJobProfitability,
   listJobTeamMembers,
   addJobTeamMember,
+  updateJobTeamMember,
   removeJobTeamMember,
   addSubmissionNote,
   updateSubmissionNote,
@@ -567,6 +568,17 @@ router.post(
   ],
   validate,
   addJobTeamMember
+);
+router.put(
+  "/team-members/:teamMemberId",
+  [
+    param("teamMemberId").isUUID().withMessage("Valid team member ID is required"),
+    body("role")
+      .isIn(["recruiter", "sourcer", "account_manager", "coordinator", "other"])
+      .withMessage("Invalid role"),
+  ],
+  validate,
+  updateJobTeamMember
 );
 router.delete(
   "/team-members/:teamMemberId",
