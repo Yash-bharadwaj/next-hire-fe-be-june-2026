@@ -395,6 +395,11 @@ class BusinessPartnerService {
     return response.data as { success: boolean; data: { attachments: BusinessPartnerDocument[] } };
   }
 
+  async deleteAttachment(id: string, attachmentId: string): Promise<{ success: boolean }> {
+    const response = await apiClient.delete(`${this.baseUrl}/${id}/attachments/${attachmentId}`);
+    return response.data;
+  }
+
   // Helper methods
   getStatusColor(status: BusinessPartnerStatus): string {
     const colorMap: Record<BusinessPartnerStatus, string> = {

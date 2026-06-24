@@ -8,6 +8,7 @@ import {
   buildUpdateNoteValidation,
   buildNoteIdValidation,
   buildAttachmentValidation,
+  buildAttachmentIdValidation,
 } from "../validators/noteValidators";
 import {
   getBusinessPartners,
@@ -28,6 +29,7 @@ import {
   updateBusinessPartnerNote,
   deleteBusinessPartnerNote,
   addBusinessPartnerAttachment,
+  deleteBusinessPartnerAttachment,
 } from "../controllers/businessPartnerController";
 
 const router = Router();
@@ -248,6 +250,12 @@ router.post(
   attachmentValidation,
   validate,
   addBusinessPartnerAttachment
+);
+router.delete(
+  "/:id/attachments/:attachmentId",
+  buildAttachmentIdValidation("business partner"),
+  validate,
+  deleteBusinessPartnerAttachment
 );
 
 export default router;

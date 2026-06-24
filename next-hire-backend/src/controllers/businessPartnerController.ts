@@ -847,3 +847,4 @@ export const addBusinessPartnerNote = businessPartnerNoteHandlers.addNote;
 export const updateBusinessPartnerNote = businessPartnerNoteHandlers.updateNote;
 export const deleteBusinessPartnerNote = businessPartnerNoteHandlers.deleteNote;
 export const addBusinessPartnerAttachment = businessPartnerNoteHandlers.addAttachment;
+export const deleteBusinessPartnerAttachment = businessPartnerNoteHandlers.deleteAttachment;

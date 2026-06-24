@@ -1085,6 +1085,10 @@ const BusinessPartnerDetail = () => {
               await businessPartnerService.addAttachment(partner.id, data);
               refresh();
             }}
+            onDelete={async (attachmentId) => {
+              await businessPartnerService.deleteAttachment(partner.id, attachmentId);
+              refresh();
+            }}
           />
         </TabsContent>
 
