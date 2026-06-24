@@ -358,10 +358,10 @@ const JobDetail = () => {
       salary:
         apiJob.job_type === "contract"
           ? apiJob.bill_rate_min || apiJob.bill_rate_max
-            ? `${formatCompactRange(apiJob.bill_rate_min, apiJob.bill_rate_max, { suffix: "/hr" })}`
+            ? `${formatCompactRange(apiJob.bill_rate_min, apiJob.bill_rate_max, { suffix: "/hr", currency: apiJob.salary_currency })}`
             : "Rate negotiable"
           : apiJob.salary_min || apiJob.salary_max
-          ? formatCompactRange(apiJob.salary_min, apiJob.salary_max)
+          ? formatCompactRange(apiJob.salary_min, apiJob.salary_max, { currency: apiJob.salary_currency })
           : "Competitive",
       primarySkills: apiJob.required_skills || [],
       secondarySkills: apiJob.preferred_skills || [],
@@ -1780,8 +1780,8 @@ const JobDetail = () => {
                         </p>
                         <p className="font-semibold text-gray-800 whitespace-nowrap">
                           {job.job_type === "contract"
-                            ? formatCompactRange(job.bill_rate_min, job.bill_rate_max, { suffix: "/hr" })
-                            : formatCompactRange(job.salary_min, job.salary_max)}
+                            ? formatCompactRange(job.bill_rate_min, job.bill_rate_max, { suffix: "/hr", currency: job.salary_currency })
+                            : formatCompactRange(job.salary_min, job.salary_max, { currency: job.salary_currency })}
                         </p>
                       </div>
                     </CardContent>

@@ -427,8 +427,8 @@ const InterviewDetail = () => {
 
   const salaryRange = job
     ? job.job_type === "contract"
-      ? formatCompactRange(job.bill_rate_min, job.bill_rate_max, { suffix: "/hr" })
-      : formatCompactRange(job.salary_min, job.salary_max)
+      ? formatCompactRange(job.bill_rate_min, job.bill_rate_max, { suffix: "/hr", currency: job.salary_currency })
+      : formatCompactRange(job.salary_min, job.salary_max, { currency: job.salary_currency })
     : "Not specified";
 
   return (
