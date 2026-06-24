@@ -89,6 +89,39 @@ export async function getFileUrl(storedKey: string): Promise<string> {
 }
 
 /**
+ * Read a previously-uploaded file's full contents into memory, given the
+ * key/path stored in the DB. Mirrors getFileUrl's storage-mode branching.
+ * Used for server-side document preview (text extraction) - small
+ * resumes/JDs only, not meant for large files.
+ */
+export async function readDocumentBuffer(storedKey: string): Promise<Buffer> {
+  // A handful of older records stored a full URL instead of a bare
+  // key/relative path - fetch those directly rather than trying to resolve
+  // them as a storage key.
+  if (storedKey.startsWith("http://") || storedKey.startsWith("https://")) {
+    const response = await fetch(storedKey);
+    if (!response.ok) throw new Error(`Failed to fetch ${storedKey}: ${response.status}`);
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  if (isS3Enabled && s3Client && !storedKey.startsWith("/uploads/")) {
+    const response = await s3Client.send(
+      new GetObjectCommand({ Bucket: DOCUMENTS_BUCKET, Key: storedKey })
+    );
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of response.Body as any) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  }
+
+  const localPath = storedKey.startsWith("/uploads/")
+    ? path.join(__dirname, "../../", storedKey)
+    : path.join(localDocumentsDir, storedKey);
+  return fs.readFile(localPath);
+}
+
+/**
  * Best-effort delete of a previously-uploaded file, given the key/path
  * stored in the DB. Mirrors getFileUrl's storage-mode branching.
  */

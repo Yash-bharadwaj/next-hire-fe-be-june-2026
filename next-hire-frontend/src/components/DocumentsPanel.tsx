@@ -11,9 +11,31 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { resolveDocumentUrl } from "@/lib/api";
+import { resolveDocumentUrl, fetchDocumentPreviewText } from "@/lib/api";
 
 export type DocumentType = "PDF" | "DOC" | "DOCX" | "IMG" | "OTHER";
+
+// document_type is a manually-picked dropdown value at upload time (and has
+// no "TXT" option at all), so it's an unreliable signal for how to render a
+// preview - the file extension on the name is the real source of truth.
+// Anything that isn't a directly-embeddable PDF/image is sent to the backend
+// for text extraction; the backend's real support list (PDF/DOCX/TXT) is
+// the single source of truth for what succeeds vs. reports "unsupported".
+type PreviewKind = "pdf" | "image" | "text";
+
+const getPreviewKind = (doc: DocumentRecord): PreviewKind => {
+  const name = doc.name.toLowerCase();
+  // The extension is checked first and wins outright - a .txt file tagged
+  // "PDF" in the dropdown (the field defaults to PDF and is easy to leave
+  // unchanged) must still preview as text, not be forced into a PDF viewer.
+  if (name.endsWith(".pdf")) return "pdf";
+  if (/\.(png|jpe?g|gif|webp|svg|bmp)$/.test(name)) return "image";
+  if (/\.[a-z0-9]+$/.test(name)) return "text";
+  // No recognizable extension at all - fall back to the manually-picked type.
+  if (doc.document_type === "PDF") return "pdf";
+  if (doc.document_type === "IMG") return "image";
+  return "text";
+};
 
 export interface DocumentRecord {
   id: string;
@@ -195,7 +217,12 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ doc: DocumentRecord; url: string } | null>(null);
+  const [preview, setPreview] = useState<
+    | { doc: DocumentRecord; kind: "pdf" | "image"; url: string }
+    | { doc: DocumentRecord; kind: "text"; text: string; truncated: boolean }
+    | { doc: DocumentRecord; kind: "error"; message: string }
+    | null
+  >(null);
   const { toast } = useToast();
 
   const handleOpen = async (doc: DocumentRecord) => {
@@ -217,15 +244,21 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
 
   const handlePreview = async (doc: DocumentRecord) => {
     setPreviewingId(doc.id);
+    const kind = getPreviewKind(doc);
     try {
-      const url = await resolveDocumentUrl(doc.url);
-      if (!url) throw new Error("No URL returned");
-      setPreview({ doc, url });
+      if (kind === "text") {
+        const { text, truncated } = await fetchDocumentPreviewText(doc.url);
+        setPreview({ doc, kind: "text", text, truncated });
+      } else {
+        const url = await resolveDocumentUrl(doc.url);
+        if (!url) throw new Error("No URL returned");
+        setPreview({ doc, kind, url });
+      }
     } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err?.response?.data?.message || "Failed to load preview",
-        variant: "destructive",
+      setPreview({
+        doc,
+        kind: "error",
+        message: err?.response?.data?.message || "Preview isn't available for this file.",
       });
     } finally {
       setPreviewingId(null);
@@ -419,22 +452,33 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
           </DialogHeader>
           {preview && (
             <div className="flex flex-col gap-3">
-              {preview.doc.document_type === "IMG" ? (
+              {preview.kind === "image" ? (
                 <img
                   src={preview.url}
                   alt={preview.doc.name}
                   className="max-w-full max-h-[70vh] mx-auto object-contain rounded-md"
                 />
-              ) : preview.doc.document_type === "PDF" ? (
+              ) : preview.kind === "pdf" ? (
                 <iframe title={preview.doc.name} src={preview.url} className="w-full h-[70vh] rounded-md border" />
+              ) : preview.kind === "text" ? (
+                <>
+                  <pre className="w-full h-[70vh] overflow-auto rounded-md border bg-gray-50 p-4 text-sm whitespace-pre-wrap font-mono">
+                    {preview.text}
+                  </pre>
+                  {preview.truncated && (
+                    <p className="text-xs text-gray-500">
+                      This preview is truncated - download the file to see the rest.
+                    </p>
+                  )}
+                </>
               ) : (
                 <div className="text-center py-12 text-gray-500">
                   <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                  <p>Preview isn't available for {preview.doc.document_type} files.</p>
+                  <p>{preview.message}</p>
                 </div>
               )}
               <div className="flex justify-end">
-                <Button variant="outline" onClick={() => window.open(preview.url, "_blank", "noopener,noreferrer")}>
+                <Button variant="outline" onClick={() => handleOpen(preview.doc)}>
                   <ExternalLink className="w-4 h-4 mr-2" />
                   Open in New Tab
                 </Button>

@@ -217,6 +217,16 @@ export const resolveDocumentUrl = async (key?: string | null): Promise<string> =
     : `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
 };
 
+// Browsers can't render DOCX/legacy DOC inline, so the document preview
+// dialog falls back to this for non-PDF/image files: ask the backend to
+// extract plain text (same libraries used for résumé parsing) and render
+// that instead of a dead end. Throws on unsupported/empty files - the caller
+// is expected to show that message rather than treat it as a hard error.
+export const fetchDocumentPreviewText = async (key: string): Promise<{ text: string; truncated: boolean }> => {
+  const response = await apiClient.get<{ text: string; truncated: boolean }>("/files/preview-text", { key });
+  return response.data.data!;
+};
+
 // Health check
 export const healthCheck = async (): Promise<boolean> => {
   try {

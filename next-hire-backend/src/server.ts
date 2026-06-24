@@ -68,7 +68,33 @@ const limiter = rateLimit({
 });
 
 // Middleware
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+// Document previews (Job/Candidate/etc. "View" action) embed the resolved
+// file URL in an <iframe> on the frontend's origin. Helmet's default CSP
+// ships "frame-ancestors 'self'", which blocks exactly that - the frontend
+// (a different origin from this API) can never frame anything served here,
+// breaking PDF/image preview for locally-stored documents (S3-hosted ones
+// aren't affected since the iframe points at S3, not this API). Widen
+// frame-ancestors to the same origins already trusted for CORS below.
+const frameAncestors =
+  process.env.NODE_ENV === "production"
+    ? [
+        "'self'",
+        "https://*.amplifyapp.com",
+        ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+      ]
+    : ["'self'", "http://localhost:3000", "http://localhost:5173", "http://localhost:8080"];
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "frame-ancestors": frameAncestors,
+      },
+    },
+  })
+);
 app.use(
   cors({
     origin:

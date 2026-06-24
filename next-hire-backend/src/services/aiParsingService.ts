@@ -30,19 +30,27 @@ export class AIParsingError extends Error {}
  * EmptyDocumentError when no readable text could be found (e.g. scanned PDFs).
  */
 export async function extractText(filePath: string, originalName: string): Promise<string> {
+  const buffer = await fs.readFile(filePath);
+  return extractTextFromBuffer(buffer, originalName);
+}
+
+/**
+ * Same extraction as extractText, but from an in-memory buffer rather than a
+ * local file path - lets callers that already have the file's bytes (e.g.
+ * fetched from S3 for a document preview) skip writing a temp file first.
+ */
+export async function extractTextFromBuffer(buffer: Buffer, originalName: string): Promise<string> {
   const ext = path.extname(originalName).toLowerCase();
   let text = "";
 
   if (ext === ".pdf") {
-    const buffer = await fs.readFile(filePath);
     const data = await pdfParse(buffer);
     text = data.text || "";
   } else if (ext === ".docx") {
-    const buffer = await fs.readFile(filePath);
     const result = await mammoth.extractRawText({ buffer });
     text = result.value || "";
   } else if (ext === ".txt") {
-    text = await fs.readFile(filePath, "utf-8");
+    text = buffer.toString("utf-8");
   } else if (ext === ".doc") {
     throw new UnsupportedFileTypeError(
       "Legacy .doc files are not supported. Please upload a PDF, DOCX, or TXT file."
