@@ -67,6 +67,7 @@ import {
   Loader2,
   AlertCircle,
   Activity,
+  RefreshCw,
 } from "lucide-react";
 import {
   Dialog,
@@ -114,6 +115,7 @@ import { Separator } from "@/components/ui/separator";
 import { ExpandableText } from "@/components/ExpandableText";
 import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
+import { useJobProfitability, formatPct } from "@/hooks/useJobProfitability";
 import { formatCompactRange } from "@/lib/format";
 import type { TeamMember, Task, TaskPriority, TaskStatus, JobTeamMember, JobTeamMemberRole } from "@/services/recruiterService";
 import { TASK_STATUS_LABELS, TASK_STATUS_OPTIONS } from "@/services/recruiterService";
@@ -267,6 +269,21 @@ const JobDetail = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
   const { toast } = useToast();
+  const profitabilityState = useJobProfitability(id);
+
+  // Warn (don't block) if the user switches away from the Profitability tab
+  // with unsaved edits - the panel has no autosave, so those edits are
+  // otherwise silently lost the moment another tab unmounts the inputs.
+  const handleTabChange = (next: string) => {
+    if (activeTab === "profitability" && next !== "profitability" && profitabilityState.isDirty) {
+      toast({
+        title: "Unsaved profitability changes",
+        description: "Your edits on the Profitability tab haven't been saved.",
+        variant: "destructive",
+      });
+    }
+    setActiveTab(next);
+  };
 
   // Job data - fetched from the recruiter-scoped endpoint so the same
   // request resolves the client, client contact, primary recruiter, and
@@ -1217,18 +1234,20 @@ const JobDetail = () => {
     );
   }
 
-  // Real per-stage elapsed-time stats (Process Timeline Stats table + Stats tab summary cards)
+  // Real per-stage elapsed-time stats (Process Timeline Stats table + Stats tab summary cards).
+  // Clamp every duration to >= 0 - clock skew or an out-of-order updated_at
+  // should never surface as a negative/nonsensical duration in the UI.
   const stageDurations: { label: string; hours: number }[] = [];
   if (job.created_at && job.updated_at) {
     stageDurations.push({
       label: "Created",
-      hours: (new Date(job.updated_at).getTime() - new Date(job.created_at).getTime()) / (1000 * 60 * 60),
+      hours: Math.max(0, (new Date(job.updated_at).getTime() - new Date(job.created_at).getTime()) / (1000 * 60 * 60)),
     });
   }
   if (job.status === "active" && job.updated_at) {
     stageDurations.push({
       label: "Active",
-      hours: (new Date().getTime() - new Date(job.updated_at).getTime()) / (1000 * 60 * 60),
+      hours: Math.max(0, (new Date().getTime() - new Date(job.updated_at).getTime()) / (1000 * 60 * 60)),
     });
   }
   kanbanColumns.forEach((col) => {
@@ -1242,18 +1261,24 @@ const JobDetail = () => {
     );
     stageDurations.push({
       label: col.title,
-      hours:
+      hours: Math.max(
+        0,
         (new Date(newest.updated_at || newest.created_at).getTime() -
           new Date(oldest.updated_at || oldest.created_at).getTime()) /
-        (1000 * 60 * 60),
+          (1000 * 60 * 60)
+      ),
     });
   });
-  const avgStageTime =
-    stageDurations.length > 0 ? stageDurations.reduce((sum, s) => sum + s.hours, 0) / stageDurations.length : 0;
+  const hasStageData = stageDurations.length > 0;
+  const avgStageTime = hasStageData ? stageDurations.reduce((sum, s) => sum + s.hours, 0) / stageDurations.length : 0;
   const longestStage = stageDurations.reduce(
     (max, s) => (s.hours > max.hours ? s : max),
     { label: "—", hours: 0 }
   );
+  // Hiring efficiency: % of sourced candidates who were ultimately hired.
+  // Undefined (not 0%) until there's at least one candidate to measure against.
+  const hasEfficiencyData = totalCandidates > 0;
+  const efficiencyScore = hasEfficiencyData ? (hiredCandidates / totalCandidates) * 100 : 0;
 
   return (
     <div className="space-y-6">
@@ -1489,7 +1514,22 @@ const JobDetail = () => {
                       {job.job_type === "contract" ? "Bill Rate" : "Estimated Pay Rate"}
                     </div>
                   </div>
-                  {/* Removed static margin percentages - these should come from backend if needed */}
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {profitabilityState.loading
+                        ? "…"
+                        : formatPct(profitabilityState.totals.grossMargin, profitabilityState.totals.totalRevenue)}
+                    </div>
+                    <div className="text-sm text-gray-600">Gross Margin %</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-indigo-600">
+                      {profitabilityState.loading
+                        ? "…"
+                        : formatPct(profitabilityState.totals.netMargin, profitabilityState.totals.totalRevenue)}
+                    </div>
+                    <div className="text-sm text-gray-600">Net Margin %</div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1499,7 +1539,7 @@ const JobDetail = () => {
 
       {/* Enhanced Tabs */}
       <Card className="card-gradient border-green-200/50 shadow-lg">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <div className="px-6 pt-6 pb-2">
             <TabsList className={`grid w-full lg:w-auto bg-gradient-to-r from-green-50 to-blue-50 border border-green-200/50 ${user?.role === "recruiter" ? "grid-cols-9" : "grid-cols-5"}`}>
               <TabsTrigger
@@ -1884,6 +1924,11 @@ const JobDetail = () => {
                   await recruiterService.addJobAttachment(id, data);
                   refresh();
                 }}
+                onDelete={async (attachmentId) => {
+                  if (!id) return;
+                  await recruiterService.deleteJobAttachment(id, attachmentId);
+                  refresh();
+                }}
               />
             </TabsContent>
 
@@ -2092,7 +2137,7 @@ const JobDetail = () => {
               </Card>
 
               {/* Summary Stats Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card className="card-gradient border-blue-200/50 shadow-lg">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm bg-gradient-to-r from-blue-700 to-blue-600 bg-clip-text text-transparent">
@@ -2120,7 +2165,9 @@ const JobDetail = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-gray-800">{avgStageTime.toFixed(1)} hrs</div>
+                    <div className="text-2xl font-bold text-gray-800">
+                      {hasStageData ? `${avgStageTime.toFixed(1)} hrs` : "N/A"}
+                    </div>
                     <p className="text-xs text-gray-600">Average per stage</p>
                   </CardContent>
                 </Card>
@@ -2132,61 +2179,36 @@ const JobDetail = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-gray-800">{longestStage.hours.toFixed(1)} hrs</div>
-                    <p className="text-xs text-gray-600">{longestStage.label} stage</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="card-gradient border-purple-200/50 shadow-lg">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm bg-gradient-to-r from-purple-700 to-purple-600 bg-clip-text text-transparent">
-                      Applications
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
                     <div className="text-2xl font-bold text-gray-800">
-                      {submissions.length}
+                      {hasStageData ? `${longestStage.hours.toFixed(1)} hrs` : "N/A"}
                     </div>
-                    <p className="text-xs text-gray-600">Total applications</p>
+                    <p className="text-xs text-gray-600">{hasStageData ? `${longestStage.label} stage` : "No stage data yet"}</p>
                   </CardContent>
                 </Card>
 
-                <Card className="card-gradient border-orange-200/50 shadow-lg">
+                <Card className="card-gradient border-emerald-200/50 shadow-lg">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm bg-gradient-to-r from-orange-700 to-orange-600 bg-clip-text text-transparent">
-                      Positions
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-gray-800">
-                      {job.positions_available || 1}
-                    </div>
-                    <p className="text-xs text-gray-600">Available positions</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="card-gradient border-green-200/50 shadow-lg">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
-                      Priority
+                    <CardTitle className="text-sm bg-gradient-to-r from-emerald-700 to-emerald-600 bg-clip-text text-transparent">
+                      Efficiency Score
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div
                       className={`text-2xl font-bold ${
-                        job.priority === "high"
-                          ? "text-red-600"
-                          : job.priority === "medium"
+                        !hasEfficiencyData
+                          ? "text-gray-800"
+                          : efficiencyScore >= 50
+                          ? "text-green-600"
+                          : efficiencyScore >= 20
                           ? "text-yellow-600"
-                          : "text-green-600"
+                          : "text-red-600"
                       }`}
                     >
-                      {job.priority
-                        ? job.priority.charAt(0).toUpperCase() +
-                          job.priority.slice(1)
-                        : "Medium"}
+                      {hasEfficiencyData ? `${efficiencyScore.toFixed(1)}%` : "N/A"}
                     </div>
-                    <p className="text-xs text-gray-600">Job priority</p>
+                    <p className="text-xs text-gray-600">
+                      {hasEfficiencyData ? `${hiredCandidates} of ${totalCandidates} hired` : "No candidates sourced yet"}
+                    </p>
                   </CardContent>
                 </Card>
               </div>
@@ -2197,10 +2219,68 @@ const JobDetail = () => {
                 <Card className="card-gradient border-green-200/50 shadow-lg">
                   <CardHeader>
                     <div className="flex items-center justify-between flex-wrap gap-3">
-                      <CardTitle className="text-xl bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
-                        Job Tasks
-                      </CardTitle>
-                      <Dialog open={showAddTask} onOpenChange={setShowAddTask}>
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <CardTitle className="text-xl bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
+                          Job Tasks
+                        </CardTitle>
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="text-green-600">Total: {taskCounts.total}</span>
+                          <span className="text-blue-600">Completed: {taskCounts.completed}</span>
+                          <span className="text-orange-600">Pending: {taskCounts.pending}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="relative w-44">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <Input
+                            value={taskSearch}
+                            onChange={(e) => setTaskSearch(e.target.value)}
+                            placeholder="Search tasks..."
+                            className="pl-10 border-green-200 focus:border-green-400"
+                          />
+                        </div>
+                        <Select value={taskStatusFilter} onValueChange={setTaskStatusFilter}>
+                          <SelectTrigger className="w-40 border-green-200">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Tasks</SelectItem>
+                            {TASK_STATUS_OPTIONS.map((status) => (
+                              <SelectItem key={status} value={status}>
+                                {TASK_STATUS_LABELS[status]}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="high">High Priority</SelectItem>
+                            <SelectItem value="medium">Medium Priority</SelectItem>
+                            <SelectItem value="low">Low Priority</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Select value={taskSort} onValueChange={(v) => setTaskSort(v as typeof taskSort)}>
+                          <SelectTrigger className="w-32 border-green-200">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="due_date">Due Date</SelectItem>
+                            <SelectItem value="priority">Priority</SelectItem>
+                            <SelectItem value="status">Status</SelectItem>
+                            <SelectItem value="newest">Newest</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="border-green-200"
+                              onClick={() => fetchTasks()}
+                              disabled={tasksLoading}
+                            >
+                              <RefreshCw className={`w-4 h-4 ${tasksLoading ? "animate-spin" : ""}`} />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Refresh</TooltipContent>
+                        </Tooltip>
+                        <Dialog open={showAddTask} onOpenChange={setShowAddTask}>
                           <DialogTrigger asChild>
                             <Button size="sm" className="bg-gradient-to-r from-green-500 to-green-600">
                               <Plus className="w-4 h-4 mr-1" />
@@ -2279,54 +2359,8 @@ const JobDetail = () => {
                               </Button>
                             </div>
                           </DialogContent>
-                      </Dialog>
-                    </div>
-
-                    {/* Stats */}
-                    <div className="flex items-center gap-6 text-sm">
-                      <span className="text-green-600">Total: {taskCounts.total}</span>
-                      <span className="text-blue-600">Completed: {taskCounts.completed}</span>
-                      <span className="text-orange-600">Pending: {taskCounts.pending}</span>
-                    </div>
-
-                    {/* Filters and Search */}
-                    <div className="flex items-center gap-2 flex-wrap pt-4 border-t">
-                      <div className="relative flex-1 max-w-sm">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <Input
-                          value={taskSearch}
-                          onChange={(e) => setTaskSearch(e.target.value)}
-                          placeholder="Search tasks..."
-                          className="pl-10 border-green-200 focus:border-green-400"
-                        />
+                        </Dialog>
                       </div>
-                      <Select value={taskStatusFilter} onValueChange={setTaskStatusFilter}>
-                        <SelectTrigger className="w-40 border-green-200">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Tasks</SelectItem>
-                          {TASK_STATUS_OPTIONS.map((status) => (
-                            <SelectItem key={status} value={status}>
-                              {TASK_STATUS_LABELS[status]}
-                            </SelectItem>
-                          ))}
-                          <SelectItem value="high">High Priority</SelectItem>
-                          <SelectItem value="medium">Medium Priority</SelectItem>
-                          <SelectItem value="low">Low Priority</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Select value={taskSort} onValueChange={(v) => setTaskSort(v as typeof taskSort)}>
-                        <SelectTrigger className="w-32 border-green-200">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="due_date">Due Date</SelectItem>
-                          <SelectItem value="priority">Priority</SelectItem>
-                          <SelectItem value="status">Status</SelectItem>
-                          <SelectItem value="newest">Newest</SelectItem>
-                        </SelectContent>
-                      </Select>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -2734,7 +2768,14 @@ const JobDetail = () => {
 
             {user?.role === "recruiter" && (
               <TabsContent value="profitability" className="space-y-6 mt-0">
-                {id && <JobProfitabilityPanel jobId={id} />}
+                <JobProfitabilityPanel
+                  profitability={profitabilityState.profitability}
+                  loading={profitabilityState.loading}
+                  saving={profitabilityState.saving}
+                  totals={profitabilityState.totals}
+                  updateDraft={profitabilityState.updateDraft}
+                  onSave={profitabilityState.handleSave}
+                />
               </TabsContent>
             )}
           </div>

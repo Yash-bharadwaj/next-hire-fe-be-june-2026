@@ -2098,7 +2098,10 @@ const AddNewJob = () => {
           </Card>
 
           {/* Navigation Buttons */}
-          <div className="flex justify-between pt-6">
+          {/* mb-24 keeps these clear of the fixed bottom-right Maya chatbot
+              launcher, which otherwise sits directly on top of "Next" on
+              shorter steps. */}
+          <div className="flex justify-between pt-6 mb-24">
             <Button
               type="button"
               variant="outline"

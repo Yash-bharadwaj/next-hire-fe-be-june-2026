@@ -744,6 +744,18 @@ class RecruiterService {
   }
 
   /**
+   * Delete an attachment from a job
+   */
+  async deleteJobAttachment(jobId: string, attachmentId: string): Promise<ApiResponse> {
+    try {
+      const response = await apiClient.delete<ApiResponse>(`/recruiter/jobs/${jobId}/attachments/${attachmentId}`);
+      return response.data;
+    } catch (error: any) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
    * Source candidates into a job's sourcing funnel
    */
   async sourceCandidates(

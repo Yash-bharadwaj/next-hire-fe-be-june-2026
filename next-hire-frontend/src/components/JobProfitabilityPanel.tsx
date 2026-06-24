@@ -1,22 +1,30 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { TrendingUp, DollarSign, Briefcase, Clock, Plus, Trash2, Save, Loader2, ChevronDown, Target, Star } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { recruiterService, JobProfitability } from "@/services/recruiterService";
+import { JobProfitability } from "@/services/recruiterService";
+import { ProfitabilityTotals, formatPct } from "@/hooks/useJobProfitability";
 
 interface JobProfitabilityPanelProps {
-  jobId: string;
+  profitability: JobProfitability | null;
+  loading: boolean;
+  saving: boolean;
+  totals: ProfitabilityTotals;
+  updateDraft: (updater: (current: JobProfitability) => JobProfitability) => void;
+  onSave: () => Promise<boolean>;
 }
 
-export const JobProfitabilityPanel = ({ jobId }: JobProfitabilityPanelProps) => {
-  const { toast } = useToast();
-  const [profitability, setProfitability] = useState<JobProfitability | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+export const JobProfitabilityPanel = ({
+  profitability,
+  loading,
+  saving,
+  totals,
+  updateDraft,
+  onSave,
+}: JobProfitabilityPanelProps) => {
   const [openSections, setOpenSections] = useState({
     revenue: true,
     directCost: true,
@@ -26,95 +34,7 @@ export const JobProfitabilityPanel = ({ jobId }: JobProfitabilityPanelProps) => 
   const toggleSection = (key: keyof typeof openSections) =>
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const fetchProfitability = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await recruiterService.getJobProfitability(jobId);
-      setProfitability(res.data.profitability);
-    } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err?.response?.data?.message || "Failed to load profitability",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId]);
-
-  useEffect(() => {
-    fetchProfitability();
-  }, [fetchProfitability]);
-
-  const updateDraft = (updater: (current: JobProfitability) => JobProfitability) => {
-    setProfitability((prev) => (prev ? updater(prev) : prev));
-  };
-
-  const handleSave = async () => {
-    if (!profitability) return;
-    setSaving(true);
-    try {
-      const res = await recruiterService.updateJobProfitability(jobId, {
-        revenue: profitability.revenue,
-        direct_cost: profitability.direct_cost,
-        overheads: profitability.overheads,
-        one_time_costs: profitability.one_time_costs,
-      });
-      setProfitability(res.data.profitability);
-      toast({ title: "Profitability saved" });
-    } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err?.response?.data?.message || "Failed to save profitability",
-        variant: "destructive",
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const totals = (() => {
-    if (!profitability) {
-      return {
-        totalRevenue: 0,
-        totalDirectCost: 0,
-        totalOverheads: 0,
-        totalOneTimeCosts: 0,
-        grossMargin: 0,
-        netMarginAfterOverheads: 0,
-        netMargin: 0,
-      };
-    }
-    const { revenue, direct_cost, overheads, one_time_costs } = profitability;
-    const totalRevenue =
-      revenue.billRate.rate * revenue.billRate.hours +
-      revenue.overTime.rate * revenue.overTime.hours +
-      revenue.incentives.amount;
-    const totalDirectCost =
-      direct_cost.payRate.rate * direct_cost.payRate.hours +
-      direct_cost.otPayRate.rate * direct_cost.otPayRate.hours +
-      direct_cost.discount.amount +
-      direct_cost.vendorCommission.amount;
-    const totalOverheads =
-      overheads.recruiterCommission + overheads.employeeBenefits + overheads.perDiems + (overheads.employerTaxes ?? 0);
-    const totalOneTimeCosts = one_time_costs.reduce((sum, c) => sum + (c.amount || 0), 0);
-    const grossMargin = totalRevenue - totalDirectCost;
-    const netMarginAfterOverheads = grossMargin - totalOverheads;
-    const netMargin = netMarginAfterOverheads - totalOneTimeCosts;
-    return {
-      totalRevenue,
-      totalDirectCost,
-      totalOverheads,
-      totalOneTimeCosts,
-      grossMargin,
-      netMarginAfterOverheads,
-      netMargin,
-    };
-  })();
-
-  const pct = (amount: number) =>
-    totals.totalRevenue > 0 ? `${((amount / totals.totalRevenue) * 100).toFixed(1)}%` : "—";
+  const pct = (amount: number) => formatPct(amount, totals.totalRevenue);
 
   if (loading || !profitability) {
     return (
@@ -131,7 +51,7 @@ export const JobProfitabilityPanel = ({ jobId }: JobProfitabilityPanelProps) => 
         <h3 className="text-xl font-semibold bg-gradient-to-r from-green-700 to-green-600 bg-clip-text text-transparent">
           Profitability Analysis
         </h3>
-        <Button className="button-gradient shadow-md" onClick={handleSave} disabled={saving}>
+        <Button className="button-gradient shadow-md" onClick={onSave} disabled={saving}>
           <Save className="w-4 h-4 mr-2" />
           {saving ? "Saving..." : "Save"}
         </Button>

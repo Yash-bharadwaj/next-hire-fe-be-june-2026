@@ -17,6 +17,7 @@ import {
   updateJobNote,
   deleteJobNote,
   addJobAttachment,
+  deleteJobAttachment,
   getJobProfitability,
   updateJobProfitability,
   listJobTeamMembers,
@@ -48,6 +49,7 @@ import {
   buildUpdateNoteValidation,
   buildNoteIdValidation,
   buildAttachmentValidation,
+  buildAttachmentIdValidation,
 } from "../validators/noteValidators";
 
 const router = Router();
@@ -518,6 +520,12 @@ router.post(
   buildAttachmentValidation("job", "jobId"),
   validate,
   addJobAttachment
+);
+router.delete(
+  "/jobs/:jobId/attachments/:attachmentId",
+  buildAttachmentIdValidation("job", "jobId"),
+  validate,
+  deleteJobAttachment
 );
 router.get(
   "/jobs/:jobId/profitability",

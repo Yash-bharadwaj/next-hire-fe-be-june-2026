@@ -693,10 +693,18 @@ export const getJobDetails = asyncHandler(
       where: { job_id: jobId },
     });
 
+    // Private notes are personal to their author - every viewer who reaches
+    // this point is already "staff" on the job (isJobStaff above), so the
+    // only way "private" can mean anything here is per-author, not per-role.
+    const jobJson = job.toJSON() as any;
+    jobJson.notes_history = (jobJson.notes_history || []).filter(
+      (note: any) => !note.isPrivate || note.by === userId
+    );
+
     res.json({
       success: true,
       data: {
-        job,
+        job: jobJson,
         submission_count: submissionCount,
       },
     });
@@ -805,6 +813,7 @@ export const addJobNote = jobNoteHandlers.addNote;
 export const updateJobNote = jobNoteHandlers.updateNote;
 export const deleteJobNote = jobNoteHandlers.deleteNote;
 export const addJobAttachment = jobNoteHandlers.addAttachment;
+export const deleteJobAttachment = jobNoteHandlers.deleteAttachment;
 
 // Get a job's profitability breakdown (creates a zeroed-out row on first view)
 export const getJobProfitability = asyncHandler(

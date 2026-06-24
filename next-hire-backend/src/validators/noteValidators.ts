@@ -34,6 +34,11 @@ export const buildNoteIdValidation = (entityLabel: string, idParamName = "id") =
   param("noteId").notEmpty().withMessage("Valid note ID is required"),
 ];
 
+export const buildAttachmentIdValidation = (entityLabel: string, idParamName = "id") => [
+  param(idParamName).isUUID().withMessage(`Valid ${entityLabel} ID is required`),
+  param("attachmentId").notEmpty().withMessage("Valid attachment ID is required"),
+];
+
 export const buildAttachmentValidation = (entityLabel: string, idParamName = "id") => [
   param(idParamName).isUUID().withMessage(`Valid ${entityLabel} ID is required`),
   body("url").optional().trim().notEmpty().withMessage("Attachment URL cannot be empty"),

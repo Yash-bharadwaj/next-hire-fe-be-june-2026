@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
-import { FileText, Upload, Download, AlertTriangle, CheckCircle, XCircle, Filter, Plus, Loader2, Trash2 } from "lucide-react";
+import { FileText, Upload, Download, AlertTriangle, CheckCircle, XCircle, Search, Plus, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { resolveDocumentUrl } from "@/lib/api";
@@ -34,7 +35,6 @@ export interface DocumentUploadData {
 }
 
 type DocStatus = "active" | "expiring" | "expired";
-type FilterStatus = "all" | DocStatus;
 
 const formatFileSize = (bytes?: number): string => {
   if (!bytes) return "";
@@ -190,7 +190,7 @@ interface DocumentsPanelProps {
 }
 
 export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDelete }: DocumentsPanelProps) => {
-  const [filter, setFilter] = useState<FilterStatus>("all");
+  const [search, setSearch] = useState("");
   const [showUpload, setShowUpload] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
@@ -213,7 +213,7 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
     }
   };
 
-  const filteredDocuments = documents.filter((doc) => filter === "all" || getDocumentStatus(doc.valid_to) === filter);
+  const filteredDocuments = documents.filter((doc) => doc.name.toLowerCase().includes(search.trim().toLowerCase()));
 
   const statusCounts = {
     active: documents.filter((d) => getDocumentStatus(d.valid_to) === "active").length,
@@ -266,19 +266,14 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
             <span className="text-yellow-600">Expiring: {statusCounts.expiring}</span>
             <span className="text-red-600">Expired: {statusCounts.expired}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-500" />
-            <Select value={filter} onValueChange={(v) => setFilter(v as FilterStatus)}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Documents</SelectItem>
-                <SelectItem value="active">Active Only</SelectItem>
-                <SelectItem value="expiring">Expiring Soon</SelectItem>
-                <SelectItem value="expired">Expired Only</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="relative w-56">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
+              placeholder="Search documents..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
           </div>
         </div>
       </CardHeader>
@@ -288,7 +283,7 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
           {filteredDocuments.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p>No documents found for the selected filter.</p>
+              <p>{search ? "No documents match your search." : "No documents uploaded yet."}</p>
             </div>
           ) : (
             filteredDocuments.map((doc) => {
@@ -331,36 +326,44 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-gray-300 text-gray-700 hover:bg-gray-50"
-                        onClick={() => handleOpen(doc)}
-                        disabled={openingId === doc.id}
-                      >
-                        {openingId === doc.id ? (
-                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                        ) : (
-                          <Download className="w-4 h-4 mr-1" />
-                        )}
-                        Download
-                      </Button>
+                    <div className="flex items-center gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-gray-600 hover:bg-gray-100"
+                            onClick={() => handleOpen(doc)}
+                            disabled={openingId === doc.id}
+                          >
+                            {openingId === doc.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Download className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Download</TooltipContent>
+                      </Tooltip>
                       {onDelete && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-red-200 text-red-600 hover:bg-red-50"
-                          onClick={() => handleDelete(doc)}
-                          disabled={deletingId === doc.id}
-                        >
-                          {deletingId === doc.id ? (
-                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4 mr-1" />
-                          )}
-                          Delete
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-red-600 hover:bg-red-50"
+                              onClick={() => handleDelete(doc)}
+                              disabled={deletingId === doc.id}
+                            >
+                              {deletingId === doc.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Delete</TooltipContent>
+                        </Tooltip>
                       )}
                     </div>
                   </div>

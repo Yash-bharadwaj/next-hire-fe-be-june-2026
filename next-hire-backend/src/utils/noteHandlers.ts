@@ -190,5 +190,25 @@ export function createNoteHandlers<T extends NoteableRecord>(opts: NoteHandlersO
     });
   });
 
-  return { addNote, updateNote, deleteNote, addAttachment };
+  const deleteAttachment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { record } = await loadAuthorizedRecord(req);
+    const { attachmentId } = req.params;
+
+    const attachments = (record as any).attachments || [];
+    const index = attachments.findIndex((a: any) => a.id === attachmentId);
+    if (index === -1) {
+      throw createError("Attachment not found", 404);
+    }
+
+    attachments.splice(index, 1);
+    await record.update({ attachments });
+
+    res.json({
+      success: true,
+      message: "Attachment deleted successfully",
+      data: { attachments },
+    });
+  });
+
+  return { addNote, updateNote, deleteNote, addAttachment, deleteAttachment };
 }

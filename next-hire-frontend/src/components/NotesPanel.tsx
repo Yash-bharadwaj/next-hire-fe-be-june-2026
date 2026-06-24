@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { BookOpen, Search, PenTool, History, Tags, Edit, Share2, Trash2, Plus, Loader2 } from "lucide-react";
+import { BookOpen, Search, PenTool, History, Tags, Edit, Copy, Trash2, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -173,16 +174,8 @@ export const NotesPanel = ({
     }
   };
 
-  const handleShare = async (note: NoteRecord) => {
+  const handleCopy = async (note: NoteRecord) => {
     const text = `${note.title || "Note"}\n\n${note.content}\n\n— ${note.author}, ${format(new Date(note.at), "PPP")}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: note.title || "Note", text });
-        return;
-      } catch {
-        // user cancelled the share sheet or it failed - fall back to clipboard
-      }
-    }
     await navigator.clipboard.writeText(text);
     toast({ title: "Note copied to clipboard" });
   };
@@ -282,14 +275,60 @@ export const NotesPanel = ({
                       </span>
                     </div>
                   </div>
-                  <Badge className={cn("text-xs", categoryColor[note.category])}>{note.category}</Badge>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <Badge className={cn("text-xs", categoryColor[note.category])}>{note.category}</Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-blue-600 hover:bg-blue-50"
+                          onClick={() => openEditDialog(note)}
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Edit</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-gray-600 hover:bg-gray-100"
+                          onClick={() => handleCopy(note)}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-red-600 hover:bg-red-50"
+                          onClick={() => handleDelete(note)}
+                          disabled={deletingNoteId === note.id}
+                        >
+                          {deletingNoteId === note.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Delete</TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
                 <p className="text-gray-700 leading-relaxed mb-4 whitespace-pre-wrap">{note.content}</p>
 
                 {note.tags.length > 0 && (
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2">
                     <Tags className="w-4 h-4 text-gray-400" />
                     <div className="flex flex-wrap gap-1">
                       {note.tags.map((tag) => (
@@ -300,31 +339,6 @@ export const NotesPanel = ({
                     </div>
                   </div>
                 )}
-
-                <div className="flex items-center gap-2 pt-3 border-t">
-                  <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => openEditDialog(note)}>
-                    <Edit className="w-3 h-3 mr-1" />
-                    Edit
-                  </Button>
-                  <Button size="sm" variant="outline" className="text-gray-600 border-gray-200 hover:bg-gray-50" onClick={() => handleShare(note)}>
-                    <Share2 className="w-3 h-3 mr-1" />
-                    Share
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-red-600 border-red-200 hover:bg-red-50"
-                    onClick={() => handleDelete(note)}
-                    disabled={deletingNoteId === note.id}
-                  >
-                    {deletingNoteId === note.id ? (
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-3 h-3 mr-1" />
-                    )}
-                    Delete
-                  </Button>
-                </div>
               </CardContent>
             </Card>
           ))
@@ -385,10 +399,10 @@ export const NotesPanel = ({
               </div>
               <div className="flex items-end pb-1">
                 <div className="flex items-center gap-2">
-                  <Checkbox
+                  <Switch
                     id="add-private"
                     checked={addForm.isPrivate}
-                    onCheckedChange={(checked) => setAddForm({ ...addForm, isPrivate: !!checked })}
+                    onCheckedChange={(checked) => setAddForm({ ...addForm, isPrivate: checked })}
                   />
                   <Label htmlFor="add-private">Private note</Label>
                 </div>
@@ -450,10 +464,10 @@ export const NotesPanel = ({
               </div>
               <div className="flex items-end pb-1">
                 <div className="flex items-center gap-2">
-                  <Checkbox
+                  <Switch
                     id="edit-private"
                     checked={editForm.isPrivate}
-                    onCheckedChange={(checked) => setEditForm({ ...editForm, isPrivate: !!checked })}
+                    onCheckedChange={(checked) => setEditForm({ ...editForm, isPrivate: checked })}
                   />
                   <Label htmlFor="edit-private">Private note</Label>
                 </div>
