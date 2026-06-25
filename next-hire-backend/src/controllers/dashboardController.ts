@@ -215,16 +215,25 @@ const getRecruiterStats = async (userId: string) => {
     // Revenue = commission earned on placements this recruiter made,
     // compared against last month for the trend arrow shown on the card.
     const revenueForRange = async (from: Date, to: Date) => {
-      const result = await Placement.sum("commission_amount", {
+      const rows = await Placement.findAll({
         where: { recruiter_id: userId, start_date: { [Op.gte]: from, [Op.lt]: to } },
+        attributes: ["commission_amount", "salary_currency"],
+        raw: true,
       });
-      return Number(result) || 0;
+      const total = rows.reduce((sum, r: any) => sum + (Number(r.commission_amount) || 0), 0);
+      return { total, rows };
     };
-    const totalRevenue = await revenueForRange(startOfThisMonth, now);
-    const lastMonthRevenue = await revenueForRange(startOfLastMonth, startOfThisMonth);
+    const thisMonth = await revenueForRange(startOfThisMonth, now);
+    const lastMonth = await revenueForRange(startOfLastMonth, startOfThisMonth);
+    const totalRevenue = thisMonth.total;
+    const lastMonthRevenue = lastMonth.total;
     const revenueChangePercent = lastMonthRevenue > 0
       ? Math.round(((totalRevenue - lastMonthRevenue) / lastMonthRevenue) * 1000) / 10
       : null;
+    // null when this month's placements span more than one currency - a sum
+    // can't be labeled with a single currency symbol in that case.
+    const revenueCurrencies = new Set(thisMonth.rows.map((r: any) => r.salary_currency || "USD"));
+    const revenueCurrency = revenueCurrencies.size === 1 ? [...revenueCurrencies][0] : null;
 
     // Response time = average hours between a submission coming in and the
     // recruiter first reviewing it, for submissions on this recruiter's jobs.
@@ -264,6 +273,7 @@ const getRecruiterStats = async (userId: string) => {
         pendingSubmissions,
         totalPlacements,
         totalRevenue,
+        revenueCurrency,
         revenueChangePercent,
         avgResponseHours,
         responseTimeChangePercent,
@@ -288,6 +298,7 @@ const getRecruiterStats = async (userId: string) => {
         pendingSubmissions: 0,
         totalPlacements: 0,
         totalRevenue: 0,
+        revenueCurrency: null,
         revenueChangePercent: null,
         avgResponseHours: null,
         responseTimeChangePercent: null,

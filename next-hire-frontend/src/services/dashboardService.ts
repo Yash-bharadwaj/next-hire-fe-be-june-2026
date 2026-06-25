@@ -20,6 +20,8 @@ export interface DashboardStats {
     placements?: number;
     availableJobs?: number;
     totalRevenue?: number;
+    // null when this month's placements span more than one currency.
+    revenueCurrency?: string | null;
     revenueChangePercent?: number | null;
     avgResponseHours?: number | null;
     responseTimeChangePercent?: number | null;

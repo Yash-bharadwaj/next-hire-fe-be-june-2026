@@ -41,6 +41,7 @@ import { useJobs } from "@/hooks/useJobs";
 import { useAuth } from "@/contexts/AuthContext";
 import { jobService } from "@/services/jobService";
 import { toast } from "sonner";
+import { formatCurrency } from "@/lib/format";
 
 export default function JobMarketplace() {
   const navigate = useNavigate();
@@ -131,11 +132,11 @@ export default function JobMarketplace() {
     setSavedJobs(newSavedJobs);
   };
 
-  const formatSalary = (min?: number, max?: number) => {
+  const formatSalary = (min?: number, max?: number, currency: string = "USD") => {
     if (!min && !max) return "Salary not disclosed";
-    if (min && max) return `$${min.toLocaleString()} - $${max.toLocaleString()}`;
-    if (min) return `$${min.toLocaleString()}+`;
-    return `Up to $${max?.toLocaleString()}`;
+    if (min && max) return `${formatCurrency(min, currency)} - ${formatCurrency(max, currency)}`;
+    if (min) return `${formatCurrency(min, currency)}+`;
+    return `Up to ${formatCurrency(max!, currency)}`;
   };
 
   const formatDate = (dateString: string) => {
@@ -428,7 +429,7 @@ export default function JobMarketplace() {
                         </div>
                         <div className="flex items-center space-x-2">
                           <DollarSign className="h-4 w-4" />
-                          <span>{formatSalary(job.salary_min, job.salary_max)}</span>
+                          <span>{formatSalary(job.salary_min, job.salary_max, job.salary_currency)}</span>
                         </div>
                         <div className="flex items-center space-x-2">
                           <Briefcase className="h-4 w-4" />

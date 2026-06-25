@@ -429,11 +429,11 @@ const Submissions = () => {
     });
   };
 
-  const formatSalary = (amount?: number) => {
+  const formatSalary = (amount?: number, currency: string = "USD") => {
     if (!amount) return "Not specified";
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
@@ -857,7 +857,7 @@ const Submissions = () => {
                                     <DollarSign className="h-4 w-4" />
                                     <span>
                                       Expected:{" "}
-                                      {formatSalary(submission.expected_salary)}
+                                      {formatSalary(submission.expected_salary, submission.job?.salary_currency)}
                                     </span>
                                   </div>
                                   <div className="flex items-center space-x-2">
@@ -1070,7 +1070,7 @@ const Submissions = () => {
                         <div className="flex items-center space-x-2">
                           <DollarSign className="h-4 w-4" />
                           <span>
-                            Expected: {formatSalary(submission.expected_salary)}
+                            Expected: {formatSalary(submission.expected_salary, submission.job?.salary_currency)}
                           </span>
                         </div>
                       </div>

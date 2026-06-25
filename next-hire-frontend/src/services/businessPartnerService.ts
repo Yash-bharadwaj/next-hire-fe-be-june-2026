@@ -40,6 +40,9 @@ export interface BusinessPartnerDetailStats {
   totalPlacements: number;
   totalContacts: number;
   revenueGenerated: number;
+  // null when the underlying placements span more than one currency, since a
+  // single sum can't be labeled with one currency symbol in that case.
+  revenueCurrency: string | null;
 }
 
 export interface BusinessPartnerActivityItem {

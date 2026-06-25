@@ -71,10 +71,19 @@ import { CompanyFilter } from "@/components/CompanyFilter";
 import { toast } from "sonner";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { EmptyState } from "@/components/EmptyState";
+import { formatCurrency, formatCompactCurrency } from "@/lib/format";
 
 const _placementsStatsCache = {
   activePlacements: 0, completedPlacements: 0, totalPlacements: 0,
-  totalCommission: 0, avgSalary: 0, avgMargin: 0,
+  totalCommission: 0, avgSalary: 0, avgMargin: 0, currency: null as string | null,
+};
+
+// Sums across placements only make sense when they all share one currency -
+// adding 100000 INR to 100000 USD and labeling it "$200,000" would be wrong.
+// Returns the shared currency code, or null when the set is mixed/empty.
+const getSharedCurrency = (placements: { salary_currency?: string }[]): string | null => {
+  const currencies = new Set(placements.map((p) => p.salary_currency || "USD"));
+  return currencies.size === 1 ? [...currencies][0] : null;
 };
 
 const Placements = () => {
@@ -216,20 +225,22 @@ const Placements = () => {
     const totalSalary = companyFilteredPlacements.reduce((sum, p) => sum + (Number(p.salary) || 0), 0);
     const totalCommission = companyFilteredPlacements.reduce((sum, p) => sum + (Number(p.commission_amount) || 0), 0);
     const avgCommission = totalCommission / companyFilteredPlacements.length;
+    const reportCurrency = getSharedCurrency(companyFilteredPlacements);
+    const fmt = (amount: number) => (reportCurrency ? formatCurrency(amount, reportCurrency) : `${amount.toLocaleString()} (mixed currencies)`);
     const stats: ReportStat[] = [
       { label: "Total Placements", value: String(companyFilteredPlacements.length) },
-      { label: "Total Salary Value", value: `$${totalSalary.toLocaleString()}` },
-      { label: "Total Commission Revenue", value: `$${totalCommission.toLocaleString()}` },
-      { label: "Avg. Commission / Placement", value: `$${avgCommission.toLocaleString(undefined, { maximumFractionDigits: 0 })}` },
+      { label: "Total Salary Value", value: fmt(totalSalary) },
+      { label: "Total Commission Revenue", value: fmt(totalCommission) },
+      { label: "Avg. Commission / Placement", value: fmt(avgCommission) },
     ];
     const columns: CsvColumn<Placement>[] = [
       { header: "Placement ID", accessor: (p) => p.placement_id || p.id },
       { header: "Company", accessor: (p) => p.job?.company_name || "" },
       { header: "Candidate", accessor: (p) => `${p.candidate?.first_name || ""} ${p.candidate?.last_name || ""}`.trim() },
       { header: "Start Date", accessor: (p) => p.start_date || "" },
-      { header: "Salary", accessor: (p) => (p.salary != null ? `$${Number(p.salary).toLocaleString()}` : "") },
+      { header: "Salary", accessor: (p) => (p.salary != null ? formatCurrency(Number(p.salary), p.salary_currency) : "") },
       { header: "Commission %", accessor: (p) => (p.commission_percentage != null ? `${p.commission_percentage}%` : "") },
-      { header: "Commission Amount", accessor: (p) => (p.commission_amount != null ? `$${Number(p.commission_amount).toLocaleString()}` : "") },
+      { header: "Commission Amount", accessor: (p) => (p.commission_amount != null ? formatCurrency(Number(p.commission_amount), p.salary_currency) : "") },
       { header: "Status", accessor: (p) => p.status },
     ];
     downloadReportPdf(`revenue-report-${exportTimestamp()}.pdf`, "Revenue Report", stats, companyFilteredPlacements, columns);
@@ -283,19 +294,22 @@ const Placements = () => {
     const totalCommission = companyFilteredPlacements.reduce((sum, p) => sum + (Number(p.commission_amount) || 0), 0);
     const rated = companyFilteredPlacements.filter((p) => p.commission_percentage != null);
     const avgRate = rated.length ? rated.reduce((sum, p) => sum + (Number(p.commission_percentage) || 0), 0) / rated.length : 0;
+    const commissionReportCurrency = getSharedCurrency(companyFilteredPlacements);
+    const fmtCommission = (amount: number) =>
+      commissionReportCurrency ? formatCurrency(amount, commissionReportCurrency) : `${amount.toLocaleString()} (mixed currencies)`;
     const stats: ReportStat[] = [
       { label: "Total Placements", value: String(companyFilteredPlacements.length) },
-      { label: "Total Commission", value: `$${totalCommission.toLocaleString()}` },
+      { label: "Total Commission", value: fmtCommission(totalCommission) },
       { label: "Avg. Commission Rate", value: rated.length ? `${avgRate.toFixed(1)}%` : "N/A" },
-      { label: "Avg. Commission / Placement", value: `$${(totalCommission / companyFilteredPlacements.length).toLocaleString(undefined, { maximumFractionDigits: 0 })}` },
+      { label: "Avg. Commission / Placement", value: fmtCommission(totalCommission / companyFilteredPlacements.length) },
     ];
     const columns: CsvColumn<Placement>[] = [
       { header: "Placement ID", accessor: (p) => p.placement_id || p.id },
       { header: "Candidate", accessor: (p) => `${p.candidate?.first_name || ""} ${p.candidate?.last_name || ""}`.trim() },
       { header: "Company", accessor: (p) => p.job?.company_name || "" },
-      { header: "Salary", accessor: (p) => (p.salary != null ? `$${Number(p.salary).toLocaleString()}` : "") },
+      { header: "Salary", accessor: (p) => (p.salary != null ? formatCurrency(Number(p.salary), p.salary_currency) : "") },
       { header: "Commission %", accessor: (p) => (p.commission_percentage != null ? `${p.commission_percentage}%` : "") },
-      { header: "Commission Amount", accessor: (p) => (p.commission_amount != null ? `$${Number(p.commission_amount).toLocaleString()}` : "") },
+      { header: "Commission Amount", accessor: (p) => (p.commission_amount != null ? formatCurrency(Number(p.commission_amount), p.salary_currency) : "") },
     ];
     downloadReportPdf(`commission-report-${exportTimestamp()}.pdf`, "Commission Report", stats, companyFilteredPlacements, columns);
     toast.success("Commission report generated");
@@ -477,6 +491,7 @@ const Placements = () => {
         next.totalCommission = commission;
         next.avgSalary = salaryList.length > 0 ? salaryList.reduce((s, v) => s + v, 0) / salaryList.length : 0;
         next.avgMargin = marginList.length > 0 ? Math.round(marginList.reduce((s, v) => s + v, 0) / marginList.length) : 0;
+        next.currency = getSharedCurrency(placements);
 
         if (!stats) {
           next.activePlacements = placements.filter(p => p.status === "active").length;
@@ -529,7 +544,9 @@ const Placements = () => {
     {
       id: "commission",
       title: "Total Commission",
-      value: `$${(baseStats.totalCommission / 1000).toFixed(0)}K`,
+      value: baseStats.currency
+        ? formatCompactCurrency(baseStats.totalCommission, baseStats.currency) || "—"
+        : "Mixed",
       icon: DollarSign,
       color: "text-purple-700",
       gradientOverlay: "bg-gradient-to-br from-purple-400/30 via-purple-500/20 to-purple-600/30",
@@ -538,7 +555,9 @@ const Placements = () => {
     {
       id: "salary",
       title: "Avg Salary",
-      value: `$${(baseStats.avgSalary / 1000).toFixed(0)}K`,
+      value: baseStats.currency
+        ? formatCompactCurrency(baseStats.avgSalary, baseStats.currency) || "—"
+        : "Mixed",
       icon: TrendingUp,
       color: "text-indigo-700",
       gradientOverlay: "bg-gradient-to-br from-indigo-400/30 via-indigo-500/20 to-indigo-600/30",
@@ -615,12 +634,12 @@ const Placements = () => {
     }
   };
 
-  const formatSalary = (salary: string | number) => {
-    if (!salary) return '$0';
+  const formatSalary = (salary: string | number, currency: string = "USD") => {
+    if (!salary) return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 0 }).format(0);
     if (typeof salary === 'number') {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(salary);
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 0 }).format(salary);
     }
-    return salary?.includes('$') ? salary : `$${salary}`;
+    return salary;
   };
 
   const formatDate = (dateString: string) => {
@@ -719,8 +738,8 @@ const Placements = () => {
       field: 'salary',
       headerName: 'Salary',
       width: 100,
-      renderCell: (value: string) => (
-        <span className="text-gray-700 font-medium font-poppins text-xs whitespace-nowrap">{formatSalary(value)}</span>
+      renderCell: (value: string, row: any) => (
+        <span className="text-gray-700 font-medium font-poppins text-xs whitespace-nowrap">{formatSalary(value, row.salary_currency)}</span>
       )
     },
     {
@@ -747,8 +766,8 @@ const Placements = () => {
       field: 'commission',
       headerName: 'Commission',
       width: 100,
-      renderCell: (value: string) => (
-        <span className="text-green-700 font-medium font-poppins text-xs whitespace-nowrap">{formatSalary(value)}</span>
+      renderCell: (value: string, row: any) => (
+        <span className="text-green-700 font-medium font-poppins text-xs whitespace-nowrap">{formatSalary(value, row.salary_currency)}</span>
       )
     },
     {
@@ -984,6 +1003,7 @@ const Placements = () => {
                   placementDate: p.created_at || '',
                   salary: Number(p.salary) || 0,
                   commission: Number(p.commission_amount) || 0,
+                  salary_currency: p.salary_currency || "USD",
                   status: p.status || 'active',
                   duration: p.placement_type || 'Permanent',
                   recruiter: formatRecruiterName(p.recruiter),

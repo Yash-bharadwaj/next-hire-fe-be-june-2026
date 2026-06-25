@@ -84,6 +84,7 @@ import { recruiterService, Task, TaskPriority, TaskStatus, TeamMember, TASK_STAT
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { PageLoadingState } from "@/components/PageLoadingState";
+import { formatCurrency } from "@/lib/format";
 import { ActionsMenuTrigger } from "@/components/ActionsMenuTrigger";
 
 const formatTeamMemberName = (member: TeamMember) => {
@@ -456,7 +457,11 @@ const BusinessPartnerDetail = () => {
     { label: "Total Placements", value: String(detailStats?.totalPlacements ?? "—"), icon: Users, color: "text-green-600" },
     {
       label: "Revenue Generated",
-      value: detailStats ? `$${detailStats.revenueGenerated.toLocaleString()}` : "—",
+      value: !detailStats
+        ? "—"
+        : detailStats.revenueCurrency
+        ? formatCurrency(detailStats.revenueGenerated, detailStats.revenueCurrency)
+        : "Mixed",
       icon: DollarSign,
       color: "text-purple-600",
     },

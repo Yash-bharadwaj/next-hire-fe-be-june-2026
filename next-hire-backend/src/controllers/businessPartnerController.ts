@@ -708,7 +708,7 @@ export const getBusinessPartnerDetailStats = async (req: AuthenticatedRequest, r
       BusinessPartnerContact.count({ where: { business_partner_id: id } }),
       Placement.findAll({
         include: [{ model: Job, as: "job", where: { business_partner_id: id }, attributes: [] }],
-        attributes: ["id", "salary", "commission_amount"],
+        attributes: ["id", "salary", "commission_amount", "salary_currency"],
       }),
     ]);
 
@@ -717,10 +717,14 @@ export const getBusinessPartnerDetailStats = async (req: AuthenticatedRequest, r
       (sum, p) => sum + (Number((p as any).commission_amount) || Number((p as any).salary) || 0),
       0
     );
+    // A sum only means something if every placement is in the same currency -
+    // adding INR and USD amounts together would produce a meaningless total.
+    const currencies = new Set(placements.map((p) => (p as any).salary_currency || "USD"));
+    const revenueCurrency = currencies.size === 1 ? [...currencies][0] : null;
 
     res.status(200).json({
       success: true,
-      data: { activeJobs, totalJobs, totalPlacements, totalContacts, revenueGenerated },
+      data: { activeJobs, totalJobs, totalPlacements, totalContacts, revenueGenerated, revenueCurrency },
     });
   } catch (error) {
     logger.error("Error fetching business partner detail stats:", error);

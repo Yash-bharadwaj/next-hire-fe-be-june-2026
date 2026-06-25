@@ -34,6 +34,7 @@ import { useDashboard } from "@/hooks/useDashboard";
 import { useAuth } from "@/contexts/AuthContext";
 import { recruiterService, RecruiterGoals } from "@/services/recruiterService";
 import { downloadCsv } from "@/utils/csv";
+import { formatCurrency } from "@/lib/format";
 
 const Dashboards = () => {
   const navigate = useNavigate();
@@ -105,7 +106,11 @@ const Dashboards = () => {
     return [
       {
         title: "Total Revenue",
-        value: `$${(stats.overview.totalRevenue || 0).toLocaleString()}`,
+        value: stats.overview.revenueCurrency
+          ? formatCurrency(stats.overview.totalRevenue || 0, stats.overview.revenueCurrency)
+          : stats.overview.totalRevenue
+          ? "Mixed"
+          : formatCurrency(0),
         subtext: revenueChange,
         increaseIsGood: true,
         icon: DollarSign,
