@@ -82,6 +82,19 @@ export function OutlookCalendar() {
     return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   };
 
+  // Relative-day hint shown next to the date, so it's unmistakable that
+  // navigating actually changed which day's schedule is on screen.
+  const relativeDayLabel = (date: Date) => {
+    const diffDays = Math.round(
+      (new Date(date.toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) /
+        (1000 * 60 * 60 * 24)
+    );
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Tomorrow";
+    if (diffDays === -1) return "Yesterday";
+    return null;
+  };
+
   const navigateDay = (direction: "prev" | "next") => {
     setCurrentDate((prev) => {
       const newDate = new Date(prev);
@@ -181,7 +194,7 @@ export function OutlookCalendar() {
   };
 
   return (
-    <Card>
+    <Card className="flex h-full flex-col">
       <CardHeader className="gap-3 pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2 text-lg font-semibold">
@@ -204,8 +217,9 @@ export function OutlookCalendar() {
                 variant="ghost"
                 size="sm"
                 onClick={goToToday}
-                className={`h-8 rounded-none px-3 text-xs font-medium ${
-                  isToday() ? "text-green-700" : "text-gray-600 hover:text-gray-900"
+                disabled={isToday()}
+                className={`h-8 rounded-none px-3 text-xs font-medium transition-colors disabled:opacity-100 ${
+                  isToday() ? "bg-green-50 text-green-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                 }`}
               >
                 Today
@@ -239,7 +253,14 @@ export function OutlookCalendar() {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm font-medium text-gray-600">{formatDate(currentDate)}</p>
+          <p className="flex items-center gap-2 text-sm font-medium text-gray-600">
+            {formatDate(currentDate)}
+            {relativeDayLabel(currentDate) && (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                {relativeDayLabel(currentDate)}
+              </span>
+            )}
+          </p>
 
           <div className="flex flex-wrap gap-2">
             {TASK_FILTER_OPTIONS.map((opt) => (
@@ -261,14 +282,14 @@ export function OutlookCalendar() {
       </CardHeader>
 
       {!isCollapsed && (
-        <CardContent className="pt-0">
+        <CardContent className="flex flex-1 flex-col pt-0">
           {loading ? (
-            <div className="flex items-center justify-center py-10 text-gray-500">
+            <div className="flex flex-1 items-center justify-center text-gray-500">
               <Loader2 className="w-5 h-5 animate-spin mr-2" />
               Loading calendar...
             </div>
           ) : (
-            <div className="grid max-h-96 divide-y divide-gray-100 overflow-y-auto rounded-lg border border-gray-200">
+            <div className="grid max-h-[30rem] flex-1 auto-rows-min divide-y divide-gray-100 overflow-y-auto rounded-lg border border-gray-200">
               {timeSlots.map((slot) => {
                 const event = getEventAtTimeSlot(slot.timeKey);
                 return (

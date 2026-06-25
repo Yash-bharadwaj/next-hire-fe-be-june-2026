@@ -441,7 +441,7 @@ const Home = () => {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Recent Activity / News Feed */}
         <div className="lg:col-span-3">
-          <Card>
+          <Card className="flex h-full flex-col">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg font-semibold">Activity Feed</CardTitle>
               <div className="flex items-center space-x-2">
@@ -475,7 +475,7 @@ const Home = () => {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1">
               <div className="space-y-4">
                 {selectedNewsCategory === "my-top-customers" ? (
                   topCustomersLoading ? (
