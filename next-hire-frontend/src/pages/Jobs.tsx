@@ -1159,11 +1159,13 @@ const Jobs = () => {
           <DialogHeader>
             <DialogTitle>AI Pay Rate Estimation Prompt</DialogTitle>
             <DialogDescription>
-              This prompt is sent to the AI (with the job's title, location, skills, experience
-              level, work schedule, and description filled in) to estimate a pay/bill rate range
-              automatically when a new job is created. Use {"{{job_title}}"}, {"{{location}}"},{" "}
-              {"{{skills}}"}, {"{{experience_level}}"}, {"{{work_schedule}}"}, and{" "}
-              {"{{job_description}}"} as placeholders.
+              This prompt is sent to the AI (with the job's title, location, currency, skills,
+              experience level, work schedule, and description filled in) to estimate a pay/bill
+              rate range automatically when a new job is created. The estimate is always
+              expressed in the job's own salary currency, never converted to USD. Use{" "}
+              {"{{job_title}}"}, {"{{location}}"}, {"{{currency}}"}, {"{{skills}}"},{" "}
+              {"{{experience_level}}"}, {"{{work_schedule}}"}, and {"{{job_description}}"} as
+              placeholders.
             </DialogDescription>
           </DialogHeader>
           {loadingPayRatePrompt ? (

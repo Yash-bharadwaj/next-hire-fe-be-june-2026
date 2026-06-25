@@ -116,7 +116,7 @@ import { ExpandableText } from "@/components/ExpandableText";
 import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
 import { useJobProfitability, formatPct } from "@/hooks/useJobProfitability";
-import { formatCompactRange } from "@/lib/format";
+import { formatCompactRange, formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TeamMember, Task, TaskPriority, TaskStatus, JobTeamMember, JobTeamMemberRole } from "@/services/recruiterService";
 import { TASK_STATUS_LABELS, TASK_STATUS_OPTIONS } from "@/services/recruiterService";
@@ -1022,72 +1022,72 @@ const JobDetail = () => {
     return statusMap[status] || "new_candidate";
   };
 
-  useEffect(() => {
-    const fetchSubmissionStats = async () => {
-      if (!id) return;
-      
-      try {
-        // Fetch all submissions for this job using pagination
-        let allSubmissions: any[] = [];
-        let currentPage = 1;
-        let hasMore = true;
-        const limit = 100; // Backend max limit
-        
-        while (hasMore) {
-          const response = await recruiterService.getJobSubmissions(id, {
-            page: currentPage,
-            limit: limit,
-          });
-          
-          const submissions = response.data.submissions || [];
-          allSubmissions = [...allSubmissions, ...submissions];
-          
-          const pagination = response.data.pagination || {};
-          const totalPages = pagination.total_pages || pagination.totalPages || 1;
-          
-          if (currentPage >= totalPages || submissions.length < limit) {
-            hasMore = false;
-          } else {
-            currentPage++;
-          }
-        }
-        
-        // Store submissions for kanban display
-        setSubmissions(allSubmissions);
-        
-        // Map submissions to candidates format for kanban
-        const mappedCandidates = allSubmissions.map((sub: any, index: number) => ({
-          id: sub.id || `sub-${index}`,
-          name: `${sub.candidate?.first_name || ""} ${sub.candidate?.last_name || ""}`.trim() || "Unknown Candidate",
-          experience: `${sub.candidate?.years_of_experience || 0} years`,
-          location: sub.candidate?.location || sub.job?.location || "Unknown",
-          score: sub.ai_score ?? null,
-          stage: mapSubmissionStatusToStage(sub.status),
-          notes: sub.notes || sub.cover_letter?.substring(0, 100),
-          submission: sub, // Keep reference to original submission
-        }));
-        setCandidates(mappedCandidates);
-        
-        const stats = {
-          total: allSubmissions.length,
-          hired: allSubmissions.filter((s: any) => s.status === "hired").length,
-          rejected: allSubmissions.filter((s: any) => s.status === "rejected").length,
-          active: allSubmissions.filter((s: any) =>
-            !["hired", "rejected"].includes(s.status)
-          ).length,
-        };
-        
-        setSubmissionStats(stats);
-      } catch (error) {
-        console.error("Error fetching submission stats:", error);
-        // Keep defaults (0) on error
-      }
-    };
+  const fetchSubmissionStats = useCallback(async () => {
+    if (!id) return;
 
+    try {
+      // Fetch all submissions for this job using pagination
+      let allSubmissions: any[] = [];
+      let currentPage = 1;
+      let hasMore = true;
+      const limit = 100; // Backend max limit
+
+      while (hasMore) {
+        const response = await recruiterService.getJobSubmissions(id, {
+          page: currentPage,
+          limit: limit,
+        });
+
+        const submissions = response.data.submissions || [];
+        allSubmissions = [...allSubmissions, ...submissions];
+
+        const pagination = response.data.pagination || {};
+        const totalPages = pagination.total_pages || pagination.totalPages || 1;
+
+        if (currentPage >= totalPages || submissions.length < limit) {
+          hasMore = false;
+        } else {
+          currentPage++;
+        }
+      }
+
+      // Store submissions for kanban display
+      setSubmissions(allSubmissions);
+
+      // Map submissions to candidates format for kanban
+      const mappedCandidates = allSubmissions.map((sub: any, index: number) => ({
+        id: sub.id || `sub-${index}`,
+        name: `${sub.candidate?.first_name || ""} ${sub.candidate?.last_name || ""}`.trim() || "Unknown Candidate",
+        experience: `${sub.candidate?.years_of_experience || 0} years`,
+        location: sub.candidate?.location || sub.job?.location || "Unknown",
+        score: sub.ai_score ?? null,
+        stage: mapSubmissionStatusToStage(sub.status),
+        notes: sub.notes || sub.cover_letter?.substring(0, 100),
+        submission: sub, // Keep reference to original submission
+      }));
+      setCandidates(mappedCandidates);
+
+      const stats = {
+        total: allSubmissions.length,
+        hired: allSubmissions.filter((s: any) => s.status === "hired").length,
+        rejected: allSubmissions.filter((s: any) => s.status === "rejected").length,
+        active: allSubmissions.filter((s: any) =>
+          !["hired", "rejected"].includes(s.status)
+        ).length,
+      };
+
+      setSubmissionStats(stats);
+    } catch (error) {
+      console.error("Error fetching submission stats:", error);
+      // Keep defaults (0) on error
+    }
+  }, [id]);
+
+  useEffect(() => {
     if (id && user?.role === "recruiter") {
       fetchSubmissionStats();
     }
-  }, [id, user?.role]);
+  }, [id, user?.role, fetchSubmissionStats]);
 
   // ── Manual Search handlers ─────────────────────────────────────────────
   const handleOpenManualSearch = async () => {
@@ -1175,10 +1175,10 @@ const JobDetail = () => {
       }
       setSelectedCandidates(new Set());
       setShowManualSearch(false);
-      // Refresh submission stats
-      const statsRes = await recruiterService.getJobSubmissions(job!.id, { limit: MAX_PAGE_SIZE });
-      const subs = statsRes.data?.submissions || [];
-      setSubmissions(subs as any);
+      // Refresh submissions, candidates (kanban board), and stats together so
+      // the newly added candidate(s) appear immediately instead of only after
+      // a page reload.
+      await fetchSubmissionStats();
     } catch (err: any) {
       toast({ title: "Error", description: err?.response?.data?.message || "Failed to add candidates", variant: "destructive" });
     } finally {
@@ -1541,16 +1541,17 @@ const JobDetail = () => {
                     <div className="text-2xl font-bold text-blue-600">
                       {job.job_type === "contract"
                         ? job.bill_rate_min && job.bill_rate_max
-                          ? `$${Math.round((Number(job.bill_rate_min) + Number(job.bill_rate_max)) / 2)}`
+                          ? formatCurrency(Math.round((Number(job.bill_rate_min) + Number(job.bill_rate_max)) / 2), job.salary_currency)
                           : job.bill_rate_min
-                          ? `$${job.bill_rate_min}`
+                          ? formatCurrency(Number(job.bill_rate_min), job.salary_currency)
                           : "N/A"
                         : job.salary_min && job.salary_max
-                        ? `$${Math.round(
-                            (Number(job.salary_min) + Number(job.salary_max)) / 2 / 2080
-                          )}`
+                        ? formatCurrency(
+                            Math.round((Number(job.salary_min) + Number(job.salary_max)) / 2 / 2080),
+                            job.salary_currency
+                          )
                         : job.salary_min
-                        ? `$${Math.round(Number(job.salary_min) / 2080)}`
+                        ? formatCurrency(Math.round(Number(job.salary_min) / 2080), job.salary_currency)
                         : "N/A"}
                       /hr
                     </div>
@@ -2972,6 +2973,7 @@ const JobDetail = () => {
                   loading={profitabilityState.loading}
                   saving={profitabilityState.saving}
                   totals={profitabilityState.totals}
+                  currency={job.salary_currency || "USD"}
                   updateDraft={profitabilityState.updateDraft}
                   onSave={profitabilityState.handleSave}
                 />

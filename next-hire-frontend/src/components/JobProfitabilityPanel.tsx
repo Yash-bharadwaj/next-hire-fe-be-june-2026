@@ -7,12 +7,14 @@ import { TrendingUp, DollarSign, Briefcase, Clock, Plus, Trash2, Save, Loader2, 
 import { cn } from "@/lib/utils";
 import { JobProfitability } from "@/services/recruiterService";
 import { ProfitabilityTotals, formatPct } from "@/hooks/useJobProfitability";
+import { formatCurrency } from "@/lib/format";
 
 interface JobProfitabilityPanelProps {
   profitability: JobProfitability | null;
   loading: boolean;
   saving: boolean;
   totals: ProfitabilityTotals;
+  currency: string;
   updateDraft: (updater: (current: JobProfitability) => JobProfitability) => void;
   onSave: () => Promise<boolean>;
 }
@@ -22,9 +24,11 @@ export const JobProfitabilityPanel = ({
   loading,
   saving,
   totals,
+  currency,
   updateDraft,
   onSave,
 }: JobProfitabilityPanelProps) => {
+  const money = (amount: number) => formatCurrency(amount, currency);
   const [openSections, setOpenSections] = useState({
     revenue: true,
     directCost: true,
@@ -60,31 +64,31 @@ export const JobProfitabilityPanel = ({
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card className="card-gradient border-green-200/50 shadow-lg">
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">${totals.totalRevenue.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-green-600">{money(totals.totalRevenue)}</div>
             <div className="text-sm text-gray-600">Total Revenue</div>
           </CardContent>
         </Card>
         <Card className="card-gradient border-red-200/50 shadow-lg">
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-red-600">${totals.totalDirectCost.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-red-600">{money(totals.totalDirectCost)}</div>
             <div className="text-sm text-gray-600">Total Direct Cost</div>
           </CardContent>
         </Card>
         <Card className="card-gradient border-orange-200/50 shadow-lg">
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-orange-600">${totals.totalOverheads.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-orange-600">{money(totals.totalOverheads)}</div>
             <div className="text-sm text-gray-600">Total Overheads</div>
           </CardContent>
         </Card>
         <Card className="card-gradient border-blue-200/50 shadow-lg">
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">${totals.totalOneTimeCosts.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-blue-600">{money(totals.totalOneTimeCosts)}</div>
             <div className="text-sm text-gray-600">One Time Costs</div>
           </CardContent>
         </Card>
         <Card className="card-gradient border-purple-200/50 shadow-lg">
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-purple-600">${totals.netMargin.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-purple-600">{money(totals.netMargin)}</div>
             <div className="text-sm text-gray-600">Net Margin</div>
             <div className="text-xs text-purple-600 mt-1">
               {totals.totalRevenue > 0 ? `${((totals.netMargin / totals.totalRevenue) * 100).toFixed(1)}% margin` : "—"}
@@ -151,7 +155,7 @@ export const JobProfitabilityPanel = ({
                         />
                       </td>
                       <td className="p-3 font-bold text-green-600">
-                        ${(profitability.revenue.billRate.rate * profitability.revenue.billRate.hours).toLocaleString()}
+                        {money((profitability.revenue.billRate.rate * profitability.revenue.billRate.hours))}
                       </td>
                       <td className="p-3 text-gray-500 text-sm">
                         {pct(profitability.revenue.billRate.rate * profitability.revenue.billRate.hours)}
@@ -186,7 +190,7 @@ export const JobProfitabilityPanel = ({
                         />
                       </td>
                       <td className="p-3 font-bold text-green-600">
-                        ${(profitability.revenue.overTime.rate * profitability.revenue.overTime.hours).toLocaleString()}
+                        {money((profitability.revenue.overTime.rate * profitability.revenue.overTime.hours))}
                       </td>
                       <td className="p-3 text-gray-500 text-sm">
                         {pct(profitability.revenue.overTime.rate * profitability.revenue.overTime.hours)}
@@ -274,7 +278,7 @@ export const JobProfitabilityPanel = ({
                         />
                       </td>
                       <td className="p-3 font-bold text-red-600">
-                        ${(profitability.direct_cost.payRate.rate * profitability.direct_cost.payRate.hours).toLocaleString()}
+                        {money((profitability.direct_cost.payRate.rate * profitability.direct_cost.payRate.hours))}
                       </td>
                       <td className="p-3 text-gray-500 text-sm">
                         {pct(profitability.direct_cost.payRate.rate * profitability.direct_cost.payRate.hours)}
@@ -312,7 +316,7 @@ export const JobProfitabilityPanel = ({
                         />
                       </td>
                       <td className="p-3 font-bold text-red-600">
-                        ${(profitability.direct_cost.otPayRate.rate * profitability.direct_cost.otPayRate.hours).toLocaleString()}
+                        {money((profitability.direct_cost.otPayRate.rate * profitability.direct_cost.otPayRate.hours))}
                       </td>
                       <td className="p-3 text-gray-500 text-sm">
                         {pct(profitability.direct_cost.otPayRate.rate * profitability.direct_cost.otPayRate.hours)}
@@ -545,15 +549,15 @@ export const JobProfitabilityPanel = ({
             <div className="space-y-4">
               <div className="flex justify-between items-center py-2 border-b">
                 <span className="text-gray-600">Gross Margin</span>
-                <span className="font-semibold text-gray-800">${totals.grossMargin.toLocaleString()}</span>
+                <span className="font-semibold text-gray-800">{money(totals.grossMargin)}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b">
                 <span className="text-gray-600">Overheads</span>
-                <span className="font-semibold text-red-600">-${totals.totalOverheads.toLocaleString()}</span>
+                <span className="font-semibold text-red-600">-{money(totals.totalOverheads)}</span>
               </div>
               <div className="flex justify-between items-center py-3 bg-yellow-50 px-4 rounded-lg border border-yellow-200">
                 <span className="font-bold text-yellow-800">Net Margin</span>
-                <span className="font-bold text-yellow-800 text-xl">${totals.netMarginAfterOverheads.toLocaleString()}</span>
+                <span className="font-bold text-yellow-800 text-xl">{money(totals.netMarginAfterOverheads)}</span>
               </div>
               <div className="text-center text-sm text-gray-600">{pct(totals.netMarginAfterOverheads)} of total revenue</div>
             </div>
@@ -571,15 +575,15 @@ export const JobProfitabilityPanel = ({
             <div className="space-y-4">
               <div className="flex justify-between items-center py-2 border-b">
                 <span className="text-gray-600">Net Margin</span>
-                <span className="font-semibold text-gray-800">${totals.netMarginAfterOverheads.toLocaleString()}</span>
+                <span className="font-semibold text-gray-800">{money(totals.netMarginAfterOverheads)}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b">
                 <span className="text-gray-600">One-Time Costs</span>
-                <span className="font-semibold text-red-600">-${totals.totalOneTimeCosts.toLocaleString()}</span>
+                <span className="font-semibold text-red-600">-{money(totals.totalOneTimeCosts)}</span>
               </div>
               <div className="flex justify-between items-center py-3 bg-indigo-50 px-4 rounded-lg border border-indigo-200">
                 <span className="font-bold text-indigo-800">Overall Profitability</span>
-                <span className="font-bold text-indigo-800 text-xl">${totals.netMargin.toLocaleString()}</span>
+                <span className="font-bold text-indigo-800 text-xl">{money(totals.netMargin)}</span>
               </div>
               <div className="text-center text-sm text-gray-600">{pct(totals.netMargin)} of total revenue</div>
             </div>

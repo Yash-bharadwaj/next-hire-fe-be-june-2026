@@ -57,6 +57,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { usePlacementDetail, usePlacementManagement } from "@/hooks/usePlacements";
+import { useJobProfitability } from "@/hooks/useJobProfitability";
 import { placementService, UpdatePlacementRequest, OnboardingStatus, RenewalStatus } from "@/services/placementService";
 import { recruiterService, Task, TaskPriority, TaskStatus, TeamMember, TASK_STATUS_LABELS, TASK_STATUS_OPTIONS } from "@/services/recruiterService";
 import { useToast } from "@/hooks/use-toast";
@@ -106,6 +107,7 @@ const PlacementDetail: React.FC = () => {
   const { toast } = useToast();
   const { placement, loading, error, refresh } = usePlacementDetail(id);
   const { updatePlacement, updateOnboardingStatus, loading: saving } = usePlacementManagement();
+  const profitabilityState = useJobProfitability(placement?.job_id);
 
   const statusColor = placement?.status
     ? placementService.getStatusColor(placement.status)
@@ -418,7 +420,9 @@ const PlacementDetail: React.FC = () => {
             <CardContent className="p-3 text-center">
               <p className="text-xs text-gray-500 uppercase tracking-wide">Commission</p>
               <p className="text-lg font-bold text-purple-700">
-                {placement.commission_amount != null ? formatCurrency(placement.commission_amount) : "—"}
+                {placement.commission_amount != null
+                  ? formatCurrency(placement.commission_amount, placement.salary_currency)
+                  : "—"}
               </p>
             </CardContent>
           </Card>
@@ -428,7 +432,9 @@ const PlacementDetail: React.FC = () => {
                 <CardContent className="p-3 text-center">
                   <p className="text-xs text-gray-500 uppercase tracking-wide">Bill Rate</p>
                   <p className="text-lg font-bold text-blue-700">
-                    {placement.job?.bill_rate_min != null ? `${formatCurrency(placement.job.bill_rate_min)}/hr` : "—"}
+                    {placement.job?.bill_rate_min != null
+                      ? `${formatCurrency(placement.job.bill_rate_min, placement.salary_currency)}/hr`
+                      : "—"}
                   </p>
                 </CardContent>
               </Card>
@@ -436,7 +442,9 @@ const PlacementDetail: React.FC = () => {
                 <CardContent className="p-3 text-center">
                   <p className="text-xs text-gray-500 uppercase tracking-wide">Pay Rate</p>
                   <p className="text-lg font-bold text-orange-700">
-                    {placement.billing_rate != null ? `${formatCurrency(placement.billing_rate)}/hr` : "—"}
+                    {placement.billing_rate != null
+                      ? `${formatCurrency(placement.billing_rate, placement.salary_currency)}/hr`
+                      : "—"}
                   </p>
                 </CardContent>
               </Card>
@@ -619,7 +627,7 @@ const PlacementDetail: React.FC = () => {
                       <InfoRow
                         icon={DollarSign}
                         label="Bill Rate"
-                        value={`${formatCurrency(placement.job.bill_rate_min)} - ${formatCurrency(placement.job.bill_rate_max)}/hr`}
+                        value={`${formatCurrency(placement.job.bill_rate_min, placement.salary_currency)} - ${formatCurrency(placement.job.bill_rate_max, placement.salary_currency)}/hr`}
                       />
                     )}
                     {placement.job?.client?.name && (
@@ -649,7 +657,11 @@ const PlacementDetail: React.FC = () => {
                     <InfoRow icon={DollarSign} label="Billing Rate" value={formatCurrency(placement.billing_rate, placement.salary_currency) + "/hr"} />
                   )}
                   {placement.commission_amount != null && (
-                    <InfoRow icon={TrendingUp} label="Commission" value={formatCurrency(placement.commission_amount)} />
+                    <InfoRow
+                      icon={TrendingUp}
+                      label="Commission"
+                      value={formatCurrency(placement.commission_amount, placement.salary_currency)}
+                    />
                   )}
                   {placement.commission_percentage != null && (
                     <InfoRow icon={TrendingUp} label="Commission %" value={`${placement.commission_percentage}%`} />
@@ -1135,7 +1147,15 @@ const PlacementDetail: React.FC = () => {
           {/* Profitability */}
           <TabsContent value="profitability" className="mt-4">
             {placement.job_id ? (
-              <JobProfitabilityPanel jobId={placement.job_id} />
+              <JobProfitabilityPanel
+                profitability={profitabilityState.profitability}
+                loading={profitabilityState.loading}
+                saving={profitabilityState.saving}
+                totals={profitabilityState.totals}
+                currency={placement.job?.salary_currency || placement.salary_currency || "USD"}
+                updateDraft={profitabilityState.updateDraft}
+                onSave={profitabilityState.handleSave}
+              />
             ) : (
               <Card>
                 <CardContent className="text-center py-12 text-gray-500">No linked job to analyze profitability for.</CardContent>

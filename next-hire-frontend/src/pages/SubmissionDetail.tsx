@@ -91,6 +91,7 @@ import { ExpandableBadgeList } from "@/components/ExpandableBadgeList";
 import { NotesPanel } from "@/components/NotesPanel";
 import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { JobProfitabilityPanel } from "@/components/JobProfitabilityPanel";
+import { useJobProfitability } from "@/hooks/useJobProfitability";
 import { formatCompactCurrency, formatCompactRange } from "@/lib/format";
 import { getSubmissionStatusMeta } from "@/lib/submissionStatus";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
@@ -137,6 +138,8 @@ const SubmissionDetail = () => {
   const [savingStatus, setSavingStatus] = useState(false);
 
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+
+  const profitabilityState = useJobProfitability(submission?.job?.id);
 
   const isRecruiter = user?.role === "recruiter";
   const isCandidate = user?.role === "candidate";
@@ -1408,7 +1411,21 @@ const SubmissionDetail = () => {
 
         {isRecruiter && (
           <TabsContent value="profitability" className="mt-4">
-            {job?.id && <JobProfitabilityPanel jobId={job.id} />}
+            {job?.id ? (
+              <JobProfitabilityPanel
+                profitability={profitabilityState.profitability}
+                loading={profitabilityState.loading}
+                saving={profitabilityState.saving}
+                totals={profitabilityState.totals}
+                currency={job.salary_currency || "USD"}
+                updateDraft={profitabilityState.updateDraft}
+                onSave={profitabilityState.handleSave}
+              />
+            ) : (
+              <Card>
+                <CardContent className="text-center py-12 text-gray-500">No linked job to analyze profitability for.</CardContent>
+              </Card>
+            )}
           </TabsContent>
         )}
 

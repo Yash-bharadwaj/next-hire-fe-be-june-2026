@@ -242,17 +242,19 @@ export async function triggerPayRateEstimation(jobId: string): Promise<void> {
   const job = await Job.findByPk(jobId);
   if (!job) return;
 
+  const currency = job.salary_currency || "USD";
   const promptTemplate = await getSetting(PAY_RATE_PROMPT_KEY, DEFAULT_PAY_RATE_PROMPT);
   const instructions = fillTemplate(promptTemplate, {
     job_title: job.title || "this role",
     location: job.location || "Not specified",
+    currency,
     skills: (job.required_skills || []).join(", ") || "Not specified",
     experience_level: formatExperienceLevel(job.experience_min, job.experience_max),
     work_schedule: job.work_schedule ? WORK_SCHEDULE_LABELS[job.work_schedule] : "Not specified",
     job_description: (job.description || "").slice(0, 3000),
   });
 
-  const estimate = await estimatePayRate(instructions);
+  const estimate = await estimatePayRate(instructions, currency);
   if (!estimate) return;
 
   await job.update({

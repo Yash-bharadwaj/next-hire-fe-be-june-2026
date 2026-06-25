@@ -2,7 +2,7 @@ import { AppSetting } from "../models";
 
 export const PAY_RATE_PROMPT_KEY = "job_pay_rate_estimate_prompt";
 
-export const DEFAULT_PAY_RATE_PROMPT = `Provide a bill rate range for a {{job_title}} in {{location}}.
+export const DEFAULT_PAY_RATE_PROMPT = `Provide a bill rate range for a {{job_title}} in {{location}}, expressed in {{currency}}.
 Required skills: {{skills}}.
 Experience level required: {{experience_level}}.
 Work schedule: {{work_schedule}}.

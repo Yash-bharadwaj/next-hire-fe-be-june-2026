@@ -712,17 +712,27 @@ const VALID_PAY_BASIS = ["hourly", "annual"];
  * Use Gemini to estimate a market pay/bill rate range from job details
  * (the recruiter-editable `instructions` prompt already has the job's
  * title/location/skills/experience/schedule/description filled in - see
- * settingsService.fillTemplate). Returns null (non-fatal) if AI estimation
+ * settingsService.fillTemplate). `currency` is the job's actual
+ * salary_currency (e.g. "INR" for a job listed in rupees) - the estimate
+ * is always expressed in that currency, never silently converted to USD,
+ * since the result is displayed and compared directly against the job's
+ * own salary/bill-rate range. Returns null (non-fatal) if AI estimation
  * is unavailable, so job creation never fails because of this.
  */
-export async function estimatePayRate(instructions: string): Promise<PayRateEstimate | null> {
+export async function estimatePayRate(
+  instructions: string,
+  currency: string = "USD"
+): Promise<PayRateEstimate | null> {
   if (!GEMINI_API_KEY) return null;
 
-  const prompt = `You are a staffing industry compensation analyst. Based on the request below, estimate a realistic market pay/bill rate range in US dollars.
+  const normalizedCurrency = currency.toUpperCase().slice(0, 3);
+  const prompt = `You are a staffing industry compensation analyst. Based on the request below, estimate a realistic market pay/bill rate range, expressed in ${normalizedCurrency}.
 
 ${instructions}
 
-Respond with ONLY a JSON object of this exact shape: {"min": <number>, "max": <number>, "currency": "<3-letter ISO code>", "basis": "hourly" | "annual", "rationale": "<one or two sentence explanation of how you arrived at this range>"}
+Use realistic numbers for the ${normalizedCurrency} market and location given - do not just convert a USD estimate at the exchange rate. For example, Indian rupee salaries are typically quoted as annual CTC in lakhs (e.g. 800000-1500000 INR/year), not a dollar-equivalent figure relabeled as rupees.
+
+Respond with ONLY a JSON object of this exact shape: {"min": <number>, "max": <number>, "basis": "hourly" | "annual", "rationale": "<one or two sentence explanation of how you arrived at this range>"}
 - "basis" should be "hourly" for contract/temporary roles or when a bill rate is requested, "annual" for full-time salaried roles, unless the request says otherwise.
 - "min" must be less than "max".`;
 
@@ -731,12 +741,11 @@ Respond with ONLY a JSON object of this exact shape: {"min": <number>, "max": <n
     const min = num(result?.min);
     const max = num(result?.max);
     if (min === undefined || max === undefined) return null;
-    const currency = str(result?.currency) || "USD";
     const basis = VALID_PAY_BASIS.includes(result?.basis) ? result.basis : "hourly";
     return {
       min: Math.min(min, max),
       max: Math.max(min, max),
-      currency: currency.toUpperCase().slice(0, 3),
+      currency: normalizedCurrency,
       basis,
       rationale: str(result?.rationale) || "",
     };
