@@ -3070,7 +3070,7 @@ const JobDetail = () => {
           </div>
 
           {/* Results */}
-          <ScrollArea className="flex-1 px-6">
+          <ScrollArea className="flex-1 min-h-0 px-6">
             {matchLoading ? (
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="w-8 h-8 animate-spin text-green-600 mr-3" />
