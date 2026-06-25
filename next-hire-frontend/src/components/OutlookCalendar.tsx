@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +15,12 @@ import {
   CalendarEventType,
   CalendarEventTaskType,
 } from "@/services/calendarEventService";
+
+const TASK_FILTER_OPTIONS: { value: CalendarEventTaskType | "all"; label: string }[] = [
+  { value: "all", label: "All Tasks" },
+  { value: "my-task", label: "My Tasks" },
+  { value: "follow-up", label: "Follow Ups" },
+];
 
 export function OutlookCalendar() {
   const { toast } = useToast();
@@ -176,124 +181,127 @@ export function OutlookCalendar() {
   };
 
   return (
-    <Card className="w-full border-0 bg-transparent shadow-none">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <CardTitle className="flex items-center gap-2 text-lg font-roboto-slab text-gray-800">
-            <Calendar className="w-5 h-5 text-green-600" />
-            CALENDAR
+    <Card>
+      <CardHeader className="gap-3 pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+            <Calendar className="h-5 w-5 text-green-600" />
+            Calendar
           </CardTitle>
-          <div className="flex items-center gap-1 flex-wrap">
-            <Button
-              variant={isToday() ? "default" : "outline"}
-              size="sm"
-              onClick={goToToday}
-              className="text-xs px-3 py-1 bg-white/80 border-gray-300 text-gray-700 hover:bg-white/90 shadow-sm font-roboto-slab"
-            >
-              Today
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigateDay("prev")}
-              className="p-2 bg-white/80 border-gray-300 text-gray-700 hover:bg-white/90 shadow-sm"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigateDay("next")}
-              className="p-2 bg-white/80 border-gray-300 text-gray-700 hover:bg-white/90 shadow-sm"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => openNewEvent()}
-              className="text-xs px-3 py-1 bg-white/80 border-gray-300 text-gray-700 hover:bg-white/90 shadow-sm font-roboto-slab"
-            >
-              <Plus className="w-3 h-3 mr-1" />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center divide-x divide-gray-200 rounded-md border border-gray-200">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigateDay("prev")}
+                className="h-8 w-8 rounded-r-none p-0 text-gray-500 hover:text-gray-700"
+                aria-label="Previous day"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={goToToday}
+                className={`h-8 rounded-none px-3 text-xs font-medium ${
+                  isToday() ? "text-green-700" : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                Today
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigateDay("next")}
+                className="h-8 w-8 rounded-l-none p-0 text-gray-500 hover:text-gray-700"
+                aria-label="Next day"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <Button size="sm" onClick={() => openNewEvent()} className="h-8 px-3 text-xs">
+              <Plus className="mr-1 h-4 w-4" />
               New
             </Button>
+
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className="p-2 bg-white/60 hover:bg-white/80 text-gray-700"
+              className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
+              aria-label={isCollapsed ? "Expand calendar" : "Collapse calendar"}
             >
-              {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+              {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             </Button>
           </div>
         </div>
-        <div className="text-sm lg:text-base font-medium text-gray-700 font-roboto-slab">
-          {formatDate(currentDate)}
-        </div>
 
-        {/* Filter Section */}
-        <div className="mt-4 p-3 bg-white/20 rounded-lg border border-white/30 backdrop-blur-sm">
-          <RadioGroup value={filterType} onValueChange={(value) => setFilterType(value as typeof filterType)} className="flex flex-row gap-6">
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="all" id="all" />
-              <Label htmlFor="all" className="text-xs font-poppins text-gray-700 cursor-pointer">All Tasks</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="my-task" id="my-task" />
-              <Label htmlFor="my-task" className="text-xs font-poppins text-gray-700 cursor-pointer">My Tasks</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="follow-up" id="follow-up" />
-              <Label htmlFor="follow-up" className="text-xs font-poppins text-gray-700 cursor-pointer">Tasks to Follow Up</Label>
-            </div>
-          </RadioGroup>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-medium text-gray-600">{formatDate(currentDate)}</p>
+
+          <div className="flex flex-wrap gap-2">
+            {TASK_FILTER_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setFilterType(opt.value)}
+                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  filterType === opt.value
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </CardHeader>
 
       {!isCollapsed && (
-        <CardContent className="p-3 lg:p-6">
+        <CardContent className="pt-0">
           {loading ? (
             <div className="flex items-center justify-center py-10 text-gray-500">
               <Loader2 className="w-5 h-5 animate-spin mr-2" />
               Loading calendar...
             </div>
           ) : (
-            <div className="space-y-0 border border-white/30 rounded-lg overflow-hidden max-h-96 overflow-y-auto backdrop-blur-sm bg-white/20">
-              {timeSlots.map((slot, index) => {
+            <div className="grid max-h-96 divide-y divide-gray-100 overflow-y-auto rounded-lg border border-gray-200">
+              {timeSlots.map((slot) => {
                 const event = getEventAtTimeSlot(slot.timeKey);
                 return (
-                  <div
-                    key={slot.timeKey}
-                    className={`flex border-b border-white/20 min-h-[50px] ${index === timeSlots.length - 1 ? "border-b-0" : ""}`}
-                  >
-                    <div className="w-16 lg:w-20 p-2 lg:p-3 text-xs lg:text-sm text-gray-600 border-r border-white/20 flex-shrink-0 font-roboto-slab">
+                  <div key={slot.timeKey} className="grid grid-cols-[4rem_1fr] min-h-[52px]">
+                    <div className="flex justify-end border-r border-gray-100 px-3 py-3 text-xs text-gray-500">
                       {slot.time12}
                     </div>
-                    <div className="flex-1 p-2 relative">
+                    <div className="p-1.5">
                       {event ? (
-                        <div className={`p-2 rounded-md ${getEventColor(event.event_type)} h-full flex items-center justify-between`}>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-xs font-poppins truncate">{event.title}</div>
-                            <div className="text-xs opacity-75 font-poppins">
+                        <div className={`flex h-full items-center justify-between gap-2 rounded-md p-2 ${getEventColor(event.event_type)}`}>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-xs font-semibold">{event.title}</div>
+                            <div className="text-xs opacity-75">
                               {event.start_time} - {event.end_time}
                             </div>
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-70 hover:opacity-100">
-                                <MoreHorizontal className="w-4 h-4" />
+                              <Button variant="ghost" size="sm" className="h-6 w-6 shrink-0 p-0 opacity-70 hover:opacity-100">
+                                <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-44">
-                              <DropdownMenuItem onClick={() => openEditEvent(event)} className="font-poppins text-xs">
-                                <Edit className="w-4 h-4 mr-2" />
+                              <DropdownMenuItem onClick={() => openEditEvent(event)} className="text-xs">
+                                <Edit className="mr-2 h-4 w-4" />
                                 Edit
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => cycleStatus(event)} className="font-poppins text-xs">
-                                <CheckCircle2 className="w-4 h-4 mr-2" />
+                              <DropdownMenuItem onClick={() => cycleStatus(event)} className="text-xs">
+                                <CheckCircle2 className="mr-2 h-4 w-4" />
                                 Mark as {event.status === "pending" ? "Confirmed" : event.status === "confirmed" ? "Completed" : "Pending"}
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDeleteEvent(event.id)} className="font-poppins text-xs text-red-600">
-                                <Trash2 className="w-4 h-4 mr-2" />
+                              <DropdownMenuItem onClick={() => handleDeleteEvent(event.id)} className="text-xs text-red-600">
+                                <Trash2 className="mr-2 h-4 w-4" />
                                 Delete
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -302,9 +310,11 @@ export function OutlookCalendar() {
                       ) : (
                         <button
                           onClick={() => openNewEvent(slot.timeKey)}
-                          className="w-full h-full min-h-[34px] rounded-md hover:bg-white/30 transition-colors"
+                          className="group flex h-full min-h-[44px] w-full items-center justify-center rounded-md transition-colors hover:bg-gray-50"
                           aria-label={`Add event at ${slot.time12}`}
-                        />
+                        >
+                          <Plus className="h-3.5 w-3.5 text-gray-300 transition-colors group-hover:text-gray-500" />
+                        </button>
                       )}
                     </div>
                   </div>
@@ -313,7 +323,7 @@ export function OutlookCalendar() {
             </div>
           )}
 
-          <div className="mt-4 text-xs text-gray-500 text-center font-roboto-slab">
+          <div className="mt-3 text-center text-xs text-gray-400">
             {Intl.DateTimeFormat().resolvedOptions().timeZone}
           </div>
         </CardContent>

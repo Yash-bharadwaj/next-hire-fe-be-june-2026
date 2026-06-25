@@ -579,17 +579,7 @@ const Home = () => {
 
         {/* Calendar */}
         <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold flex items-center">
-                <Calendar className="h-5 w-5 mr-2" />
-                Calendar
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <OutlookCalendar />
-            </CardContent>
-          </Card>
+          <OutlookCalendar />
         </div>
       </div>
 
