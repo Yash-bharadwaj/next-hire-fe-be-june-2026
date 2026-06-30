@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,11 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Slider } from "@/components/ui/slider";
-import { GlowingEffect } from "@/components/ui/glowing-effect";
+import { EmptyState } from "@/components/EmptyState";
+import { cn } from "@/lib/utils";
 import {
   candidateSearchService,
   CandidateProfile,
@@ -19,21 +27,14 @@ import {
 } from "@/services/candidateSearchService";
 import {
   Search,
-  Settings,
-  Lock,
+  SlidersHorizontal,
   Sparkles,
-  Box,
   ChevronDown,
-  ChevronUp,
   Send,
   MapPin,
-  Building,
   DollarSign,
-  Calendar,
-  User,
   Mail,
   Phone,
-  Globe,
   Star,
   Briefcase,
   GraduationCap,
@@ -42,8 +43,14 @@ import {
   Info,
   Loader2,
   Users,
-  TrendingUp,
-  X
+  X,
+  Tag,
+  UserCheck,
+  CheckCircle2,
+  ArrowUpDown,
+  RotateCcw,
+  SearchX,
+  AlertCircle,
 } from "lucide-react";
 
 interface SearchResultCandidate {
@@ -65,6 +72,7 @@ interface SearchResultCandidate {
 }
 
 const MAX_VISIBLE_SKILLS = 6;
+const RESULTS_PER_PAGE = 10;
 
 const mapCandidateToResult = (candidate: CandidateProfile): SearchResultCandidate => {
   const latestExperience = candidate.experiences?.[0];
@@ -81,7 +89,7 @@ const mapCandidateToResult = (candidate: CandidateProfile): SearchResultCandidat
       latestExperience?.job_title ||
       (candidate.bio
         ? candidateSearchService.truncateText(candidate.bio)
-        : "Not specified"),
+        : "Title not specified"),
     company: latestExperience?.company_name || "Not specified",
     location: candidate.location || "Not specified",
     experience: candidateSearchService.formatExperience(candidate.experience_years),
@@ -99,62 +107,191 @@ const mapCandidateToResult = (candidate: CandidateProfile): SearchResultCandidat
   };
 };
 
-// Parse free-text "3-5 years" / "5+ years" style inputs into numeric bounds
-const parseExperienceRange = (value: string): { experience_min?: number; experience_max?: number } => {
-  const numbers = value.match(/\d+/g)?.map(Number) || [];
-  if (numbers.length >= 2) return { experience_min: numbers[0], experience_max: numbers[1] };
-  if (numbers.length === 1) return { experience_min: numbers[0] };
-  return {};
+type AvailabilityFilter = "any" | "available" | "not_available" | "interviewing";
+type PlacementFilter = "any" | "active" | "placed";
+type SortOption = "" | "experience_desc" | "salary_desc" | "name_asc" | "newest";
+type SearchMode = "filters" | "ai" | "job-match";
+
+interface FilterState {
+  search: string;
+  location: string;
+  skills: string;
+  experienceMin: string;
+  experienceMax: string;
+  salaryMin: string;
+  salaryMax: string;
+  availability: AvailabilityFilter;
+  placementStatus: PlacementFilter;
+  sortBy: SortOption;
+}
+
+const DEFAULT_FILTERS: FilterState = {
+  search: "",
+  location: "",
+  skills: "",
+  experienceMin: "",
+  experienceMax: "",
+  salaryMin: "",
+  salaryMax: "",
+  availability: "any",
+  placementStatus: "any",
+  sortBy: "",
 };
 
-// Parse free-text "$100k - $150k" style inputs into numeric bounds
-const parseSalaryRange = (value: string): { salary_min?: number; salary_max?: number } => {
-  const matches = value.match(/\d+(?:\.\d+)?\s*[kK]?/g) || [];
-  const numbers = matches.map((match) => {
-    const amount = parseFloat(match);
-    return /[kK]/.test(match) ? amount * 1000 : amount;
-  });
-  if (numbers.length >= 2) return { salary_min: numbers[0], salary_max: numbers[1] };
-  if (numbers.length === 1) return { salary_min: numbers[0] };
-  return {};
+const SORT_PARAMS: Record<SortOption, Pick<CandidateSearchFilters, "sort_by" | "sort_order">> = {
+  "": {},
+  experience_desc: { sort_by: "experience", sort_order: "DESC" },
+  salary_desc: { sort_by: "salary", sort_order: "DESC" },
+  name_asc: { sort_by: "name", sort_order: "ASC" },
+  newest: { sort_by: "created_at", sort_order: "DESC" },
 };
 
-const AVAILABILITY_VALUES = ["available", "not_available", "interviewing", "employed"] as const;
+interface FilterChip {
+  key: keyof FilterState | "experience" | "salary";
+  label: string;
+  icon: typeof Search;
+}
+
+const formatMoney = (value: string) => `$${Number(value).toLocaleString()}`;
+
+const buildChips = (f: FilterState): FilterChip[] => {
+  const chips: FilterChip[] = [];
+  if (f.search.trim()) chips.push({ key: "search", label: `"${f.search.trim()}"`, icon: Search });
+  if (f.location.trim()) chips.push({ key: "location", label: f.location.trim(), icon: MapPin });
+  if (f.skills.trim()) chips.push({ key: "skills", label: f.skills.trim(), icon: Tag });
+  if (f.experienceMin || f.experienceMax) {
+    const label =
+      f.experienceMin && f.experienceMax
+        ? `${f.experienceMin}-${f.experienceMax} yrs exp`
+        : f.experienceMin
+        ? `${f.experienceMin}+ yrs exp`
+        : `Up to ${f.experienceMax} yrs exp`;
+    chips.push({ key: "experience", label, icon: Briefcase });
+  }
+  if (f.salaryMin || f.salaryMax) {
+    const label =
+      f.salaryMin && f.salaryMax
+        ? `${formatMoney(f.salaryMin)} - ${formatMoney(f.salaryMax)}`
+        : f.salaryMin
+        ? `${formatMoney(f.salaryMin)}+`
+        : `Up to ${formatMoney(f.salaryMax)}`;
+    chips.push({ key: "salary", label, icon: DollarSign });
+  }
+  if (f.availability !== "any") {
+    chips.push({
+      key: "availability",
+      label: candidateSearchService.getAvailabilityLabel(f.availability),
+      icon: UserCheck,
+    });
+  }
+  if (f.placementStatus !== "any") {
+    chips.push({
+      key: "placementStatus",
+      label: f.placementStatus === "placed" ? "Placed candidates" : "Active pool only",
+      icon: CheckCircle2,
+    });
+  }
+  return chips;
+};
+
+const buildApiFilters = (f: FilterState, page: number): CandidateSearchFilters => {
+  const filters: CandidateSearchFilters = { page, limit: RESULTS_PER_PAGE };
+  if (f.search.trim()) filters.search = f.search.trim();
+  if (f.location.trim()) filters.location = f.location.trim();
+  if (f.skills.trim()) filters.skills = f.skills.trim();
+  if (f.experienceMin) filters.experience_min = Number(f.experienceMin);
+  if (f.experienceMax) filters.experience_max = Number(f.experienceMax);
+  if (f.salaryMin) filters.salary_min = Number(f.salaryMin);
+  if (f.salaryMax) filters.salary_max = Number(f.salaryMax);
+  if (f.availability !== "any") filters.availability_status = f.availability;
+  if (f.placementStatus !== "any") filters.placement_status = f.placementStatus;
+  Object.assign(filters, SORT_PARAMS[f.sortBy]);
+  return filters;
+};
+
+// Match scores are calibrated so that unrelated profiles score near 0%
+// and only genuinely close profiles reach the upper end - thresholds are
+// tuned to that scale (see SEMANTIC_SIMILARITY_FLOOR/CEIL on the backend).
+const getScoreColor = (score: number) => {
+  if (score >= 70) return "text-green-700 bg-green-100";
+  if (score >= 45) return "text-blue-700 bg-blue-100";
+  if (score >= 20) return "text-yellow-700 bg-yellow-100";
+  return "text-red-700 bg-red-100";
+};
+
+const CandidateCardSkeleton = () => (
+  <Card className="border-gray-200">
+    <CardContent className="p-5">
+      <div className="flex items-start gap-4">
+        <Skeleton className="w-12 h-12 rounded-full shrink-0" />
+        <div className="flex-1 space-y-2.5 min-w-0">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3.5 w-56" />
+          <div className="flex flex-wrap gap-3 pt-1">
+            <Skeleton className="h-3.5 w-20" />
+            <Skeleton className="h-3.5 w-20" />
+            <Skeleton className="h-3.5 w-20" />
+          </div>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Skeleton className="h-5 w-14 rounded-full" />
+            <Skeleton className="h-5 w-16 rounded-full" />
+            <Skeleton className="h-5 w-12 rounded-full" />
+          </div>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+);
 
 const AdvancedSearch = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const jobId = searchParams.get("jobId");
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [location, setLocation] = useState("");
-  const [experience, setExperience] = useState("");
-  const [salary, setSalary] = useState("");
+  const [activeTab, setActiveTab] = useState<"filters" | "ai">("filters");
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [aiPrompt, setAiPrompt] = useState("");
-  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-  const [isFiltersOpen, setIsFiltersOpen] = useState(true);
-  const [isAiSearchOpen, setIsAiSearchOpen] = useState(true);
+
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isAiSearching, setIsAiSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
   const [searchResults, setSearchResults] = useState<SearchResultCandidate[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
-  const [profileCandidate, setProfileCandidate] = useState<SearchResultCandidate | null>(null);
+  const [mode, setMode] = useState<SearchMode | null>(null);
+  const [appliedChips, setAppliedChips] = useState<FilterChip[]>([]);
+  const [resultPagination, setResultPagination] = useState<{
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+    hasNextPage: boolean;
+  } | null>(null);
+
+  const [aiQueryLabel, setAiQueryLabel] = useState("");
   const [matchedJob, setMatchedJob] = useState<{ id: string; job_id: string; title: string } | null>(null);
   const [minScore, setMinScore] = useState(0);
+  const [profileCandidate, setProfileCandidate] = useState<SearchResultCandidate | null>(null);
 
   const hasScores = searchResults.some((c) => typeof c.aiScore === "number");
   const visibleResults = hasScores ? searchResults.filter((c) => (c.aiScore ?? 0) >= minScore) : searchResults;
 
+  const experienceRangeInvalid =
+    filters.experienceMin !== "" &&
+    filters.experienceMax !== "" &&
+    Number(filters.experienceMin) > Number(filters.experienceMax);
+  const salaryRangeInvalid =
+    filters.salaryMin !== "" && filters.salaryMax !== "" && Number(filters.salaryMin) > Number(filters.salaryMax);
+  const liveChips = useMemo(
+    () =>
+      buildChips(filters).filter(
+        (chip) => !((chip.key === "experience" && experienceRangeInvalid) || (chip.key === "salary" && salaryRangeInvalid))
+      ),
+    [filters, experienceRangeInvalid, salaryRangeInvalid]
+  );
+
   const handleContactCandidate = (candidate: SearchResultCandidate) => {
     window.location.href = `mailto:${candidate.email}`;
   };
-
-  // Additional criteria state
-  const [education, setEducation] = useState("");
-  const [company, setCompany] = useState("");
-  const [jobType, setJobType] = useState("");
-  const [availability, setAvailability] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [certifications, setCertifications] = useState("");
 
   // Arrived from "Find Matching Candidates" on a job - load AI-ranked candidates for it
   useEffect(() => {
@@ -162,8 +299,11 @@ const AdvancedSearch = () => {
 
     let cancelled = false;
     const loadJobMatches = async () => {
-      setIsSearching(true);
+      setActiveTab("ai");
+      setIsAiSearching(true);
+      setSearchError(null);
       setHasSearched(true);
+      setMode("job-match");
       setMinScore(0);
       try {
         const response = await candidateSearchService.matchCandidatesForJob(jobId);
@@ -177,10 +317,12 @@ const AdvancedSearch = () => {
         }
       } catch (err: any) {
         if (!cancelled) {
-          toast.error(err.response?.data?.message || err.message || "Failed to load matching candidates");
+          const message = err.response?.data?.message || err.message || "Failed to load matching candidates";
+          setSearchError(message);
+          toast.error(message);
         }
       } finally {
-        if (!cancelled) setIsSearching(false);
+        if (!cancelled) setIsAiSearching(false);
       }
     };
 
@@ -188,557 +330,711 @@ const AdvancedSearch = () => {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
   const clearJobMatch = () => {
     setMatchedJob(null);
     setSearchResults([]);
     setHasSearched(false);
+    setMode(null);
+    setSearchError(null);
     setSearchParams((params) => {
       params.delete("jobId");
       return params;
     });
   };
 
-  const handleSearch = async () => {
-    setIsSearching(true);
-    setHasSearched(true);
-    setMatchedJob(null);
-    setMinScore(0);
-
-    try {
-      const filters: CandidateSearchFilters = {};
-      if (searchQuery.trim()) filters.search = searchQuery.trim();
-      if (location.trim()) filters.location = location.trim();
-
-      const expRange = parseExperienceRange(experience);
-      if (expRange.experience_min !== undefined) filters.experience_min = expRange.experience_min;
-      if (expRange.experience_max !== undefined) filters.experience_max = expRange.experience_max;
-
-      const salaryRange = parseSalaryRange(salary);
-      if (salaryRange.salary_min !== undefined) filters.salary_min = salaryRange.salary_min;
-      if (salaryRange.salary_max !== undefined) filters.salary_max = salaryRange.salary_max;
-
-      const normalizedAvailability = availability.trim().toLowerCase().replace(/\s+/g, "_");
-      if ((AVAILABILITY_VALUES as readonly string[]).includes(normalizedAvailability)) {
-        filters.availability_status = normalizedAvailability as CandidateSearchFilters["availability_status"];
-      }
-
-      const response = await candidateSearchService.searchCandidates(filters);
-      setSearchResults(response.data.candidates.map(mapCandidateToResult));
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || err.message || "Failed to search candidates");
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleAiSearch = async () => {
-    if (!aiPrompt.trim()) {
-      toast.error("Describe the candidate you're looking for first");
+  const runFilterSearch = async (f: FilterState, page = 1) => {
+    if (experienceRangeInvalid || salaryRangeInvalid) {
+      toast.error("Fix the highlighted range before searching");
       return;
     }
 
-    setIsAiSearching(true);
+    const append = page > 1;
+    if (append) setIsLoadingMore(true);
+    else setIsSearching(true);
+    setSearchError(null);
     setHasSearched(true);
+    setMode("filters");
+    setMatchedJob(null);
+
+    try {
+      const response = await candidateSearchService.searchCandidates(buildApiFilters(f, page));
+      const mapped = response.data.candidates.map(mapCandidateToResult);
+      setSearchResults((prev) => (append ? [...prev, ...mapped] : mapped));
+      setResultPagination(response.data.pagination);
+      setAppliedChips(buildChips(f));
+    } catch (err: any) {
+      const message = err.response?.data?.message || err.message || "Failed to search candidates";
+      setSearchError(message);
+      toast.error(message);
+      if (!append) {
+        setSearchResults([]);
+        setResultPagination(null);
+      }
+    } finally {
+      if (append) setIsLoadingMore(false);
+      else setIsSearching(false);
+    }
+  };
+
+  const handleSearchClick = () => runFilterSearch(filters, 1);
+
+  const handleLoadMore = () => {
+    if (!resultPagination?.hasNextPage) return;
+    runFilterSearch(filters, resultPagination.currentPage + 1);
+  };
+
+  const removeChip = (key: FilterChip["key"]) => {
+    const updated: FilterState = { ...filters };
+    switch (key) {
+      case "search":
+        updated.search = "";
+        break;
+      case "location":
+        updated.location = "";
+        break;
+      case "skills":
+        updated.skills = "";
+        break;
+      case "experience":
+        updated.experienceMin = "";
+        updated.experienceMax = "";
+        break;
+      case "salary":
+        updated.salaryMin = "";
+        updated.salaryMax = "";
+        break;
+      case "availability":
+        updated.availability = "any";
+        break;
+      case "placementStatus":
+        updated.placementStatus = "any";
+        break;
+    }
+    setFilters(updated);
+    runFilterSearch(updated, 1);
+  };
+
+  const clearAllFilters = () => {
+    setFilters(DEFAULT_FILTERS);
+    setSearchResults([]);
+    setHasSearched(false);
+    setMode(null);
+    setAppliedChips([]);
+    setResultPagination(null);
+    setSearchError(null);
+  };
+
+  const handleAiSearch = async () => {
+    const prompt = aiPrompt.trim();
+    if (!prompt) return;
+
+    setIsAiSearching(true);
+    setSearchError(null);
+    setHasSearched(true);
+    setMode("ai");
     setMatchedJob(null);
     setMinScore(0);
 
     try {
-      const response = await candidateSearchService.matchCandidatesByText(aiPrompt.trim());
+      const response = await candidateSearchService.matchCandidatesByText(prompt);
       setSearchResults(response.data.candidates.map(mapCandidateToResult));
+      setAiQueryLabel(prompt);
       if (response.data.skipped_count > 0) {
         toast.info(
           `${response.data.skipped_count} candidate(s) skipped (no profile data yet to match against)`
         );
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.message || err.message || "AI search failed");
+      const message = err.response?.data?.message || err.message || "AI search failed";
+      setSearchError(message);
+      toast.error(message);
       setSearchResults([]);
     } finally {
       setIsAiSearching(false);
     }
   };
 
-  // Match scores are calibrated so that unrelated profiles score near 0%
-  // and only genuinely close profiles reach the upper end - thresholds are
-  // tuned to that scale (see SEMANTIC_SIMILARITY_FLOOR/CEIL on the backend).
-  const getScoreColor = (score: number) => {
-    if (score >= 70) return "text-green-600 bg-green-100";
-    if (score >= 45) return "text-blue-600 bg-blue-100";
-    if (score >= 20) return "text-yellow-600 bg-yellow-100";
-    return "text-red-600 bg-red-100";
+  const handleRetry = async () => {
+    if (mode === "filters") {
+      runFilterSearch(filters, 1);
+      return;
+    }
+    if (mode === "ai") {
+      handleAiSearch();
+      return;
+    }
+    if (mode === "job-match" && jobId) {
+      setIsAiSearching(true);
+      setSearchError(null);
+      try {
+        const response = await candidateSearchService.matchCandidatesForJob(jobId);
+        setMatchedJob(response.data.job || null);
+        setSearchResults(response.data.candidates.map(mapCandidateToResult));
+      } catch (err: any) {
+        const message = err.response?.data?.message || err.message || "Failed to load matching candidates";
+        setSearchError(message);
+        toast.error(message);
+      } finally {
+        setIsAiSearching(false);
+      }
+    }
   };
+
+  const isLoading = isSearching || isAiSearching;
+
+  const resultsHeading = (): { title: string; subtitle?: string } | null => {
+    if (!hasSearched) return null;
+    if (mode === "job-match" && matchedJob) {
+      return { title: `AI-ranked matches for "${matchedJob.title}"`, subtitle: matchedJob.job_id };
+    }
+    if (mode === "ai" && aiQueryLabel) {
+      return { title: `AI matches for "${aiQueryLabel}"` };
+    }
+    if (mode === "filters") {
+      const total = resultPagination?.totalItems ?? searchResults.length;
+      return {
+        title: appliedChips.length
+          ? `${total} candidate${total === 1 ? "" : "s"} match your filters`
+          : `${total} candidate${total === 1 ? "" : "s"} in your talent pool`,
+      };
+    }
+    return null;
+  };
+
+  const heading = resultsHeading();
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Candidate Search</h1>
-        <p className="text-gray-600">Find the perfect candidates with advanced filtering and AI-powered search</p>
+        <p className="text-gray-600">Find the right talent with smart filters or a plain-English AI search</p>
       </div>
 
-      {matchedJob && (
-        <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-3">
-          <div className="flex items-center gap-2 text-purple-900">
-            <Sparkles className="w-5 h-5 text-purple-600" />
-            <span className="font-medium">
-              Showing AI-ranked candidates for{" "}
-              <span className="font-semibold">{matchedJob.title}</span>{" "}
-              <span className="text-purple-700">({matchedJob.job_id})</span>
-            </span>
-          </div>
-          <Button variant="ghost" size="sm" onClick={clearJobMatch}>
-            <X className="w-4 h-4 mr-1" />
-            Clear
-          </Button>
-        </div>
-      )}
+      <Card>
+        <CardContent className="p-4 sm:p-6">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "filters" | "ai")}>
+            <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsTrigger value="filters" className="gap-2">
+                <SlidersHorizontal className="w-4 h-4" />
+                Filters
+              </TabsTrigger>
+              <TabsTrigger value="ai" className="gap-2">
+                <Sparkles className="w-4 h-4" />
+                AI Search
+              </TabsTrigger>
+            </TabsList>
 
-      <div className={`grid gap-6 transition-all duration-300 ${isFiltersOpen ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
-        {/* Search Filters - Now Collapsible */}
-        <div className={`transition-all duration-300 ${isFiltersOpen ? 'lg:col-span-1' : 'lg:col-span-1 lg:max-w-xs'}`}>
-          <Collapsible open={isFiltersOpen} onOpenChange={setIsFiltersOpen}>
-            <CollapsibleTrigger asChild>
-              <Button 
-                variant="outline" 
-                className="w-full justify-between p-4 h-auto mb-4 border-2 hover:border-green-300 transition-all duration-300"
-              >
-                <div className="flex items-center gap-2">
-                  <Settings className="w-5 h-5" />
-                  <span className="font-semibold">Search Filters</span>
-                </div>
-                {isFiltersOpen ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <Card className="relative overflow-hidden">
-                <GlowingEffect
-                  spread={40}
-                  glow={true}
-                  disabled={false}
-                  proximity={64}
-                  inactiveZone={0.01}
-                />
-                <CardContent className="space-y-4 pt-6">
-                  <div>
-                    <Label htmlFor="search">Keywords</Label>
+            <TabsContent value="filters" className="pt-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="search" className="text-sm font-medium text-gray-700">
+                    Keywords
+                  </Label>
+                  <div className="relative mt-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                     <Input
                       id="search"
-                      placeholder="React, JavaScript, Senior..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Name or bio keywords..."
+                      value={filters.search}
+                      onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearchClick()}
+                      className="pl-9"
                     />
                   </div>
-                  
-                  <div>
-                    <Label htmlFor="location">Location</Label>
+                </div>
+
+                <div>
+                  <Label htmlFor="location" className="text-sm font-medium text-gray-700">
+                    Location
+                  </Label>
+                  <div className="relative mt-1">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                     <Input
                       id="location"
-                      placeholder="San Francisco, Remote..."
-                      value={location}
-                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="City, state, remote..."
+                      value={filters.location}
+                      onChange={(e) => setFilters((f) => ({ ...f, location: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearchClick()}
+                      className="pl-9"
                     />
                   </div>
-                  
-                  <div>
-                    <Label htmlFor="experience">Experience Level</Label>
-                    <Input
-                      id="experience"
-                      placeholder="3-5 years, Senior..."
-                      value={experience}
-                      onChange={(e) => setExperience(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="salary">Salary Range</Label>
-                    <Input
-                      id="salary"
-                      placeholder="$100k - $150k"
-                      value={salary}
-                      onChange={(e) => setSalary(e.target.value)}
-                    />
-                  </div>
-
-                  {/* Collapsible Additional Criteria */}
-                  <Collapsible open={isAdvancedOpen} onOpenChange={setIsAdvancedOpen}>
-                    <CollapsibleTrigger asChild>
-                      <Button variant="outline" className="w-full justify-between">
-                        Additional Criteria
-                        {isAdvancedOpen ? (
-                          <ChevronUp className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="space-y-4 mt-4">
-                      <div>
-                        <Label htmlFor="education">Education</Label>
-                        <Input
-                          id="education"
-                          placeholder="Bachelor's, Master's, PhD..."
-                          value={education}
-                          onChange={(e) => setEducation(e.target.value)}
-                        />
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="company">Previous Company</Label>
-                        <Input
-                          id="company"
-                          placeholder="Google, Microsoft, Startup..."
-                          value={company}
-                          onChange={(e) => setCompany(e.target.value)}
-                        />
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="jobType">Job Type</Label>
-                        <Input
-                          id="jobType"
-                          placeholder="Full-time, Contract, Part-time..."
-                          value={jobType}
-                          onChange={(e) => setJobType(e.target.value)}
-                        />
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="availability">Availability</Label>
-                        <Input
-                          id="availability"
-                          placeholder="Immediate, 2 weeks, 1 month..."
-                          value={availability}
-                          onChange={(e) => setAvailability(e.target.value)}
-                        />
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="industry">Industry</Label>
-                        <Input
-                          id="industry"
-                          placeholder="Tech, Finance, Healthcare..."
-                          value={industry}
-                          onChange={(e) => setIndustry(e.target.value)}
-                        />
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="certifications">Certifications</Label>
-                        <Input
-                          id="certifications"
-                          placeholder="AWS, PMP, Scrum Master..."
-                          value={certifications}
-                          onChange={(e) => setCertifications(e.target.value)}
-                        />
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                  
-                  <Button 
-                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg"
-                    onClick={handleSearch}
-                    disabled={isSearching}
-                  >
-                    {isSearching ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Searching...
-                      </>
-                    ) : (
-                      <>
-                        <Search className="w-4 h-4 mr-2" />
-                        Search Candidates
-                      </>
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-
-        {/* Search Results */}
-        <div className={`space-y-6 transition-all duration-300 ${isFiltersOpen ? 'lg:col-span-2' : 'lg:col-span-1'}`}>
-          {/* AI Prompt Section - Now Collapsible */}
-          <Collapsible open={isAiSearchOpen} onOpenChange={setIsAiSearchOpen}>
-            <CollapsibleTrigger asChild>
-              <Button 
-                variant="outline" 
-                className="w-full justify-between p-4 h-auto border-2 border-blue-200 hover:border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50 transition-all duration-300"
-              >
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-blue-600" />
-                  <span className="font-semibold text-blue-900">AI-Powered Search</span>
                 </div>
-                {isAiSearchOpen ? (
-                  <ChevronUp className="h-4 w-4 text-blue-600" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-blue-600" />
-                )}
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <Card className="border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 relative overflow-hidden mt-4">
-                <GlowingEffect
-                  spread={50}
-                  glow={true}
-                  disabled={false}
-                  proximity={70}
-                  inactiveZone={0.01}
-                  variant="default"
-                />
-                <CardContent className="pt-6">
-                  <div className="space-y-3">
-                    <Label htmlFor="ai-prompt" className="text-blue-800 font-medium">
-                      Describe the ideal candidate in natural language
-                    </Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="ai-prompt"
-                        placeholder="Find me a senior React developer with 5+ years experience in fintech, preferably remote..."
-                        value={aiPrompt}
-                        onChange={(e) => setAiPrompt(e.target.value)}
-                        className="border-blue-300 focus:border-blue-500 focus:ring-blue-500/20"
-                        onKeyPress={(e) => e.key === 'Enter' && handleAiSearch()}
-                      />
-                      <Button 
-                        onClick={handleAiSearch}
-                        className="bg-blue-600 hover:bg-blue-700 px-4"
-                        disabled={isAiSearching}
-                      >
-                        {isAiSearching ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Send className="w-4 h-4" />
-                        )}
-                      </Button>
-                    </div>
-                    <p className="text-sm text-blue-700">
-                      Our AI searches your entire candidate database for the best semantic match, then explains
-                      why each result fits - or doesn't.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </CollapsibleContent>
-          </Collapsible>
 
-          {/* Search Results */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                Search Results
-                {visibleResults.length > 0 && (
-                  <Badge className="ml-2 bg-green-100 text-green-800">
-                    {visibleResults.length} candidates found
-                  </Badge>
-                )}
-              </CardTitle>
-              {hasScores && (
-                <div className="flex items-center gap-3 pt-2">
-                  <Label className="text-sm text-gray-600 whitespace-nowrap">
-                    Minimum match score: <span className="font-semibold">{minScore}%</span>
+                <div>
+                  <Label htmlFor="skills" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                    Skills
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="w-3.5 h-3.5 text-gray-400 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        Comma-separated, matched against exact skill names (e.g. "React, Node.js")
+                      </TooltipContent>
+                    </Tooltip>
                   </Label>
-                  <Slider
-                    value={[minScore]}
-                    onValueChange={([v]) => setMinScore(v)}
-                    max={100}
-                    step={5}
-                    className="max-w-xs"
-                  />
-                  {minScore > 0 && (
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setMinScore(0)}>
-                      Clear
-                    </Button>
+                  <div className="relative mt-1">
+                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      id="skills"
+                      placeholder="React, Node.js..."
+                      value={filters.skills}
+                      onChange={(e) => setFilters((f) => ({ ...f, skills: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearchClick()}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Experience (years)</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      placeholder="Min"
+                      value={filters.experienceMin}
+                      onChange={(e) => setFilters((f) => ({ ...f, experienceMin: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearchClick()}
+                      className={cn(experienceRangeInvalid && "border-red-400 focus-visible:ring-red-400")}
+                    />
+                    <span className="text-gray-400 text-sm shrink-0">to</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      placeholder="Max"
+                      value={filters.experienceMax}
+                      onChange={(e) => setFilters((f) => ({ ...f, experienceMax: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearchClick()}
+                      className={cn(experienceRangeInvalid && "border-red-400 focus-visible:ring-red-400")}
+                    />
+                  </div>
+                  {experienceRangeInvalid && (
+                    <p className="text-xs text-red-600 mt-1">Min can't be greater than max</p>
                   )}
                 </div>
-              )}
-            </CardHeader>
-            <CardContent>
-              {isSearching || isAiSearching ? (
-                <div className="text-center py-12">
-                  <div className="relative">
-                    <Bot className="w-16 h-16 text-blue-400 mx-auto mb-4 animate-bounce" />
-                    <div className="absolute top-0 left-1/2 transform -translate-x-1/2">
-                      <Sparkles className="w-6 h-6 text-yellow-400 animate-pulse" />
-                    </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Expected salary ($)</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      inputMode="numeric"
+                      placeholder="Min"
+                      value={filters.salaryMin}
+                      onChange={(e) => setFilters((f) => ({ ...f, salaryMin: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearchClick()}
+                      className={cn(salaryRangeInvalid && "border-red-400 focus-visible:ring-red-400")}
+                    />
+                    <span className="text-gray-400 text-sm shrink-0">to</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      inputMode="numeric"
+                      placeholder="Max"
+                      value={filters.salaryMax}
+                      onChange={(e) => setFilters((f) => ({ ...f, salaryMax: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearchClick()}
+                      className={cn(salaryRangeInvalid && "border-red-400 focus-visible:ring-red-400")}
+                    />
                   </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    {isAiSearching ? "AI is analyzing your request..." : "Searching candidates..."}
-                  </h3>
-                  <p className="text-gray-500 mb-4">
-                    {isAiSearching ? "Processing natural language and matching criteria" : "Filtering through our database"}
-                  </p>
-                  <div className="flex justify-center">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                    </div>
-                  </div>
+                  {salaryRangeInvalid && <p className="text-xs text-red-600 mt-1">Min can't be greater than max</p>}
                 </div>
-              ) : hasSearched && visibleResults.length > 0 ? (
-                <div className="space-y-4">
-                  {visibleResults.map((candidate, index) => (
-                    <Card key={candidate.id} className="border border-gray-200 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group">
-                      <CardContent className="p-6">
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-start gap-4 flex-1">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                              <span className="text-sm font-semibold text-blue-700">
-                                {candidate.avatar}
-                              </span>
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">
-                                  {candidate.name}
-                                </h3>
-                                {typeof candidate.aiScore === "number" && (
-                                  <Badge className={`${getScoreColor(candidate.aiScore)} font-semibold`}>
-                                    <Star className="w-3 h-3 mr-1" />
-                                    {candidate.aiScore}% Match
-                                  </Badge>
-                                )}
-                                {candidate.aiReasoning && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="inline-flex cursor-pointer text-blue-500 hover:text-blue-700">
-                                        <Info className="w-4 h-4" />
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="max-w-xs">
-                                      <div className="flex items-start gap-2">
-                                        <Bot className="w-4 h-4 mt-0.5 shrink-0 text-blue-400" />
-                                        <span>{candidate.aiReasoning}</span>
-                                      </div>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                              </div>
-                              <p className="text-gray-700 font-medium mb-1">{candidate.title}</p>
-                              <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-                                <div className="flex items-center gap-1">
-                                  <Building className="w-4 h-4" />
-                                  {candidate.company}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <MapPin className="w-4 h-4" />
-                                  {candidate.location}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Briefcase className="w-4 h-4" />
-                                  {candidate.experience}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-                                <div className="flex items-center gap-1">
-                                  <DollarSign className="w-4 h-4" />
-                                  {candidate.salary}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Clock className="w-4 h-4" />
-                                  Available: {candidate.availability}
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap gap-2 mb-3">
-                                {candidate.skills.slice(0, MAX_VISIBLE_SKILLS).map((skill: string) => (
-                                  <Badge key={skill} variant="outline" className="text-xs">
-                                    {skill}
-                                  </Badge>
-                                ))}
-                                {candidate.skills.length > MAX_VISIBLE_SKILLS && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="inline-flex cursor-pointer">
-                                        <Badge variant="outline" className="text-xs">
-                                          +{candidate.skills.length - MAX_VISIBLE_SKILLS}
-                                        </Badge>
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="max-w-xs">
-                                      <div className="flex flex-wrap gap-1">
-                                        {candidate.skills.slice(MAX_VISIBLE_SKILLS).map((skill: string) => (
-                                          <Badge key={skill} variant="secondary" className="text-xs">
-                                            {skill}
-                                          </Badge>
-                                        ))}
-                                      </div>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-4 text-sm text-gray-500">
-                                <div className="flex items-center gap-1">
-                                  <Mail className="w-4 h-4" />
-                                  {candidate.email}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Phone className="w-4 h-4" />
-                                  {candidate.phone}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <Button
-                              size="sm"
-                              className="bg-green-600 hover:bg-green-700 text-white"
-                              onClick={() => handleContactCandidate(candidate)}
-                            >
-                              Contact
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => setProfileCandidate(candidate)}>
-                              View Profile
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Availability</Label>
+                  <Select
+                    value={filters.availability}
+                    onValueChange={(v) => setFilters((f) => ({ ...f, availability: v as AvailabilityFilter }))}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <UserCheck className="h-4 w-4 text-gray-400 mr-1.5 shrink-0" />
+                      <SelectValue placeholder="Any availability" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any availability</SelectItem>
+                      <SelectItem value="available">Available</SelectItem>
+                      <SelectItem value="interviewing">Interviewing</SelectItem>
+                      <SelectItem value="not_available">Not available</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Placement status</Label>
+                  <Select
+                    value={filters.placementStatus}
+                    onValueChange={(v) => setFilters((f) => ({ ...f, placementStatus: v as PlacementFilter }))}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <CheckCircle2 className="h-4 w-4 text-gray-400 mr-1.5 shrink-0" />
+                      <SelectValue placeholder="All candidates" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">All candidates</SelectItem>
+                      <SelectItem value="active">Active pool only</SelectItem>
+                      <SelectItem value="placed">Placed candidates</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Sort by</Label>
+                  <Select
+                    value={filters.sortBy || "default"}
+                    onValueChange={(v) => setFilters((f) => ({ ...f, sortBy: (v === "default" ? "" : v) as SortOption }))}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <ArrowUpDown className="h-4 w-4 text-gray-400 mr-1.5 shrink-0" />
+                      <SelectValue placeholder="Most relevant" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Most relevant</SelectItem>
+                      <SelectItem value="newest">Newest profiles</SelectItem>
+                      <SelectItem value="experience_desc">Most experienced</SelectItem>
+                      <SelectItem value="salary_desc">Highest expected salary</SelectItem>
+                      <SelectItem value="name_asc">Name (A-Z)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
+                <div className="flex flex-wrap gap-2">
+                  {liveChips.map((chip) => (
+                    <Badge
+                      key={chip.key}
+                      variant="outline"
+                      className="gap-1.5 pl-2.5 pr-1.5 py-1 bg-green-50 text-green-700 border-green-200 font-normal"
+                    >
+                      <chip.icon className="w-3 h-3" />
+                      {chip.label}
+                      <button
+                        onClick={() => removeChip(chip.key)}
+                        className="hover:bg-green-100 rounded-full p-0.5 transition-colors"
+                        aria-label={`Remove ${chip.label} filter`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
                   ))}
                 </div>
-              ) : hasSearched && searchResults.length > 0 ? (
-                <div className="text-center py-12">
-                  <Search className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No candidates above {minScore}% match</h3>
-                  <p className="text-gray-500 mb-4">
-                    {searchResults.length} candidate(s) were found, but none meet the minimum match score.
-                  </p>
-                  <Button variant="outline" onClick={() => setMinScore(0)}>
-                    Clear score filter
+                <div className="flex gap-2 shrink-0">
+                  {liveChips.length > 0 && (
+                    <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-gray-600">
+                      <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                      Clear all
+                    </Button>
+                  )}
+                  <Button
+                    onClick={handleSearchClick}
+                    disabled={isSearching || experienceRangeInvalid || salaryRangeInvalid}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {isSearching ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Search className="w-4 h-4 mr-2" />
+                    )}
+                    Search
                   </Button>
                 </div>
-              ) : hasSearched ? (
-                <div className="text-center py-12">
-                  <Search className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No candidates found</h3>
-                  <p className="text-gray-500">
-                    Try adjusting your search criteria or using different keywords
-                  </p>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="ai" className="pt-5">
+              {matchedJob ? (
+                <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-3">
+                  <div className="flex items-center gap-2 text-purple-900">
+                    <Sparkles className="w-5 h-5 text-purple-600 shrink-0" />
+                    <span className="font-medium">
+                      Showing AI-ranked candidates for <span className="font-semibold">{matchedJob.title}</span>{" "}
+                      <span className="text-purple-700">({matchedJob.job_id})</span>
+                    </span>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={clearJobMatch}>
+                    <X className="w-4 h-4 mr-1" />
+                    Clear
+                  </Button>
                 </div>
               ) : (
-                <div className="text-center py-12">
-                  <div className="relative">
-                    <Search className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <TrendingUp className="w-6 h-6 text-green-400 absolute -top-1 -right-1" />
+                <div className="space-y-3">
+                  <Label htmlFor="ai-prompt" className="text-sm font-medium text-gray-700">
+                    Describe the ideal candidate in plain English
+                  </Label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Bot className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <Input
+                        id="ai-prompt"
+                        placeholder="Senior React developer, 5+ years, fintech background, open to remote..."
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleAiSearch()}
+                        className="pl-9"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleAiSearch}
+                      disabled={isAiSearching || !aiPrompt.trim()}
+                      className="bg-green-600 hover:bg-green-700 text-white shrink-0"
+                    >
+                      {isAiSearching ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4 mr-2" />
+                      )}
+                      Search
+                    </Button>
                   </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Ready to find great talent?</h3>
-                  <p className="text-gray-500">
-                    Use the filters on the left or the AI prompt above to search for candidates
+                  <p className="text-sm text-gray-500">
+                    Searches your entire candidate database for the best semantic match, and explains why each
+                    result fits.
                   </p>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Users className="w-5 h-5 text-gray-500" />
+              {isLoading ? (
+                isAiSearching ? "AI is analyzing candidates..." : "Searching..."
+              ) : heading ? (
+                <span>
+                  {heading.title}
+                  {heading.subtitle && <span className="text-gray-400 font-normal ml-1.5">{heading.subtitle}</span>}
+                </span>
+              ) : (
+                "Search results"
+              )}
+            </CardTitle>
+            {!isLoading && hasScores && (
+              <div className="flex items-center gap-3">
+                <Label className="text-sm text-gray-600 whitespace-nowrap">
+                  Min. match: <span className="font-semibold">{minScore}%</span>
+                </Label>
+                <Slider
+                  value={[minScore]}
+                  onValueChange={([v]) => setMinScore(v)}
+                  max={100}
+                  step={5}
+                  className="w-32"
+                />
+                {minScore > 0 && (
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setMinScore(0)}>
+                    Reset
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <CandidateCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : searchError ? (
+            <EmptyState
+              icon={AlertCircle}
+              iconClassName="h-10 w-10 text-red-400 mx-auto mb-3"
+              title="Something went wrong"
+              description={searchError}
+              action={
+                <Button variant="outline" onClick={handleRetry}>
+                  Try again
+                </Button>
+              }
+            />
+          ) : hasSearched && searchResults.length > 0 && visibleResults.length === 0 ? (
+            <EmptyState
+              icon={SearchX}
+              iconClassName="h-10 w-10 text-gray-400 mx-auto mb-3"
+              title={`No candidates above ${minScore}% match`}
+              description={`${searchResults.length} candidate${searchResults.length === 1 ? " was" : "s were"} found, but none meet the minimum match score.`}
+              action={
+                <Button variant="outline" onClick={() => setMinScore(0)}>
+                  Clear score filter
+                </Button>
+              }
+            />
+          ) : hasSearched && searchResults.length === 0 ? (
+            <EmptyState
+              icon={SearchX}
+              iconClassName="h-10 w-10 text-gray-400 mx-auto mb-3"
+              title="No candidates found"
+              description={
+                mode === "ai"
+                  ? "Try rephrasing your description, or switch to the Filters tab for precise criteria."
+                  : appliedChips.length > 0
+                  ? "Try widening or removing some of your filters."
+                  : "Your talent pool is empty right now."
+              }
+              action={
+                appliedChips.length > 0 ? (
+                  <Button variant="outline" onClick={clearAllFilters}>
+                    <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                    Clear filters
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : hasSearched ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {visibleResults.map((candidate) => (
+                  <Card
+                    key={candidate.id}
+                    className="border border-gray-200 hover:shadow-md transition-shadow duration-200 group"
+                  >
+                    <CardContent className="p-5 flex flex-col h-full">
+                      <div className="flex items-start gap-3">
+                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center shrink-0">
+                          <span className="text-sm font-semibold text-blue-700">{candidate.avatar}</span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-700 transition-colors truncate">
+                              {candidate.name}
+                            </h3>
+                            {typeof candidate.aiScore === "number" && (
+                              <Badge className={`${getScoreColor(candidate.aiScore)} font-semibold shrink-0`}>
+                                <Star className="w-3 h-3 mr-1" />
+                                {candidate.aiScore}%
+                              </Badge>
+                            )}
+                            {candidate.aiReasoning && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex cursor-pointer text-blue-500 hover:text-blue-700 shrink-0">
+                                    <Info className="w-4 h-4" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <div className="flex items-start gap-2">
+                                    <Bot className="w-4 h-4 mt-0.5 shrink-0 text-blue-400" />
+                                    <span>{candidate.aiReasoning}</span>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600 truncate">
+                            {candidate.title} · {candidate.company}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500 mt-3">
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5" />
+                          {candidate.location}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Briefcase className="w-3.5 h-3.5" />
+                          {candidate.experience}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <DollarSign className="w-3.5 h-3.5" />
+                          {candidate.salary}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5" />
+                          {candidate.availability}
+                        </span>
+                      </div>
+
+                      {candidate.skills.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-3">
+                          {candidate.skills.slice(0, MAX_VISIBLE_SKILLS).map((skill) => (
+                            <Badge key={skill} variant="outline" className="text-xs font-normal">
+                              {skill}
+                            </Badge>
+                          ))}
+                          {candidate.skills.length > MAX_VISIBLE_SKILLS && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex cursor-pointer">
+                                  <Badge variant="outline" className="text-xs font-normal">
+                                    +{candidate.skills.length - MAX_VISIBLE_SKILLS}
+                                  </Badge>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <div className="flex flex-wrap gap-1">
+                                  {candidate.skills.slice(MAX_VISIBLE_SKILLS).map((skill) => (
+                                    <Badge key={skill} variant="secondary" className="text-xs">
+                                      {skill}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-gray-100">
+                        <div className="min-w-0 text-xs text-gray-500 flex items-center gap-1 truncate">
+                          <Mail className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{candidate.email}</span>
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <Button size="sm" variant="outline" onClick={() => setProfileCandidate(candidate)}>
+                            View
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                            onClick={() => handleContactCandidate(candidate)}
+                          >
+                            Contact
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {mode === "filters" && resultPagination?.hasNextPage && (
+                <div className="text-center pt-2">
+                  <Button variant="outline" onClick={handleLoadMore} disabled={isLoadingMore}>
+                    {isLoadingMore ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 mr-2" />
+                    )}
+                    Load more candidates
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <EmptyState
+              icon={Search}
+              iconClassName="h-12 w-12 text-gray-300 mx-auto mb-3"
+              title="Ready to find great talent?"
+              description='Use the Filters tab for precise criteria, or describe who you need in plain English under AI Search.'
+            />
+          )}
+        </CardContent>
+      </Card>
 
       <Dialog open={!!profileCandidate} onOpenChange={(open) => !open && setProfileCandidate(null)}>
         <DialogContent className="max-w-lg">
@@ -751,7 +1047,9 @@ const AdvancedSearch = () => {
                   </div>
                   {profileCandidate.name}
                 </DialogTitle>
-                <DialogDescription>{profileCandidate.title} at {profileCandidate.company}</DialogDescription>
+                <DialogDescription>
+                  {profileCandidate.title} at {profileCandidate.company}
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 text-sm">
                 <div className="flex items-center gap-2 text-gray-600">
@@ -776,7 +1074,7 @@ const AdvancedSearch = () => {
                   <Phone className="w-4 h-4" /> {profileCandidate.phone}
                 </div>
                 <div className="flex flex-wrap gap-2 pt-1">
-                  {profileCandidate.skills.map((skill: string) => (
+                  {profileCandidate.skills.map((skill) => (
                     <Badge key={skill} variant="outline" className="text-xs">
                       {skill}
                     </Badge>
