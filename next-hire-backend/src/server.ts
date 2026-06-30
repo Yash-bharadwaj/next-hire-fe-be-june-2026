@@ -41,6 +41,7 @@ import businessPartnerRoutes from "./routes/businessPartners";
 import dashboardRoutes from "./routes/dashboard";
 import fileRoutes from "./routes/files";
 import calendarEventRoutes from "./routes/calendarEvents";
+import ticketRoutes from "./routes/tickets";
 
 // Load environment variables
 dotenv.config();
@@ -161,6 +162,7 @@ app.use(`/api/${API_VERSION}/business-partners`, businessPartnerRoutes);
 app.use(`/api/${API_VERSION}/dashboard`, dashboardRoutes);
 app.use(`/api/${API_VERSION}/files`, fileRoutes);
 app.use(`/api/${API_VERSION}/calendar-events`, calendarEventRoutes);
+app.use(`/api/${API_VERSION}/tickets`, ticketRoutes);
 
 // Error handling middleware
 app.use(notFoundHandler);

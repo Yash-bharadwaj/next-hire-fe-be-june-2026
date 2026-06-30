@@ -20,6 +20,7 @@ import { BusinessPartnerContact } from "./BusinessPartnerContact";
 import { JobProfitability } from "./JobProfitability";
 import { AppSetting } from "./AppSetting";
 import { CalendarEvent } from "./CalendarEvent";
+import { Ticket } from "./Ticket";
 
 let associationsApplied = false;
 
@@ -98,6 +99,12 @@ export function applyAssociations() {
 
   // Calendar events
   CalendarEvent.belongsTo(User, { foreignKey: "created_by", as: "creator" });
+
+  // Tickets
+  Ticket.belongsTo(User, { foreignKey: "reporter_id", as: "reporter" });
+  Ticket.belongsTo(User, { foreignKey: "assignee_id", as: "assignee" });
+  User.hasMany(Ticket, { foreignKey: "reporter_id", as: "reportedTickets" });
+  User.hasMany(Ticket, { foreignKey: "assignee_id", as: "assignedTickets" });
 
   // Job Profitability
   Job.hasOne(JobProfitability, { foreignKey: "job_id", as: "profitability" });
@@ -183,5 +190,6 @@ export {
   JobProfitability,
   AppSetting,
   CalendarEvent,
+  Ticket,
   sequelize,
 };
