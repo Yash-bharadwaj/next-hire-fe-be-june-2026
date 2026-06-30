@@ -247,7 +247,7 @@ const AdvancedSearch = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const jobId = searchParams.get("jobId");
 
-  const [activeTab, setActiveTab] = useState<"filters" | "ai">("filters");
+  const [activeTab, setActiveTab] = useState<"filters" | "ai">("ai");
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [aiPrompt, setAiPrompt] = useState("");
 
@@ -517,15 +517,68 @@ const AdvancedSearch = () => {
         <CardContent className="p-4 sm:p-6">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "filters" | "ai")}>
             <TabsList className="grid w-full max-w-md grid-cols-2">
-              <TabsTrigger value="filters" className="gap-2">
-                <SlidersHorizontal className="w-4 h-4" />
-                Filters
-              </TabsTrigger>
               <TabsTrigger value="ai" className="gap-2">
                 <Sparkles className="w-4 h-4" />
                 AI Search
               </TabsTrigger>
+              <TabsTrigger value="filters" className="gap-2">
+                <SlidersHorizontal className="w-4 h-4" />
+                Filters
+              </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="ai" className="pt-5">
+              {matchedJob ? (
+                <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-3">
+                  <div className="flex items-center gap-2 text-purple-900">
+                    <Sparkles className="w-5 h-5 text-purple-600 shrink-0" />
+                    <span className="font-medium">
+                      Showing AI-ranked candidates for <span className="font-semibold">{matchedJob.title}</span>{" "}
+                      <span className="text-purple-700">({matchedJob.job_id})</span>
+                    </span>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={clearJobMatch}>
+                    <X className="w-4 h-4 mr-1" />
+                    Clear
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <Label htmlFor="ai-prompt" className="text-sm font-medium text-gray-700">
+                    Describe the ideal candidate in plain English
+                  </Label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Bot className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <Input
+                        id="ai-prompt"
+                        placeholder="Senior React developer, 5+ years, fintech background, open to remote..."
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleAiSearch()}
+                        className="pl-9"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleAiSearch}
+                      disabled={isAiSearching || !aiPrompt.trim()}
+                      className="bg-green-600 hover:bg-green-700 text-white shrink-0"
+                    >
+                      {isAiSearching ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4 mr-2" />
+                      )}
+                      Search
+                    </Button>
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    Searches your entire candidate database for the best semantic match, and explains why each
+                    result fits.
+                  </p>
+                </div>
+              )}
+            </TabsContent>
 
             <TabsContent value="filters" className="pt-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -747,59 +800,6 @@ const AdvancedSearch = () => {
                   </Button>
                 </div>
               </div>
-            </TabsContent>
-
-            <TabsContent value="ai" className="pt-5">
-              {matchedJob ? (
-                <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-3">
-                  <div className="flex items-center gap-2 text-purple-900">
-                    <Sparkles className="w-5 h-5 text-purple-600 shrink-0" />
-                    <span className="font-medium">
-                      Showing AI-ranked candidates for <span className="font-semibold">{matchedJob.title}</span>{" "}
-                      <span className="text-purple-700">({matchedJob.job_id})</span>
-                    </span>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={clearJobMatch}>
-                    <X className="w-4 h-4 mr-1" />
-                    Clear
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <Label htmlFor="ai-prompt" className="text-sm font-medium text-gray-700">
-                    Describe the ideal candidate in plain English
-                  </Label>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="relative flex-1">
-                      <Bot className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-                      <Input
-                        id="ai-prompt"
-                        placeholder="Senior React developer, 5+ years, fintech background, open to remote..."
-                        value={aiPrompt}
-                        onChange={(e) => setAiPrompt(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleAiSearch()}
-                        className="pl-9"
-                      />
-                    </div>
-                    <Button
-                      onClick={handleAiSearch}
-                      disabled={isAiSearching || !aiPrompt.trim()}
-                      className="bg-green-600 hover:bg-green-700 text-white shrink-0"
-                    >
-                      {isAiSearching ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4 mr-2" />
-                      )}
-                      Search
-                    </Button>
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    Searches your entire candidate database for the best semantic match, and explains why each
-                    result fits.
-                  </p>
-                </div>
-              )}
             </TabsContent>
           </Tabs>
         </CardContent>
@@ -1030,7 +1030,7 @@ const AdvancedSearch = () => {
               icon={Search}
               iconClassName="h-12 w-12 text-gray-300 mx-auto mb-3"
               title="Ready to find great talent?"
-              description='Use the Filters tab for precise criteria, or describe who you need in plain English under AI Search.'
+              description="Describe who you need in plain English under AI Search, or switch to Filters for precise criteria."
             />
           )}
         </CardContent>
