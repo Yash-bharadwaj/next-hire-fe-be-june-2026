@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Slider } from "@/components/ui/slider";
@@ -247,7 +247,7 @@ const AdvancedSearch = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const jobId = searchParams.get("jobId");
 
-  const [activeTab, setActiveTab] = useState<"filters" | "ai">("ai");
+  const [openSections, setOpenSections] = useState<string[]>(["ai"]);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [aiPrompt, setAiPrompt] = useState("");
 
@@ -299,7 +299,7 @@ const AdvancedSearch = () => {
 
     let cancelled = false;
     const loadJobMatches = async () => {
-      setActiveTab("ai");
+      setOpenSections(["ai"]);
       setIsAiSearching(true);
       setSearchError(null);
       setHasSearched(true);
@@ -515,19 +515,15 @@ const AdvancedSearch = () => {
 
       <Card>
         <CardContent className="p-4 sm:p-6">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "filters" | "ai")}>
-            <TabsList className="grid w-full max-w-md grid-cols-2">
-              <TabsTrigger value="ai" className="gap-2">
-                <Sparkles className="w-4 h-4" />
-                AI Search
-              </TabsTrigger>
-              <TabsTrigger value="filters" className="gap-2">
-                <SlidersHorizontal className="w-4 h-4" />
-                Filters
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="ai" className="pt-5">
+          <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="space-y-3">
+            <AccordionItem value="ai" className="border rounded-lg px-4">
+              <AccordionTrigger className="hover:no-underline py-3">
+                <span className="flex items-center gap-2 font-semibold text-gray-900">
+                  <Sparkles className="w-4 h-4 text-green-600" />
+                  AI Search
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
               {matchedJob ? (
                 <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-3">
                   <div className="flex items-center gap-2 text-purple-900">
@@ -578,9 +574,22 @@ const AdvancedSearch = () => {
                   </p>
                 </div>
               )}
-            </TabsContent>
+              </AccordionContent>
+            </AccordionItem>
 
-            <TabsContent value="filters" className="pt-5 space-y-4">
+            <AccordionItem value="filters" className="border rounded-lg px-4">
+              <AccordionTrigger className="hover:no-underline py-3">
+                <span className="flex items-center gap-2 font-semibold text-gray-900">
+                  <SlidersHorizontal className="w-4 h-4 text-green-600" />
+                  Filters
+                  {liveChips.length > 0 && (
+                    <Badge variant="secondary" className="ml-1 font-normal">
+                      {liveChips.length} active
+                    </Badge>
+                  )}
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="search" className="text-sm font-medium text-gray-700">
@@ -800,8 +809,9 @@ const AdvancedSearch = () => {
                   </Button>
                 </div>
               </div>
-            </TabsContent>
-          </Tabs>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </CardContent>
       </Card>
 
@@ -880,13 +890,21 @@ const AdvancedSearch = () => {
               title="No candidates found"
               description={
                 mode === "ai"
-                  ? "Try rephrasing your description, or switch to the Filters tab for precise criteria."
+                  ? "Try rephrasing your description, or expand Filters below for precise criteria."
                   : appliedChips.length > 0
                   ? "Try widening or removing some of your filters."
                   : "Your talent pool is empty right now."
               }
               action={
-                appliedChips.length > 0 ? (
+                mode === "ai" ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setOpenSections((s) => Array.from(new Set([...s, "filters"])))}
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" />
+                    Open Filters
+                  </Button>
+                ) : appliedChips.length > 0 ? (
                   <Button variant="outline" onClick={clearAllFilters}>
                     <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
                     Clear filters
@@ -1030,7 +1048,7 @@ const AdvancedSearch = () => {
               icon={Search}
               iconClassName="h-12 w-12 text-gray-300 mx-auto mb-3"
               title="Ready to find great talent?"
-              description="Describe who you need in plain English under AI Search, or switch to Filters for precise criteria."
+              description="Describe who you need in AI Search, or expand Filters below for precise criteria."
             />
           )}
         </CardContent>
