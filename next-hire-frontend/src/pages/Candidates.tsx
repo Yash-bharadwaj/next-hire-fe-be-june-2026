@@ -70,6 +70,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { formatShortId } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
+import { useConfirm } from "@/hooks/use-confirm";
 
 // Animated step messages shown while the AI parses a resume. Purely
 // presentational - the backend does this in one request, so progress is
@@ -85,6 +86,7 @@ const RESUME_PARSE_STEPS = [
 const Candidates = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const {
     candidates,
     loading,
@@ -206,7 +208,12 @@ const Candidates = () => {
   };
 
   const handleDeleteCandidate = async (candidateId: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete ${name}? This cannot be undone.`)) {
+    if (!(await confirm({
+      title: `Delete ${name}?`,
+      description: "This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+    }))) {
       return;
     }
     try {

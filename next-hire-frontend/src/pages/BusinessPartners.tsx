@@ -62,10 +62,12 @@ import { useEntityExport } from "@/hooks/useEntityExport";
 import { useAuth } from "@/contexts/AuthContext";
 import BusinessPartnerFormDialog from "@/components/BusinessPartnerFormDialog";
 import { EmptyState } from "@/components/EmptyState";
+import { useConfirm } from "@/hooks/use-confirm";
 
 const BusinessPartners = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const confirm = useConfirm();
   
   // Hooks
   const {
@@ -108,9 +110,12 @@ const BusinessPartners = () => {
   const handleBulkDelete = async () => {
     if (selectedPartners.length === 0) return;
 
-    const confirmed = window.confirm(
-      `Delete ${selectedPartners.length} selected business partner${selectedPartners.length > 1 ? "s" : ""}? This action cannot be undone.`
-    );
+    const confirmed = await confirm({
+      title: `Delete ${selectedPartners.length} selected business partner${selectedPartners.length > 1 ? "s" : ""}?`,
+      description: "This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+    });
     if (!confirmed) return;
 
     setBulkDeleting(true);

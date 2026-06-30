@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/use-confirm";
 import { resolveDocumentUrl } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -126,6 +127,7 @@ const SubmissionDetail = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [loading, setLoading] = useState(true);
@@ -203,7 +205,12 @@ const SubmissionDetail = () => {
 
   const handleWithdraw = async () => {
     if (!submission) return;
-    if (!window.confirm("Are you sure you want to withdraw this application?")) return;
+    if (!(await confirm({
+      title: "Withdraw this application?",
+      description: "You won't be able to undo this action.",
+      confirmText: "Withdraw",
+      variant: "destructive",
+    }))) return;
     try {
       await submissionService.withdrawSubmission(submission.id);
       toast({ title: "Application withdrawn" });

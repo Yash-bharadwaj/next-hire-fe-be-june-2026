@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { toast } from "sonner";
+import { useConfirm } from "@/hooks/use-confirm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -104,6 +105,7 @@ const activityIcon = (type: BusinessPartnerActivityItem["type"]) => {
 const BusinessPartnerDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -241,7 +243,12 @@ const BusinessPartnerDetail = () => {
 
   const handleDeleteContact = async (contact: BusinessPartnerContact) => {
     if (!id) return;
-    if (!window.confirm(`Delete contact ${contact.name}?`)) return;
+    if (!(await confirm({
+      title: `Delete contact ${contact.name}?`,
+      description: "This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+    }))) return;
     try {
       await businessPartnerService.deleteContact(id, contact.id);
       toast.success("Contact deleted");
@@ -394,7 +401,12 @@ const BusinessPartnerDetail = () => {
 
   const handleArchivePartner = async () => {
     if (!id || !partner) return;
-    if (!window.confirm(`Are you sure you want to delete ${partner.name}? This cannot be undone.`)) {
+    if (!(await confirm({
+      title: `Delete ${partner.name}?`,
+      description: "This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+    }))) {
       return;
     }
     setDeleting(true);

@@ -72,6 +72,7 @@ import { toast } from "sonner";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { EmptyState } from "@/components/EmptyState";
 import { formatCurrency, formatCompactCurrency } from "@/lib/format";
+import { useConfirm } from "@/hooks/use-confirm";
 
 const _placementsStatsCache = {
   activePlacements: 0, completedPlacements: 0, totalPlacements: 0,
@@ -89,7 +90,8 @@ const getSharedCurrency = (placements: { salary_currency?: string }[]): string |
 const Placements = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+  const confirm = useConfirm();
+
   // Hooks
   const { 
     placements, 
@@ -445,7 +447,12 @@ const Placements = () => {
   };
 
   const handleDeletePlacement = async (placementId: string, label: string) => {
-    if (!window.confirm(`Are you sure you want to delete the placement for ${label}? This cannot be undone.`)) {
+    if (!(await confirm({
+      title: `Delete the placement for ${label}?`,
+      description: "This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+    }))) {
       return;
     }
     try {

@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/use-confirm";
 import { cn } from "@/lib/utils";
 
 export type NoteCategory = "technical" | "behavioral" | "feedback" | "general";
@@ -90,6 +91,7 @@ export const NotesPanel = ({
   extraAddField,
 }: NotesPanelProps) => {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [categoryFilter, setCategoryFilter] = useState<"all" | NoteCategory>("all");
   const [search, setSearch] = useState("");
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
@@ -181,7 +183,12 @@ export const NotesPanel = ({
   };
 
   const handleDelete = async (note: NoteRecord) => {
-    if (!window.confirm("Delete this note? This cannot be undone.")) return;
+    if (!(await confirm({
+      title: "Delete this note?",
+      description: "This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+    }))) return;
     setDeletingNoteId(note.id);
     try {
       await onDelete(note.id);

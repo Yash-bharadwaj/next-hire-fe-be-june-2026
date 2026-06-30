@@ -67,6 +67,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/use-confirm";
 import { format } from "date-fns";
 import { useInterviews, useInterviewStats, useInterviewManagement } from "@/hooks/useInterviews";
 import { interviewService, InterviewStatus, InterviewType } from "@/services/interviewService";
@@ -82,6 +83,7 @@ const _interviewsStatsCache = { total: 0, scheduled: 0, completed: 0, totalJobs:
 const Interviews = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
@@ -299,7 +301,12 @@ const Interviews = () => {
   };
 
   const handleDeleteInterview = async (interviewId: string) => {
-    if (window.confirm("Are you sure you want to delete this interview?")) {
+    if (await confirm({
+      title: "Delete this interview?",
+      description: "This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+    })) {
       const result = await deleteInterview(interviewId);
       if (result) {
         refreshInterviews();

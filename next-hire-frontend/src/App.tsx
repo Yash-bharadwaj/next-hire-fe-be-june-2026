@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ConfirmProvider } from "@/hooks/use-confirm";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Layout from "./components/Layout";
 import AuthLayout from "./components/AuthLayout";
@@ -62,6 +63,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <ConfirmProvider>
       <AuthProvider>
         <BrowserRouter>
           <Routes>
@@ -181,6 +183,7 @@ const App = () => (
           </Routes>
         </BrowserRouter>
       </AuthProvider>
+      </ConfirmProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

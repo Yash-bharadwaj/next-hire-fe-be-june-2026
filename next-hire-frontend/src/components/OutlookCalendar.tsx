@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ChevronLeft, ChevronRight, Calendar, Plus, ChevronDown, ChevronUp, MoreHorizontal, Edit, Trash2, CheckCircle2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/use-confirm";
 import {
   calendarEventService,
   CalendarEvent as CalendarEventRecord,
@@ -24,6 +25,7 @@ const TASK_FILTER_OPTIONS: { value: CalendarEventTaskType | "all"; label: string
 
 export function OutlookCalendar() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [filterType, setFilterType] = useState<CalendarEventTaskType | "all">("all");
@@ -165,7 +167,12 @@ export function OutlookCalendar() {
   };
 
   const handleDeleteEvent = async (eventId: string) => {
-    if (!window.confirm("Delete this event?")) return;
+    if (!(await confirm({
+      title: "Delete this event?",
+      description: "This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+    }))) return;
     try {
       await calendarEventService.deleteEvent(eventId);
       toast({ title: "Event deleted" });

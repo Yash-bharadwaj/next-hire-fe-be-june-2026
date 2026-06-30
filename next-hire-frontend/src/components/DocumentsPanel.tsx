@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/use-confirm";
 import { cn } from "@/lib/utils";
 import { resolveDocumentUrl, fetchDocumentPreviewText } from "@/lib/api";
 
@@ -224,6 +225,7 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
     | null
   >(null);
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const handleOpen = async (doc: DocumentRecord) => {
     setOpeningId(doc.id);
@@ -288,7 +290,12 @@ export const DocumentsPanel = ({ title = "Documents", documents, onUpload, onDel
 
   const handleDelete = async (doc: DocumentRecord) => {
     if (!onDelete) return;
-    if (!window.confirm(`Delete "${doc.name}"? This cannot be undone.`)) return;
+    if (!(await confirm({
+      title: `Delete "${doc.name}"?`,
+      description: "This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+    }))) return;
     setDeletingId(doc.id);
     try {
       await onDelete(doc.id);

@@ -29,10 +29,12 @@ import { useSubmissions, useSubmissionManagement } from "@/hooks/useSubmissions"
 import { submissionService, SubmissionStatus } from "@/services/submissionService";
 import { jobService } from "@/services/jobService";
 import { toast } from "sonner";
+import { useConfirm } from "@/hooks/use-confirm";
 
 export default function MyJobs() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<SubmissionStatus | "all">("all");
 
@@ -62,7 +64,12 @@ export default function MyJobs() {
   };
 
   const handleWithdraw = async (submissionId: string) => {
-    if (window.confirm("Are you sure you want to withdraw this application?")) {
+    if (await confirm({
+      title: "Withdraw this application?",
+      description: "You won't be able to undo this action.",
+      confirmText: "Withdraw",
+      variant: "destructive",
+    })) {
       const success = await withdrawApplication(submissionId);
       if (success) {
         // Refresh the submissions list

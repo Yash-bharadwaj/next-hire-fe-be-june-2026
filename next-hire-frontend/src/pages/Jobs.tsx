@@ -82,6 +82,7 @@ import { formatCompactRange, formatShortId, formatPersonName } from "@/lib/forma
 import { type CsvColumn } from "@/utils/csv";
 import { useEntityExport } from "@/hooks/useEntityExport";
 import { EmptyState } from "@/components/EmptyState";
+import { useConfirm } from "@/hooks/use-confirm";
 
 // Animated step messages shown while the AI parses a job description.
 // Purely presentational - the backend does this in one request, so
@@ -97,6 +98,7 @@ const JD_PARSE_STEPS = [
 const Jobs = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const {
     jobs,
     loading,
@@ -329,9 +331,12 @@ const Jobs = () => {
 
   const handleDeleteJob = async (jobId: string) => {
     if (
-      window.confirm(
-        "Are you sure you want to delete this job? This action cannot be undone."
-      )
+      await confirm({
+        title: "Delete this job?",
+        description: "This action cannot be undone.",
+        confirmText: "Delete",
+        variant: "destructive",
+      })
     ) {
       const success = await deleteJob(jobId);
       if (success) {

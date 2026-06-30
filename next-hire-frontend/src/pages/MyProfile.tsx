@@ -43,6 +43,7 @@ import {
   Star,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@/hooks/use-confirm";
 import { authService } from "@/services/authService";
 import {
   candidateService,
@@ -76,6 +77,7 @@ import {
 
 export default function MyProfile() {
   const { user, setUser } = useAuth();
+  const confirm = useConfirm();
   const isVendor = user?.role === "vendor";
   const isRecruiter = user?.role === "recruiter";
   const isCandidate = !isVendor && !isRecruiter;
@@ -702,7 +704,12 @@ export default function MyProfile() {
 
   // Delete a resume
   const handleDeleteResume = async (resume: CandidateResume) => {
-    if (!window.confirm(`Delete "${resume.file_name}"? This cannot be undone.`)) {
+    if (!(await confirm({
+      title: `Delete "${resume.file_name}"?`,
+      description: "This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+    }))) {
       return;
     }
 

@@ -90,10 +90,12 @@ import { CompanyFilter } from "@/components/CompanyFilter";
 import { candidateSearchService } from "@/services/candidateSearchService";
 import { MAX_PAGE_SIZE } from "@/lib/constants";
 import { EmptyState } from "@/components/EmptyState";
+import { useConfirm } from "@/hooks/use-confirm";
 
 const Submissions = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const confirm = useConfirm();
 
   // Use different hooks based on user role
   const candidateVendorSubmissions = useSubmissions();
@@ -388,7 +390,12 @@ const Submissions = () => {
   };
 
   const handleWithdrawApplication = async (submissionId: string) => {
-    if (!window.confirm("Are you sure you want to withdraw this application?")) {
+    if (!(await confirm({
+      title: "Withdraw this application?",
+      description: "You won't be able to undo this action.",
+      confirmText: "Withdraw",
+      variant: "destructive",
+    }))) {
       return;
     }
     try {

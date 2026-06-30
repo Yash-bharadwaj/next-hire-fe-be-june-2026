@@ -49,9 +49,11 @@ import {
 import { useVendorCandidates } from "@/hooks/useVendor";
 import { Candidate } from "@/services/vendorService";
 import { toast } from "sonner";
+import { useConfirm } from "@/hooks/use-confirm";
 
 const VendorCandidates = () => {
   const { user } = useAuth();
+  const confirm = useConfirm();
 
   const {
     candidates,
@@ -259,7 +261,12 @@ const VendorCandidates = () => {
 
   const handleDeleteCandidate = async (candidate: Candidate) => {
     const name = `${candidate.first_name} ${candidate.last_name}`.trim();
-    if (!window.confirm(`Remove ${name || "this candidate"} from your pool? This cannot be undone.`)) {
+    if (!(await confirm({
+      title: `Remove ${name || "this candidate"} from your pool?`,
+      description: "This action cannot be undone.",
+      confirmText: "Remove",
+      variant: "destructive",
+    }))) {
       return;
     }
 
