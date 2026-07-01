@@ -342,10 +342,13 @@ const SearchJobs = () => {
       <Card>
         <CardContent className="p-4 sm:p-6">
           <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="space-y-3">
-            <AccordionItem value="ai" className="border rounded-lg px-4">
+            <AccordionItem
+              value="ai"
+              className="rounded-lg border border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 px-4"
+            >
               <AccordionTrigger className="hover:no-underline py-3">
-                <span className="flex items-center gap-2 font-semibold text-gray-900">
-                  <Sparkles className="w-4 h-4 text-green-600" />
+                <span className="flex items-center gap-2 font-semibold text-purple-900">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
                   AI Search
                 </span>
               </AccordionTrigger>

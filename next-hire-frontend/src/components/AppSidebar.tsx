@@ -134,11 +134,13 @@ const quickLinks = [
     title: "Search Candidates",
     url: "/dashboard/search",
     icon: Search,
+    aiPowered: true,
   },
   {
     title: "Search Jobs",
     url: "/dashboard/search-jobs",
     icon: Briefcase,
+    aiPowered: true,
   },
   {
     title: "Task Planner",
@@ -212,6 +214,12 @@ const extensibilityMenuItems = [
     icon: Cog,
   },
 ];
+
+const AiPoweredBadge = () => (
+  <span className="ml-auto inline-flex shrink-0 items-center rounded-full bg-gradient-to-r from-purple-500 via-fuchsia-400 to-purple-500 bg-[length:200%_100%] px-1.5 py-[1px] text-[7px] font-bold uppercase leading-tight tracking-tight text-white shadow-sm animate-shimmer">
+    AI Powered
+  </span>
+);
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -571,15 +579,17 @@ export function AppSidebar() {
                                       }`}
                                     />
                                     {!isCollapsed && (
-                                      <span className="text-sm font-medium">
+                                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
                                         {item.title}
                                       </span>
                                     )}
+                                    {!isCollapsed && item.aiPowered && <AiPoweredBadge />}
                                   </NavLink>
                                 </TooltipTrigger>
                                 {isCollapsed && (
                                   <TooltipContent side="right" className="font-medium">
                                     {item.title}
+                                    {item.aiPowered && " · AI Powered"}
                                   </TooltipContent>
                                 )}
                               </Tooltip>
