@@ -52,22 +52,59 @@ const companyNews = [
   },
 ];
 
-const entertainment = [
+// Static fallbacks — shown while live data loads or if the API fails
+const entertainmentFallback = [
   {
     id: 1,
-    title: "Recruiter trivia: the longest average time-to-hire by industry",
-    category: "Fun Fact",
-    timestamp: "Today",
-    summary: "Healthcare and executive search roles tend to take the longest to fill - by a wide margin.",
-  },
-  {
-    id: 2,
-    title: "\"Hire slow, fire fast\" - and other recruiting wisdom",
+    title: "\"Hire slow, fire fast\" — and other recruiting wisdom",
     category: "Quote of the Day",
     timestamp: "Today",
     summary: "A reminder that a thorough process now saves a lot of pain later.",
+    source: "",
+  },
+  {
+    id: 2,
+    title: "Recruiter trivia: the longest average time-to-hire by industry",
+    category: "Fun Fact",
+    timestamp: "Today",
+    summary: "Healthcare and executive search roles tend to take the longest to fill — by a wide margin.",
+    source: "",
   },
 ];
+
+const marketInsightsFallback = [
+  {
+    id: 1,
+    title: "Global staffing market shows resilience amid economic uncertainty",
+    category: "Market Analysis",
+    timestamp: "Recently",
+    summary: "Despite global economic headwinds, the staffing industry demonstrates strong fundamentals and growth potential.",
+    source: "Industry Report",
+    type: "market-insights",
+  },
+];
+
+const stripHtml = (html: string) =>
+  html?.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#\d+;/g, " ").trim() ?? "";
+
+const formatPubDate = (dateStr: string) => {
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch {
+    return "Recently";
+  }
+};
+
+const RSS_FEEDS = [
+  { url: "https://www.hrdive.com/feeds/news/", label: "HR Dive" },
+  { url: "https://www.ere.net/feed/", label: "ERE Media" },
+];
+
+// Guardian API key — register a free one at https://open-platform.theguardian.com/access/
+// and set VITE_GUARDIAN_API_KEY in your .env. Falls back to the "test" key which works
+// for demos but may be rate-limited under heavy use.
+const GUARDIAN_API_KEY = import.meta.env.VITE_GUARDIAN_API_KEY || "test";
 
 const Home = () => {
   const navigate = useNavigate();
@@ -78,6 +115,11 @@ const Home = () => {
   const [topCustomers, setTopCustomers] = useState<BusinessPartner[]>([]);
   const [topCustomersLoading, setTopCustomersLoading] = useState(false);
 
+  const [marketInsightsData, setMarketInsightsData] = useState<any[]>([]);
+  const [marketInsightsLoading, setMarketInsightsLoading] = useState(false);
+  const [entertainmentData, setEntertainmentData] = useState<any[]>([]);
+  const [entertainmentLoading, setEntertainmentLoading] = useState(false);
+
   const refreshTopCustomers = () => {
     setTopCustomersLoading(true);
     businessPartnerService
@@ -87,58 +129,106 @@ const Home = () => {
       .finally(() => setTopCustomersLoading(false));
   };
 
-  useEffect(() => {
-    if (selectedNewsCategory !== "my-top-customers" || user?.role !== "recruiter") return;
-    refreshTopCustomers();
-  }, [selectedNewsCategory, user?.role]);
-
-  // Static market insights data (keeping for now as fallback content)
-  const marketInsights = [
-    {
-      id: 1,
-      title: "Singapore's migrant workers report highest satisfaction since 2011",
-      category: "Global Labor",
-      timestamp: "2 hours ago",
-      summary: "The vast majority of migrant workers indicated they intended to continue working with their current employer or return to Singapore in the future.",
-      source: "Staffing Industry Analysts",
-      type: "market-insights"
-    },
-    {
-      id: 2,
-      title: "Kanzhun Q2 revenue up 9.7% with boost from online recruitment services",
-      category: "Financial Results",
-      timestamp: "4 hours ago",
-      summary: "Chinese recruitment platform shows strong growth driven by digital transformation in hiring processes.",
-      source: "Financial Times",
-      type: "market-insights"
-    },
-    {
-      id: 3,
-      title: "Global staffing market shows resilience amid economic uncertainty",
-      category: "Market Analysis",
-      timestamp: "1 day ago",
-      summary: "Despite global economic headwinds, staffing industry demonstrates strong fundamentals and growth potential.",
-      source: "McKinsey Global Institute",
-      type: "market-insights"
+  const fetchMarketInsights = async () => {
+    setMarketInsightsLoading(true);
+    try {
+      // The Guardian open API — free, no CORS restrictions, fresh news
+      const query = encodeURIComponent("hiring OR workforce OR employment OR staffing OR recruitment");
+      const url = `https://content.guardianapis.com/search?q=${query}&section=business&show-fields=trailText&page-size=5&order-by=newest&api-key=${GUARDIAN_API_KEY}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const results = data?.response?.results;
+      if (results?.length) {
+        setMarketInsightsData(
+          results.map((item: any, i: number) => ({
+            id: i + 1,
+            title: stripHtml(item.webTitle),
+            category: item.sectionName || "Business",
+            timestamp: formatPubDate(item.webPublicationDate),
+            summary: stripHtml(item.fields?.trailText || "").slice(0, 180) + (stripHtml(item.fields?.trailText || "").length > 180 ? "…" : ""),
+            source: "The Guardian",
+            link: item.webUrl,
+            type: "market-insights",
+          }))
+        );
+        setMarketInsightsLoading(false);
+        return;
+      }
+    } catch {
+      // fall through to fallback
     }
-  ];
+    setMarketInsightsData(marketInsightsFallback);
+    setMarketInsightsLoading(false);
+  };
+
+  const fetchEntertainment = () => {
+    setEntertainmentLoading(true);
+    // Curated recruiting & leadership quotes — shuffled randomly each visit
+    // so it feels fresh without any external API dependency.
+    const pool = [
+      { q: "Hire slow, fire fast. Take your time in the hiring process — it saves enormous pain later.", a: "Recruiting Wisdom" },
+      { q: "The secret to successful hiring is this: look for people who want to change the world.", a: "Marc Benioff" },
+      { q: "You need to have a collaborative hiring process.", a: "Steve Jobs" },
+      { q: "Clients do not come first. Employees come first. If you take care of your employees, they will take care of the clients.", a: "Richard Branson" },
+      { q: "Great vision without great people is irrelevant.", a: "Jim Collins" },
+      { q: "A-players hire A-players; B-players hire C-players. One bad hire brings the whole team down.", a: "Silicon Valley Maxim" },
+      { q: "The best executive is the one who has sense enough to pick good people to do what needs to be done.", a: "Theodore Roosevelt" },
+      { q: "It's not the tools you have faith in — tools are just tools. They work or they don't work. It's the people you have faith in or not.", a: "Steve Jobs" },
+      { q: "Acquiring the right talent is the most important key to growth. Hiring was — and still is — the most important thing we do.", a: "Marc Andreessen" },
+      { q: "If you think hiring professionals is expensive, try hiring amateurs.", a: "Red Adair" },
+      { q: "Always treat your employees exactly as you want them to treat your best customers.", a: "Stephen R. Covey" },
+      { q: "Train people well enough so they can leave; treat them well enough so they don't want to.", a: "Richard Branson" },
+      { q: "The competition to hire the best will increase in the years ahead. Companies that give extra flexibility to employees will have the edge.", a: "Bill Gates" },
+      { q: "The key to keeping your team inspired is giving them autonomy, mastery, and purpose.", a: "Daniel H. Pink" },
+      { q: "Culture eats strategy for breakfast.", a: "Peter Drucker" },
+    ];
+    const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, 4);
+    setEntertainmentData(
+      shuffled.map((q, i) => ({
+        id: i + 1,
+        title: q.q.length > 90 ? q.q.slice(0, 90) + "…" : q.q,
+        category: "Quote of the Day",
+        timestamp: "Today",
+        summary: `"${q.q}"`,
+        source: `— ${q.a}`,
+      }))
+    );
+    setEntertainmentLoading(false);
+  };
+
+  useEffect(() => {
+    if (selectedNewsCategory === "my-top-customers" && user?.role === "recruiter") {
+      refreshTopCustomers();
+    }
+    if (selectedNewsCategory === "market-insights" && marketInsightsData.length === 0) {
+      fetchMarketInsights();
+    }
+    if (selectedNewsCategory === "entertainment" && entertainmentData.length === 0) {
+      fetchEntertainment();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNewsCategory, user?.role]);
 
   const getNewsContent = () => {
     switch (selectedNewsCategory) {
       case "recent-activity":
         return activities.slice(0, 4);
       case "market-insights":
-        return marketInsights.slice(0, 4);
+        return marketInsightsData.length ? marketInsightsData : marketInsightsFallback;
       case "my-top-customers":
         return topCustomers;
       case "company-news":
         return companyNews;
       case "entertainment":
-        return entertainment;
+        return entertainmentData.length ? entertainmentData : entertainmentFallback;
       default:
         return activities.slice(0, 4);
     }
   };
+
+  const isFeedLoading =
+    (selectedNewsCategory === "market-insights" && marketInsightsLoading) ||
+    (selectedNewsCategory === "entertainment" && entertainmentLoading);
 
   // Only categories backed by a real, browsable destination get a "View
   // All" button - the curated/illustrative categories already show
@@ -467,38 +557,51 @@ const Home = () => {
                       ? refreshActivity
                       : selectedNewsCategory === "my-top-customers"
                       ? refreshTopCustomers
+                      : selectedNewsCategory === "market-insights"
+                      ? () => { setMarketInsightsData([]); fetchMarketInsights(); }
+                      : selectedNewsCategory === "entertainment"
+                      ? () => { setEntertainmentData([]); fetchEntertainment(); }
                       : undefined
                   }
-                  disabled={activityLoading || topCustomersLoading}
+                  disabled={activityLoading || topCustomersLoading || isFeedLoading}
                 >
-                  <RefreshCw className={`h-4 w-4 ${(activityLoading || topCustomersLoading) ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-4 w-4 ${(activityLoading || topCustomersLoading || isFeedLoading) ? "animate-spin" : ""}`} />
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="flex-1">
               <div className="space-y-4">
-                {selectedNewsCategory === "my-top-customers" ? (
-                  topCustomersLoading ? (
-                    <div className="text-center py-8 text-gray-400">Loading...</div>
-                  ) : (
-                    topCustomers.map((partner) => (
-                      <button
-                        key={partner.id}
-                        onClick={() => navigate(`/dashboard/business-partners/${partner.id}`)}
-                        className="w-full flex items-start space-x-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-left"
-                      >
-                        <div className="flex-shrink-0 mt-1">
-                          <Building2 className="h-4 w-4 text-purple-600" />
+                {(topCustomersLoading || isFeedLoading) ? (
+                  <div className="space-y-3 py-2">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="flex items-start space-x-3 p-3">
+                        <div className="h-4 w-4 rounded bg-gray-200 animate-pulse shrink-0 mt-1" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-3.5 bg-gray-200 rounded animate-pulse w-3/4" />
+                          <div className="h-3 bg-gray-200 rounded animate-pulse w-full" />
+                          <div className="h-3 bg-gray-200 rounded animate-pulse w-1/2" />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{partner.name}</p>
-                          <p className="text-xs text-gray-600">
-                            {partner.annual_revenue ? `$${partner.annual_revenue.toLocaleString()} annual revenue` : "Revenue not on file"}
-                          </p>
-                        </div>
-                      </button>
-                    ))
-                  )
+                      </div>
+                    ))}
+                  </div>
+                ) : selectedNewsCategory === "my-top-customers" ? (
+                  topCustomers.map((partner) => (
+                    <button
+                      key={partner.id}
+                      onClick={() => navigate(`/dashboard/business-partners/${partner.id}`)}
+                      className="w-full flex items-start space-x-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-left"
+                    >
+                      <div className="flex-shrink-0 mt-1">
+                        <Building2 className="h-4 w-4 text-purple-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{partner.name}</p>
+                        <p className="text-xs text-gray-600">
+                          {partner.annual_revenue ? `$${partner.annual_revenue.toLocaleString()} annual revenue` : "Revenue not on file"}
+                        </p>
+                      </div>
+                    </button>
+                  ))
                 ) : (
                   getNewsContent().map((item: any, index) => (
                     <div key={item.id || index} className="flex items-start space-x-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
@@ -509,11 +612,22 @@ const Home = () => {
                         }
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {item.action || item.title}
-                          </p>
-                          <span className="text-xs text-gray-500">
+                        <div className="flex items-start justify-between gap-2">
+                          {item.link ? (
+                            <a
+                              href={item.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm font-medium text-gray-900 hover:text-blue-700 hover:underline line-clamp-2 flex-1"
+                            >
+                              {item.action || item.title}
+                            </a>
+                          ) : (
+                            <p className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">
+                              {item.action || item.title}
+                            </p>
+                          )}
+                          <span className="text-xs text-gray-500 shrink-0">
                             {selectedNewsCategory === "recent-activity"
                               ? dashboardService.formatTimeAgo(item.timestamp)
                               : item.timestamp
@@ -522,15 +636,9 @@ const Home = () => {
                         </div>
                         {selectedNewsCategory === "recent-activity" ? (
                           <div className="mt-1">
-                            {item.job && (
-                              <p className="text-xs text-gray-600">Job: {item.job}</p>
-                            )}
-                            {item.candidate && (
-                              <p className="text-xs text-gray-600">Candidate: {item.candidate}</p>
-                            )}
-                            {item.company && (
-                              <p className="text-xs text-gray-600">Company: {item.company}</p>
-                            )}
+                            {item.job && <p className="text-xs text-gray-600">Job: {item.job}</p>}
+                            {item.candidate && <p className="text-xs text-gray-600">Candidate: {item.candidate}</p>}
+                            {item.company && <p className="text-xs text-gray-600">Company: {item.company}</p>}
                             {item.status && (
                               <Badge
                                 variant="secondary"
@@ -545,7 +653,7 @@ const Home = () => {
                             <p className="text-xs text-gray-600 line-clamp-2">{item.summary}</p>
                             <div className="flex items-center justify-between mt-2">
                               <span className="text-xs text-blue-600">{item.category}</span>
-                              <span className="text-xs text-gray-500">{item.source}</span>
+                              <span className="text-xs text-gray-500 italic">{item.source}</span>
                             </div>
                           </div>
                         )}
@@ -554,7 +662,7 @@ const Home = () => {
                   ))
                 )}
 
-                {getNewsContent().length === 0 && !topCustomersLoading && (
+                {getNewsContent().length === 0 && !topCustomersLoading && !isFeedLoading && (
                   <div className="text-center py-8">
                     <Activity className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                     <p className="text-sm text-gray-600">Nothing here yet</p>
